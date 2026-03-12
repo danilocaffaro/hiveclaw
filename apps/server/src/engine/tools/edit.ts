@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from 'fs';
 import type { Tool, ToolInput, ToolOutput, ToolDefinition } from './types.js';
+import { validateToolPath } from '../../config/security.js';
 
 export class EditTool implements Tool {
   readonly definition: ToolDefinition = {
@@ -25,8 +26,14 @@ export class EditTool implements Tool {
       return { success: false, error: 'path and old_text are required' };
     }
 
+    // Workspace sandbox check (write mode — file will be modified)
+    const pathCheck = validateToolPath(filePath, 'write');
+    if (!pathCheck.allowed) {
+      return { success: false, error: pathCheck.reason };
+    }
+
     try {
-      const content = readFileSync(filePath, 'utf-8');
+      const content = readFileSync(pathCheck.resolved, 'utf-8');
 
       if (!content.includes(oldText)) {
         return {
@@ -36,9 +43,9 @@ export class EditTool implements Tool {
       }
 
       const newContent = content.replace(oldText, newText);
-      writeFileSync(filePath, newContent, 'utf-8');
+      writeFileSync(pathCheck.resolved, newContent, 'utf-8');
 
-      return { success: true, result: `Successfully edited ${filePath}` };
+      return { success: true, result: `Successfully edited ${pathCheck.resolved}` };
     } catch (err: unknown) {
       return { success: false, error: (err as Error).message };
     }

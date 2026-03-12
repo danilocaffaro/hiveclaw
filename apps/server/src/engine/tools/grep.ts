@@ -1,6 +1,7 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { Tool, ToolInput, ToolOutput, ToolDefinition } from './types.js';
+import { validateToolPath } from '../../config/security.js';
 
 const execFileAsync = promisify(execFile);
 const MAX_OUTPUT = 50_000;
@@ -32,6 +33,12 @@ export class GrepTool implements Tool {
       return { success: false, error: 'pattern and path are required' };
     }
 
+    // Validate search path is within allowed paths
+    const pathCheck = validateToolPath(searchPath, 'read');
+    if (!pathCheck.allowed) {
+      return { success: false, error: `Search path blocked: ${pathCheck.reason}` };
+    }
+
     // Try ripgrep first, fall back to grep
     const useRipgrep = await this.#ripgrepAvailable();
 
@@ -41,12 +48,12 @@ export class GrepTool implements Tool {
       if (useRipgrep) {
         const args = ['--line-number', '--no-heading', '--color=never'];
         if (options) args.push(...options.split(' ').filter(Boolean));
-        args.push(pattern, searchPath);
+        args.push(pattern, pathCheck.resolved);
         ({ stdout } = await execFileAsync('rg', args, { maxBuffer: MAX_OUTPUT * 4 }));
       } else {
         const args = ['-rn', '--color=never'];
         if (options) args.push(...options.split(' ').filter(Boolean));
-        args.push(pattern, searchPath);
+        args.push(pattern, pathCheck.resolved);
         ({ stdout } = await execFileAsync('grep', args, { maxBuffer: MAX_OUTPUT * 4 }));
       }
 

@@ -1,20 +1,12 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { Tool, ToolInput, ToolOutput, ToolDefinition } from './types.js';
+import { isCommandSafe, getWorkspaceRoot, validateToolPath } from '../../config/security.js';
 
 const execFileAsync = promisify(execFile);
 
 const MAX_OUTPUT = 50_000; // chars
 const DEFAULT_TIMEOUT = 30_000; // ms
-
-const BLOCKED_PATTERNS = [
-  /\brm\s+-rf\s+\/(?!\w)/,  // rm -rf / (root)
-  /\bmkfs\b/,                // format filesystem
-  /\bdd\s+.*of=\/dev/,       // dd to device
-  /:(){ :|:& };:/,           // fork bomb
-  /\bshutdown\b/,            // shutdown
-  /\breboot\b/,              // reboot
-];
 
 export class BashTool implements Tool {
   readonly definition: ToolDefinition = {
@@ -41,17 +33,22 @@ export class BashTool implements Tool {
     }
 
     // Safety: block dangerous commands
-    for (const pattern of BLOCKED_PATTERNS) {
-      if (pattern.test(command)) {
-        return { success: false, error: 'Command blocked by safety policy' };
-      }
+    const safety = isCommandSafe(command);
+    if (!safety.safe) {
+      return { success: false, error: safety.reason };
+    }
+
+    // Validate cwd is within allowed paths
+    const cwdCheck = validateToolPath(cwd, 'read');
+    if (!cwdCheck.allowed) {
+      return { success: false, error: `Working directory blocked: ${cwdCheck.reason}` };
     }
 
     try {
       const { stdout, stderr } = await execFileAsync('bash', ['-c', command], {
         timeout,
-        cwd,
-        env: { ...process.env },
+        cwd: cwdCheck.resolved,
+        env: { ...process.env, HOME: getWorkspaceRoot() },
         maxBuffer: MAX_OUTPUT * 4,
       });
 

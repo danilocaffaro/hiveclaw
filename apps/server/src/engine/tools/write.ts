@@ -1,6 +1,7 @@
 import { writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import type { Tool, ToolInput, ToolOutput, ToolDefinition } from './types.js';
+import { validateToolPath } from '../../config/security.js';
 
 export class WriteTool implements Tool {
   readonly definition: ToolDefinition = {
@@ -27,11 +28,17 @@ export class WriteTool implements Tool {
       return { success: false, error: 'content is required' };
     }
 
+    // Workspace sandbox check (write mode — stricter)
+    const pathCheck = validateToolPath(filePath, 'write');
+    if (!pathCheck.allowed) {
+      return { success: false, error: pathCheck.reason };
+    }
+
     try {
-      const dir = dirname(filePath);
+      const dir = dirname(pathCheck.resolved);
       mkdirSync(dir, { recursive: true });
-      writeFileSync(filePath, content, 'utf-8');
-      return { success: true, result: `Successfully wrote ${content.length} bytes to ${filePath}` };
+      writeFileSync(pathCheck.resolved, content, 'utf-8');
+      return { success: true, result: `Successfully wrote ${content.length} bytes to ${pathCheck.resolved}` };
     } catch (err: unknown) {
       return { success: false, error: (err as Error).message };
     }

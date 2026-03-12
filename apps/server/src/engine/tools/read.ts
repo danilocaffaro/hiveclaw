@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
 import type { Tool, ToolInput, ToolOutput, ToolDefinition } from './types.js';
+import { validateToolPath } from '../../config/security.js';
 
 const MAX_CHARS = 100_000;
 
@@ -33,8 +34,14 @@ export class ReadTool implements Tool {
       return { success: false, error: 'path is required' };
     }
 
+    // Workspace sandbox check
+    const pathCheck = validateToolPath(filePath, 'read');
+    if (!pathCheck.allowed) {
+      return { success: false, error: pathCheck.reason };
+    }
+
     try {
-      const raw = readFileSync(filePath, 'utf-8');
+      const raw = readFileSync(pathCheck.resolved, 'utf-8');
 
       let content: string;
 

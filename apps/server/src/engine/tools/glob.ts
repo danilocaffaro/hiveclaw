@@ -1,6 +1,7 @@
 import fg from 'fast-glob';
 const glob = fg.glob ?? fg;
 import type { Tool, ToolInput, ToolOutput, ToolDefinition } from './types.js';
+import { validateToolPath } from '../../config/security.js';
 
 export class GlobTool implements Tool {
   readonly definition: ToolDefinition = {
@@ -32,9 +33,15 @@ export class GlobTool implements Tool {
       return { success: false, error: 'pattern is required' };
     }
 
+    // Validate cwd is within allowed paths
+    const cwdCheck = validateToolPath(cwd, 'read');
+    if (!cwdCheck.allowed) {
+      return { success: false, error: `Search directory blocked: ${cwdCheck.reason}` };
+    }
+
     try {
       const files = await glob(pattern, {
-        cwd,
+        cwd: cwdCheck.resolved,
         ignore,
         onlyFiles: false,
         dot: false,

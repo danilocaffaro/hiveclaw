@@ -60,6 +60,8 @@ import { getMessageBus } from './engine/message-bus.js';
 import { logger } from './lib/logger.js';
 
 import { DEFAULT_PORT, DEFAULT_HOST, DEV_CORS_ORIGINS } from './config/defaults.js';
+import { SECURITY_HEADERS, isPublicRoute, SSE_MAX_CONNECTIONS_PER_IP, SSE_MAX_TOTAL_CONNECTIONS } from './config/security.js';
+import { getAuthUser } from './api/auth.js';
 
 const PORT = parseInt(process.env.PORT ?? process.env.SUPERCLAW_PORT ?? String(DEFAULT_PORT), 10);
 const HOST = process.env.SUPERCLAW_HOST ?? DEFAULT_HOST;
@@ -181,6 +183,67 @@ async function main() {
       if (now > val.resetAt) rateLimitMap.delete(key);
     }
   }, 5 * 60_000);
+
+  // ─── Security Headers ───────────────────────────────────────────────────
+  app.addHook('onSend', async (_req, reply) => {
+    for (const [header, value] of Object.entries(SECURITY_HEADERS)) {
+      reply.header(header, value);
+    }
+  });
+
+  // ─── Auth Middleware (production) ─────────────────────────────────────
+  if (!isDev) {
+    app.addHook('onRequest', async (req, reply) => {
+      // Check if route is public (no auth needed)
+      const url = req.url.split('?')[0];
+      if (isPublicRoute(url)) return;
+
+      // Static files don't need auth
+      if (req.method === 'GET' && (
+        url.startsWith('/_next/') ||
+        url === '/' ||
+        url.endsWith('.html') ||
+        url.endsWith('.js') ||
+        url.endsWith('.css') ||
+        url.endsWith('.png') ||
+        url.endsWith('.svg') ||
+        url.endsWith('.ico') ||
+        url.endsWith('.webmanifest') ||
+        url.endsWith('.woff2')
+      )) return;
+
+      const user = getAuthUser(req, userRepo);
+      if (!user) {
+        reply.status(401).send({
+          error: { code: 'UNAUTHORIZED', message: 'API key required. Set x-api-key header.' },
+        });
+      }
+    });
+    logger.info('[Auth] Production mode — API key required for protected routes');
+  }
+
+  // ─── SSE Connection Tracking ────────────────────────────────────────────
+  const sseConnections = new Map<string, number>();
+  let sseTotalConnections = 0;
+
+  // Expose SSE tracking for routes to use
+  app.decorate('sseTracker', {
+    canConnect(ip: string): boolean {
+      if (sseTotalConnections >= SSE_MAX_TOTAL_CONNECTIONS) return false;
+      const count = sseConnections.get(ip) ?? 0;
+      return count < SSE_MAX_CONNECTIONS_PER_IP;
+    },
+    connect(ip: string) {
+      sseConnections.set(ip, (sseConnections.get(ip) ?? 0) + 1);
+      sseTotalConnections++;
+    },
+    disconnect(ip: string) {
+      const count = sseConnections.get(ip) ?? 1;
+      if (count <= 1) sseConnections.delete(ip);
+      else sseConnections.set(ip, count - 1);
+      sseTotalConnections = Math.max(0, sseTotalConnections - 1);
+    },
+  });
 
   // ─── Static SPA serving ───────────────────────────────────────────────
   const webDir = process.env.SUPERCLAW_WEB_DIR
