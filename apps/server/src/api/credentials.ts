@@ -72,7 +72,7 @@ export function registerCredentialRoutes(
     try {
       const fulfilled = credentials.fulfillRequest(requestId, {
         value,
-        passphrase: passphrase || 'default-superclaw-key',
+        passphrase: passphrase || process.env.SUPERCLAW_VAULT_KEY || 'default-superclaw-key',
         saveToVault: saveToVault ?? false,
       });
       return { data: { status: fulfilled.status, savedToVault: saveToVault ?? false } };
@@ -193,7 +193,7 @@ export function registerCredentialRoutes(
     Params: { id: string };
     Body: { passphrase?: string };
   }>('/credentials/vault/:id/retrieve', async (req, reply) => {
-    const passphrase = req.body?.passphrase || 'default-superclaw-key';
+    const passphrase = req.body?.passphrase || process.env.SUPERCLAW_VAULT_KEY || 'default-superclaw-key';
 
     try {
       const value = credentials.retrieveCredential(req.params.id, passphrase);

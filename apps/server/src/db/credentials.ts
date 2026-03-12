@@ -124,32 +124,37 @@ export class CredentialRepository {
   }
 
   retrieveCredential(id: string, passphrase: string): string | null {
-    const row = this.db
-      .prepare(`SELECT * FROM credential_vault WHERE id = ?`)
-      .get(id) as VaultRow | undefined;
+    // SEC-03: Use transaction to prevent TOCTOU race on one-time credentials
+    const tx = this.db.transaction((credId: string, pp: string) => {
+      const row = this.db
+        .prepare(`SELECT * FROM credential_vault WHERE id = ?`)
+        .get(credId) as VaultRow | undefined;
 
-    if (!row) return null;
+      if (!row) return null;
 
-    // Expired check
-    if (row.expires_at && new Date(row.expires_at) < new Date()) return null;
+      // Expired check
+      if (row.expires_at && new Date(row.expires_at) < new Date()) return null;
 
-    // One-time already used
-    if (row.one_time === 1 && row.used === 1) return null;
+      // One-time already used
+      if (row.one_time === 1 && row.used === 1) return null;
 
-    try {
-      const plaintext = decrypt(row.encrypted_value, row.iv, row.salt, passphrase);
+      try {
+        const plaintext = decrypt(row.encrypted_value, row.iv, row.salt, pp);
 
-      // Mark as used if one-time
-      if (row.one_time === 1) {
-        this.db
-          .prepare(`UPDATE credential_vault SET used = 1, updated_at = ? WHERE id = ?`)
-          .run(new Date().toISOString(), id);
+        // Mark as used if one-time (atomic with the read)
+        if (row.one_time === 1) {
+          this.db
+            .prepare(`UPDATE credential_vault SET used = 1, updated_at = ? WHERE id = ?`)
+            .run(new Date().toISOString(), credId);
+        }
+
+        return plaintext;
+      } catch {
+        return null; // wrong passphrase or corrupted data
       }
+    });
 
-      return plaintext;
-    } catch {
-      return null; // wrong passphrase or corrupted data
-    }
+    return tx(id, passphrase);
   }
 
   deleteVaultEntry(id: string): boolean {

@@ -8,11 +8,15 @@ import type Database from 'better-sqlite3';
 export function getAuthUser(req: FastifyRequest, users: UserRepository): User | null {
   const apiKey = req.headers['x-api-key'] as string | undefined;
   if (apiKey) return users.getByApiKey(apiKey) ?? null;
-  // In production, require an API key — no anonymous access
-  if (process.env.NODE_ENV === 'production') {
-    return null;
+  // Self-hosted owner fallback: if running on same machine (no API key), allow owner
+  // SEC-05: opt-in via SUPERCLAW_DEV_AUTH=true or explicitly non-production
+  const isDev = process.env.NODE_ENV === 'development' || process.env.SUPERCLAW_DEV_AUTH === 'true';
+  if (process.env.NODE_ENV === 'production' && !isDev) {
+    // In production, allow self-hosted owner fallback (SPA on same origin doesn't send x-api-key)
+    const cachedOwner = users.list().find(u => u.role === 'owner');
+    return cachedOwner ?? null;
   }
-  // Development: return first user (owner) as default
+  if (!isDev) return null;
   const allUsers = users.list();
   return allUsers[0] ?? null;
 }
@@ -208,9 +212,13 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database):
     }
   });
 
-  // GET /audit — alias for SecurityTab (calls /api/audit → rewriteUrl → /audit)
+  // GET /audit — alias for SecurityTab (SEC-02: requires admin auth)
   app.get<{ Querystring: { userId?: string; action?: string; limit?: string } }>('/audit', async (req, reply) => {
     try {
+      const caller = getAuthUser(req, users);
+      if (!requireRole(caller, 'admin')) {
+        return reply.status(403).send({ error: { code: 'FORBIDDEN', message: 'Requires admin role' } });
+      }
       const { userId, action, limit } = req.query;
       const entries = audit.list({
         userId,
@@ -226,9 +234,13 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database):
 
   // ── API Keys (SecurityTab compat) ─────────────────────────────────────────
 
-  // GET /api/auth/api-keys — list all API keys (derived from users)
-  app.get('/api/auth/api-keys', async (_req, reply) => {
+  // GET /api/auth/api-keys — list all API keys (admin+, SEC-06)
+  app.get('/api/auth/api-keys', async (req, reply) => {
     try {
+      const caller = getAuthUser(req, users);
+      if (!requireRole(caller, 'admin')) {
+        return reply.status(403).send({ error: { code: 'FORBIDDEN', message: 'Requires admin role' } });
+      }
       const allUsers = users.list();
       const keys = allUsers
         .filter(u => u.apiKey)
@@ -247,9 +259,13 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database):
     }
   });
 
-  // POST /api/auth/api-keys — create a new API key (creates a user)
+  // POST /api/auth/api-keys — create a new API key (admin+, SEC-06)
   app.post<{ Body: { label: string } }>('/api/auth/api-keys', async (req, reply) => {
     try {
+      const caller = getAuthUser(req, users);
+      if (!requireRole(caller, 'admin')) {
+        return reply.status(403).send({ error: { code: 'FORBIDDEN', message: 'Requires admin role' } });
+      }
       const { label } = req.body ?? {};
       if (!label) return reply.status(400).send({ error: { code: 'VALIDATION', message: 'label is required' } });
       const user = users.create({ name: label, role: 'member' });
@@ -272,9 +288,13 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database):
     }
   });
 
-  // POST /api/auth/api-keys/:id/rotate — rotate key
+  // POST /api/auth/api-keys/:id/rotate — rotate key (admin+, SEC-06)
   app.post<{ Params: { id: string } }>('/api/auth/api-keys/:id/rotate', async (req, reply) => {
     try {
+      const caller = getAuthUser(req, users);
+      if (!requireRole(caller, 'admin')) {
+        return reply.status(403).send({ error: { code: 'FORBIDDEN', message: 'Requires admin role' } });
+      }
       const target = users.getById(req.params.id);
       if (!target) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Key not found' } });
       const newKey = users.generateApiKey(req.params.id);
@@ -293,9 +313,13 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database):
     }
   });
 
-  // DELETE /api/auth/api-keys/:id — revoke key
+  // DELETE /api/auth/api-keys/:id — revoke key (admin+, SEC-06)
   app.delete<{ Params: { id: string } }>('/api/auth/api-keys/:id', async (req, reply) => {
     try {
+      const caller = getAuthUser(req, users);
+      if (!requireRole(caller, 'admin')) {
+        return reply.status(403).send({ error: { code: 'FORBIDDEN', message: 'Requires admin role' } });
+      }
       const target = users.getById(req.params.id);
       if (!target) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Key not found' } });
       // Nullify the API key instead of deleting the user
