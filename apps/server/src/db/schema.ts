@@ -271,10 +271,14 @@ export function initDatabase(): Database.Database {
     CREATE TABLE IF NOT EXISTS agent_memory (
       id TEXT PRIMARY KEY,
       agent_id TEXT NOT NULL,
-      type TEXT NOT NULL CHECK(type IN ('short_term','long_term','entity','preference')),
+      type TEXT NOT NULL CHECK(type IN ('short_term','long_term','entity','preference','fact','decision','goal','event')),
       key TEXT NOT NULL,
       value TEXT NOT NULL,
       relevance REAL DEFAULT 1.0,
+      source TEXT,
+      tags TEXT DEFAULT '[]',
+      access_count INTEGER DEFAULT 0,
+      last_accessed DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       expires_at DATETIME,
       FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
@@ -282,6 +286,19 @@ export function initDatabase(): Database.Database {
 
     CREATE INDEX IF NOT EXISTS idx_agent_memory_agent ON agent_memory(agent_id, type);
     CREATE INDEX IF NOT EXISTS idx_agent_memory_expires ON agent_memory(expires_at);
+
+    CREATE TABLE IF NOT EXISTS memory_edges (
+      id TEXT PRIMARY KEY,
+      source_id TEXT NOT NULL REFERENCES agent_memory(id) ON DELETE CASCADE,
+      target_id TEXT NOT NULL REFERENCES agent_memory(id) ON DELETE CASCADE,
+      relation TEXT NOT NULL CHECK(relation IN ('related_to','updates','contradicts','supports','caused_by','part_of')),
+      weight REAL DEFAULT 1.0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(source_id, target_id, relation)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_memory_edges_source ON memory_edges(source_id);
+    CREATE INDEX IF NOT EXISTS idx_memory_edges_target ON memory_edges(target_id);
 
     CREATE TABLE IF NOT EXISTS session_usage (
       id TEXT PRIMARY KEY,
