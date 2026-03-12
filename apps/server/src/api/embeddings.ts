@@ -104,7 +104,7 @@ export function registerEmbeddingRoutes(app: FastifyInstance): void {
         const modelRow = db.prepare('SELECT model FROM embedding_status LIMIT 1').get() as { model: string } | undefined;
         embeddingModel = modelRow?.model ?? 'none';
       } catch {
-        // Tables may not exist yet
+        // Intentional: embedding_status table may not exist on fresh installs
       }
 
       return {

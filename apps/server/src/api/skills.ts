@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
+import { logger } from '../lib/logger.js';
 
 const SKILLS_DIR = join(homedir(), '.superclaw', 'skills');
 
@@ -41,7 +42,8 @@ function listSkillsFromDisk(): SkillMeta[] {
       }
     }
     return skills.sort((a, b) => a.slug.localeCompare(b.slug));
-  } catch {
+  } catch (e) {
+    logger.warn({ err: e }, '[skills] Failed to list skills from disk');
     return [];
   }
 }

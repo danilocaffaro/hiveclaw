@@ -148,8 +148,8 @@ export async function* runAgent(
   // ── 2.5 Smart context compaction ────────────────────────────────────────────
   try {
     await sessionManager.smartCompact(sessionId, 80_000, agentConfig.id);
-  } catch {
-    // Non-fatal — continue with full history if compaction fails
+  } catch (e) {
+    logger.debug({ err: e }, '[agent-runner] smartCompact failed, continuing with full history');
   }
 
   // ── 2.6 Inject agent memory context ─────────────────────────────────────────
@@ -161,8 +161,8 @@ export async function* runAgent(
     if (memoryContext) {
       systemPrompt = `${agentConfig.systemPrompt}${memoryContext}`;
     }
-  } catch {
-    // Non-fatal — continue without memory injection
+  } catch (e) {
+    logger.debug({ err: e }, '[agent-runner] Memory injection failed, continuing without memory');
   }
 
   // ── 3. Build messages array ─────────────────────────────────────────────────
@@ -449,8 +449,8 @@ export async function* runAgent(
       userMessage,
       fullAssistantText,
     );
-  } catch {
-    // Completely non-fatal
+  } catch (e) {
+    logger.debug({ err: e }, '[agent-runner] Background memory extraction failed (non-fatal)');
   }
 }
 

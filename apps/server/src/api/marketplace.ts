@@ -135,7 +135,7 @@ export function registerMarketplaceRoutes(app: FastifyInstance, db: Database.Dat
     try {
       marketplace.install(skill.slug);
     } catch {
-      // May already exist — that's fine
+      // May already exist (duplicate install) — not an error
     }
 
     return { data: { ok: true, slug: skill.slug, message: `Skill '${skill.name}' installed` } };

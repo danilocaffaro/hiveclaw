@@ -3,6 +3,7 @@
 // ============================================================
 
 import type Database from 'better-sqlite3';
+import { logger } from '../lib/logger.js';
 import { randomUUID } from 'crypto';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
@@ -97,7 +98,7 @@ function rowToTemplate(row: TemplateRow): WorkflowTemplate {
   let steps: WorkflowStep[] = [];
   try {
     steps = JSON.parse(row.steps) as WorkflowStep[];
-  } catch { /* empty */ }
+  } catch (e) { logger.debug({ err: e }, '[workflow] Failed to parse template steps JSON'); }
 
   return {
     id: row.id,
@@ -132,7 +133,7 @@ function rowToRun(row: RunRow, steps: WorkflowRunStep[]): WorkflowRun {
   let params: Record<string, string> = {};
   try {
     params = JSON.parse(row.params) as Record<string, string>;
-  } catch { /* empty */ }
+  } catch (e) { logger.debug({ err: e }, '[workflow] Failed to parse run params JSON'); }
 
   return {
     id: row.id,
