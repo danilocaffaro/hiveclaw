@@ -34,11 +34,11 @@ const AGENT_TEMPLATES = [
     name: 'Personal Assistant',
     role: 'General Assistant',
     prompt: 'You are a helpful personal assistant. You help with research, planning, writing, analysis, and everyday tasks. You are concise, accurate, and proactive.',
-    desc: 'Research, plan, write, and organize',
+    desc: 'Your everyday AI — research, plan, write, organize',
   },
   {
     id: 'coder',
-    emoji: '💻',
+    emoji: '⚡',
     name: 'Coder',
     role: 'Full-stack Developer',
     prompt: 'You are an expert full-stack developer. You write clean, well-tested TypeScript code. You break complex tasks into small, incremental steps. You prefer simple solutions over clever ones.',
@@ -46,27 +46,27 @@ const AGENT_TEMPLATES = [
   },
   {
     id: 'writer',
-    emoji: '✍️',
+    emoji: '🎭',
     name: 'Writer',
     role: 'Content Writer',
     prompt: 'You are a skilled content writer. You write clear, engaging prose adapted to the audience. You structure content logically and vary tone as needed — from formal to conversational.',
-    desc: 'Draft articles, docs, and copy',
+    desc: 'Articles, emails, social posts, docs',
   },
   {
     id: 'analyst',
-    emoji: '📊',
+    emoji: '💎',
     name: 'Analyst',
     role: 'Data Analyst',
-    prompt: 'You are a data analyst. You examine data carefully, identify patterns and anomalies, and present findings with clear charts and summaries. You question assumptions and validate sources.',
-    desc: 'Analyze data and extract insights',
+    prompt: 'You are a data analyst. You examine data carefully, identify patterns and anomalies, and present findings with clear summaries. You question assumptions and validate sources.',
+    desc: 'Crunch numbers and find insights',
   },
   {
     id: 'researcher',
-    emoji: '🔍',
+    emoji: '🦉',
     name: 'Researcher',
     role: 'Research Specialist',
     prompt: 'You are a thorough researcher. You search multiple sources, cross-reference facts, and deliver well-structured reports with citations. You distinguish opinion from evidence.',
-    desc: 'Deep research with sources',
+    desc: 'Deep research with sources and citations',
   },
   {
     id: 'custom',
@@ -78,7 +78,11 @@ const AGENT_TEMPLATES = [
   },
 ];
 
-const EMOJI_OPTIONS = ['🤖', '🧠', '⚡', '🦀', '🔮', '🚀', '💻', '✍️', '📊', '🎯', '🛡️', '🎨'];
+const EMOJI_OPTIONS = [
+  '🤖', '🧠', '⚡', '🐕', '🦊', '🐱', '🦉', '🐙',
+  '🔮', '🚀', '💎', '🌟', '🎯', '🛡️', '🌈', '☕',
+  '🎭', '👾', '🦄', '🐝', '🌸', '🍀', '🔥', '✨',
+];
 
 // ── Shared Styles ─────────────────────────────────────────────────────────────
 
