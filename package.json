@@ -1,0 +1,28 @@
+{
+  "name": "superclaw-pure",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Personal AI assistant platform. Zero-config start, web-first, structured memory, governed execution.",
+  "author": "Danilo Caffaro",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "pnpm --filter @superclaw/server dev",
+    "build": "pnpm -r build",
+    "start": "pnpm --filter @superclaw/server start",
+    "test": "vitest",
+    "lint": "eslint packages/*/src --ext .ts,.tsx",
+    "typecheck": "pnpm -r typecheck",
+    "clean": "pnpm -r clean"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0",
+    "eslint": "^9.0.0"
+  }
+}
