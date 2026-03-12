@@ -91,6 +91,37 @@ async function testProviderConnection(
       return { success: true };
     }
 
+    // OpenAI-compatible providers (OpenRouter, DeepSeek, Groq, Mistral)
+    const openaiCompatible: Record<string, { baseUrl: string; testModel: string; modelsEndpoint?: string }> = {
+      'openrouter': { baseUrl: 'https://openrouter.ai/api', testModel: 'openai/gpt-4o-mini', modelsEndpoint: 'https://openrouter.ai/api/v1/models' },
+      'deepseek': { baseUrl: 'https://api.deepseek.com', testModel: 'deepseek-chat' },
+      'groq': { baseUrl: 'https://api.groq.com/openai', testModel: 'llama-3.3-70b-versatile' },
+      'mistral': { baseUrl: 'https://api.mistral.ai', testModel: 'mistral-small-latest' },
+    };
+
+    const compat = openaiCompatible[providerId];
+    if (compat) {
+      const url = baseUrl || compat.baseUrl;
+      const res = await fetch(`${url}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: compat.testModel,
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'hi' }],
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        return { success: false, error: `API returned ${res.status}: ${body.slice(0, 200)}` };
+      }
+      return { success: true };
+    }
+
     if (providerId === 'github-copilot') {
       // Try to load the Copilot token from OpenClaw credential cache
       try {

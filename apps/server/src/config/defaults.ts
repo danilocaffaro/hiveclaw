@@ -19,6 +19,10 @@ export const PROVIDER_BASE_URLS: Record<string, string> = {
   'github-copilot': 'https://api.githubcopilot.com',
   google: 'https://generativelanguage.googleapis.com',
   ollama: 'http://localhost:11434',
+  openrouter: 'https://openrouter.ai/api',
+  deepseek: 'https://api.deepseek.com',
+  groq: 'https://api.groq.com/openai',
+  mistral: 'https://api.mistral.ai',
 };
 
 /**
@@ -42,6 +46,10 @@ export const PROVIDER_API_TYPES: Record<string, 'openai' | 'anthropic'> = {
   'github-copilot': 'openai',
   google: 'openai',
   ollama: 'openai',
+  openrouter: 'openai',
+  deepseek: 'openai',
+  groq: 'openai',
+  mistral: 'openai',
 };
 
 export function resolveProviderType(
