@@ -147,7 +147,7 @@ export async function* runAgent(
 
   // ── 2.5 Smart context compaction ────────────────────────────────────────────
   try {
-    sessionManager.smartCompact(sessionId);
+    sessionManager.smartCompact(sessionId, 80_000, agentConfig.id);
   } catch {
     // Non-fatal — continue with full history if compaction fails
   }
@@ -438,6 +438,124 @@ export async function* runAgent(
       cost,
     },
   };
+
+  // ── 10. Background memory extraction (non-blocking) ───────────────────────
+  // Extract durable facts from the user message + assistant response
+  // Runs after the stream is done — never blocks the user
+  try {
+    backgroundMemoryExtract(
+      agentConfig.id,
+      sessionId,
+      userMessage,
+      fullAssistantText,
+    );
+  } catch {
+    // Completely non-fatal
+  }
+}
+
+// ─── Background Memory Extraction ─────────────────────────────────────────────
+
+/**
+ * backgroundMemoryExtract — Extract durable facts from a conversation turn.
+ *
+ * Sprint 67: Runs AFTER response delivery. Pattern-based extraction of:
+ * - User preferences ("I prefer...", "I like...", "always/never...")
+ * - Decisions ("decided to...", "will use...", "chosen approach...")
+ * - Named entities ("my name is...", "I'm...", project/product names)
+ * - Corrections ("actually...", "no, that's wrong...", "correction:...")
+ * - Goals ("I want to...", "goal is...", "aiming for...")
+ *
+ * Non-blocking, non-fatal. Fires and forgets.
+ */
+function backgroundMemoryExtract(
+  agentId: string,
+  sessionId: string,
+  userMessage: string,
+  assistantResponse: string,
+): void {
+  // Run async but don't await — fire-and-forget
+  void (async () => {
+    try {
+      const repo = new AgentMemoryRepository(getDb());
+      const extractedCount = { preferences: 0, decisions: 0, entities: 0, corrections: 0, goals: 0 };
+
+      // ── Extract from user message ──────────────────────────────────────────
+      if (userMessage && userMessage.length > 10) {
+        for (const line of userMessage.split(/[.\n]+/).filter(l => l.trim().length > 8)) {
+          const lo = line.toLowerCase().trim();
+
+          // Preferences
+          if (/(?:i prefer|i like|i always|i never|i want|favorite|please always|please never|don't like|i hate|i love)\b/i.test(lo)) {
+            const key = `pref_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
+            repo.set(agentId, key, line.trim().slice(0, 300), 'preference', 0.9, undefined, {
+              source: 'auto_extract', tags: ['from_user'],
+            });
+            extractedCount.preferences++;
+          }
+
+          // Corrections
+          if (/(?:actually|no,? that's wrong|correction|that's incorrect|not right|you're wrong|i meant)\b/i.test(lo)) {
+            const key = `corr_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
+            repo.set(agentId, key, line.trim().slice(0, 300), 'correction', 1.0, undefined, {
+              source: 'auto_extract', tags: ['from_user'],
+            });
+            extractedCount.corrections++;
+          }
+
+          // Goals
+          if (/(?:i want to|my goal|i need to|aiming for|objective is|target is|mission is)\b/i.test(lo) && lo.length < 300) {
+            const key = `goal_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
+            repo.set(agentId, key, line.trim().slice(0, 300), 'goal', 0.85, undefined, {
+              source: 'auto_extract', tags: ['from_user'],
+            });
+            extractedCount.goals++;
+          }
+
+          // Named entities
+          const nameMatch = line.match(/(?:my name is|i'm called|i am|call me)\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?)/i);
+          if (nameMatch) {
+            repo.set(agentId, `entity_user_name`, nameMatch[1].trim(), 'entity', 1.0, undefined, {
+              source: 'auto_extract', tags: ['from_user'],
+            });
+            extractedCount.entities++;
+          }
+        }
+      }
+
+      // ── Extract from assistant response (decisions, facts) ─────────────────
+      if (assistantResponse && assistantResponse.length > 20) {
+        for (const line of assistantResponse.split(/[.\n]+/).filter(l => l.trim().length > 15)) {
+          const lo = line.toLowerCase().trim();
+
+          // Decisions (from assistant response = confirmed decisions)
+          if (/(?:decided to|will use|chosen approach|going with|opted for|confirmed|agreed on)\b/i.test(lo) && lo.length < 300) {
+            const key = `decision_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
+            repo.set(agentId, key, line.trim().slice(0, 300), 'decision', 0.7, undefined, {
+              source: 'auto_extract', tags: ['from_assistant'],
+            });
+            extractedCount.decisions++;
+          }
+        }
+      }
+
+      // ── Log extraction episode ─────────────────────────────────────────────
+      const total = Object.values(extractedCount).reduce((a, b) => a + b, 0);
+      if (total > 0) {
+        repo.logEpisode({
+          sessionId,
+          agentId,
+          type: 'extraction',
+          content: `Auto-extracted ${total} memories: ${JSON.stringify(extractedCount)}`,
+          eventAt: new Date().toISOString(),
+          metadata: extractedCount,
+        });
+        logger.info('[MemoryExtract] Session %s: extracted %d items %j', sessionId, total, extractedCount);
+      }
+    } catch (err) {
+      logger.warn('[MemoryExtract] Background extraction failed: %s', (err as Error).message);
+    }
+  })();
 }
 
 // ─── Helper: Serialize SSE events to wire format ──────────────────────────────

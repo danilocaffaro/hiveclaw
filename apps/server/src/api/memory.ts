@@ -372,5 +372,94 @@ export async function memoryRoutes(app: FastifyInstance) {
       return reply.status(500).send({ error: { code: 'INTERNAL', message: String(err) } });
     }
   });
-}
 
+  // ── Episodes & Compaction History ─────────────────────────────────────────
+
+  // GET /memory/episodes/:sessionId — Get episodes for a session
+  app.get<{
+    Params: { sessionId: string };
+    Querystring: { type?: string; limit?: string };
+  }>('/memory/episodes/:sessionId', async (req, reply) => {
+    try {
+      const { sessionId } = req.params;
+      const { type, limit } = req.query;
+      const maxResults = limit ? parseInt(limit, 10) : 50;
+
+      let query = 'SELECT * FROM episodes WHERE session_id = ?';
+      const params: unknown[] = [sessionId];
+      if (type) {
+        query += ' AND type = ?';
+        params.push(type);
+      }
+      query += ' ORDER BY event_at DESC LIMIT ?';
+      params.push(maxResults);
+
+      const rows = db.prepare(query).all(...params);
+      return { data: rows };
+    } catch (err) {
+      app.log.error(err);
+      return reply.status(500).send({ error: { code: 'INTERNAL', message: String(err) } });
+    }
+  });
+
+  // GET /memory/compactions/:sessionId — Get compaction history
+  app.get<{
+    Params: { sessionId: string };
+    Querystring: { limit?: string };
+  }>('/memory/compactions/:sessionId', async (req, reply) => {
+    try {
+      const { sessionId } = req.params;
+      const maxResults = req.query.limit ? parseInt(req.query.limit, 10) : 20;
+
+      const rows = db.prepare(
+        'SELECT * FROM compaction_log WHERE session_id = ? ORDER BY created_at DESC LIMIT ?'
+      ).all(sessionId, maxResults);
+      return { data: rows };
+    } catch (err) {
+      app.log.error(err);
+      return reply.status(500).send({ error: { code: 'INTERNAL', message: String(err) } });
+    }
+  });
+
+  // GET /memory/stats/:agentId — Memory statistics for an agent
+  app.get<{
+    Params: { agentId: string };
+  }>('/memory/stats/:agentId', async (req, reply) => {
+    try {
+      const { agentId } = req.params;
+
+      const totalMemories = (db.prepare(
+        'SELECT COUNT(*) as cnt FROM agent_memory WHERE agent_id = ?'
+      ).get(agentId) as { cnt: number }).cnt;
+
+      const byType = db.prepare(
+        'SELECT type, COUNT(*) as cnt FROM agent_memory WHERE agent_id = ? GROUP BY type ORDER BY cnt DESC'
+      ).all(agentId) as Array<{ type: string; cnt: number }>;
+
+      const totalEdges = (db.prepare(
+        `SELECT COUNT(*) as cnt FROM memory_edges WHERE source_id IN (SELECT id FROM agent_memory WHERE agent_id = ?)`
+      ).get(agentId) as { cnt: number }).cnt;
+
+      const coreBlocks = db.prepare(
+        'SELECT block_name, LENGTH(content) as size FROM core_memory_blocks WHERE agent_id = ?'
+      ).all(agentId) as Array<{ block_name: string; size: number }>;
+
+      const recentExtractions = (db.prepare(
+        `SELECT COUNT(*) as cnt FROM episodes WHERE agent_id = ? AND type = 'extraction' AND event_at > datetime('now', '-24 hours')`
+      ).get(agentId) as { cnt: number }).cnt;
+
+      return {
+        data: {
+          total_memories: totalMemories,
+          by_type: byType,
+          total_edges: totalEdges,
+          core_blocks: coreBlocks,
+          extractions_24h: recentExtractions,
+        },
+      };
+    } catch (err) {
+      app.log.error(err);
+      return reply.status(500).send({ error: { code: 'INTERNAL', message: String(err) } });
+    }
+  });
+}

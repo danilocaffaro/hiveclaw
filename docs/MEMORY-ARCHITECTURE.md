@@ -771,11 +771,61 @@ LIMIT 10;
 
 ### 14.7 Revised Implementation Phases (Updated)
 
-| Phase | Sprint | Items | Search Capability |
-|-------|--------|-------|-------------------|
-| **Foundation** | 65 | Unify tables, FTS5, working memory | Keyword search (BM25) |
-| **Smart Compaction** | 66 | LLM extraction, archive, compaction log | + Archival search |
-| **Agent Tools** | 67 | core_memory_*, recall_*, archival_* | + Agent-invoked search |
-| **Background Extract** | 68 | Auto-extract, contradiction detection | + Richer graph data |
-| **Hybrid Search** | v1.1 | sqlite-vec, embeddings, RRF fusion | + Semantic search |
-| **Advanced** | v1.2 | Topic segmentation, temporal queries | + Topic-based recall |
+| Phase | Sprint | Items | Search Capability | Status |
+|-------|--------|-------|-------------------|--------|
+| **Foundation** | 65 | Unify tables, FTS5, working memory, core blocks, episodes | Keyword search (BM25) | ✅ DONE |
+| **Smart Compaction** | 66 | Working memory save before compaction, fact extraction, compaction log + episodes | + Archival search | ✅ DONE |
+| **Agent Tools + Extract** | 67 | Memory tool rewrite (8 actions), visual_memory tool, background auto-extract | + Agent-invoked search + visual | ✅ DONE |
+| **Hybrid Search** | v1.1 | sqlite-vec, embeddings, RRF fusion | + Semantic search | 🔮 Planned |
+| **Visual Search** | v1.1 | CLIP embeddings, image similarity | + Visual semantic recall | 🔮 Planned |
+| **Advanced** | v1.2 | Topic segmentation, community detection, temporal queries | + Topic-based recall | 🔮 Planned |
+
+---
+
+## 15. Implementation Status (Sprints 65-67)
+
+### What's Implemented (v1.0)
+
+| Layer | Feature | File | Status |
+|-------|---------|------|--------|
+| **L1 Core Memory** | `core_memory_blocks` table + CRUD + prompt injection | `db/agent-memory.ts` | ✅ |
+| **L2 Conversation** | Sliding window + smart compaction | `engine/session-manager.ts` | ✅ |
+| **L3 Working Memory** | `working_memory` table + save/restore around compaction | `db/agent-memory.ts` + `session-manager.ts` | ✅ |
+| **L4 Knowledge Graph** | 10 types, 6 edges, bi-temporal, contradiction detection | `db/agent-memory.ts` | ✅ |
+| **L5 Archival** | FTS5 on all messages, BM25, snippets, cross-session | `db/schema.ts` + `db/agent-memory.ts` | ✅ |
+| **L6 Visual Memory** | Describe-then-Store tool, episode reference | `engine/tools/visual-memory.ts` | ✅ |
+| **Background Extract** | Auto-extract preferences/decisions/entities/corrections/goals | `engine/agent-runner.ts` | ✅ |
+| **Compaction Log** | `compaction_log` + `episodes` tables, audit trail | `db/agent-memory.ts` | ✅ |
+| **Budget-Aware Injection** | Token-budgeted context (core → working → pinned → top-K) | `db/agent-memory.ts` | ✅ |
+| **Mandatory Recall** | Tool description enforces search-before-"I don't know" | `engine/tools/memory.ts` | ✅ |
+
+### API Endpoints (v1.0)
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | `/memory/search/fts?q=&session_id=&snippets=` | FTS5 archival search |
+| GET | `/memory/agents/:id/core` | Core memory blocks |
+| PUT | `/memory/agents/:id/core/:block` | Set core block |
+| GET | `/memory/agents/:id/temporal?date=` | Temporal queries |
+| GET | `/memory/working/:sessionId` | Working memory state |
+| PUT | `/memory/working/:sessionId` | Save working memory |
+| GET | `/memory/episodes/:sessionId` | Episode history |
+| GET | `/memory/compactions/:sessionId` | Compaction audit log |
+| GET | `/memory/stats/:agentId` | Memory statistics |
+
+### Agent Tools (v1.0)
+
+| Tool | Actions |
+|------|---------|
+| `memory` | create, search, archival_search, list, delete, core_read, core_replace, core_append |
+| `visual_memory` | store, recall, list |
+
+### What's Planned (v1.1)
+
+| Feature | Details |
+|---------|---------|
+| **sqlite-vec** | Vector embeddings for semantic search (384-1536 dims) |
+| **Hybrid RRF** | FTS5 pre-filter → vector re-rank → graph enrichment |
+| **LLM compaction** | Replace heuristic extraction with cheap model (haiku/flash) summarization |
+| **CLIP embeddings** | Visual similarity search across stored images |
+| **Embedding models** | `text-embedding-3-small` (API) or `nomic-embed-text` (local) |

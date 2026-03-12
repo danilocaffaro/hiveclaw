@@ -1,5 +1,5 @@
 // ============================================================
-// Tool Registry — all 13 tools
+// Tool Registry — all 16 tools
 // ============================================================
 import type { Tool } from './types.js';
 
@@ -13,6 +13,7 @@ import { WebFetchTool } from './webfetch.js';
 import { TaskTool } from './task.js';
 import { TodoTool } from './todo.js';
 import { MemoryTool } from './memory.js';
+import { VisualMemoryTool } from './visual-memory.js';
 import { PlansTool } from './plans.js';
 import { QuestionTool } from './question.js';
 import { DataAnalysisTool } from './data-analysis.js';
@@ -29,6 +30,7 @@ export { WebFetchTool } from './webfetch.js';
 export { TaskTool } from './task.js';
 export { TodoTool } from './todo.js';
 export { MemoryTool } from './memory.js';
+export { VisualMemoryTool } from './visual-memory.js';
 export { PlansTool } from './plans.js';
 export { QuestionTool } from './question.js';
 export { DataAnalysisTool } from './data-analysis.js';
@@ -53,6 +55,7 @@ export function getToolRegistry(): Map<string, Tool> {
     new TaskTool(),
     new TodoTool(),
     new MemoryTool(),
+    new VisualMemoryTool(),
     new PlansTool(),
     new QuestionTool(),
     new DataAnalysisTool(),

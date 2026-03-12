@@ -7,6 +7,8 @@ import { randomUUID } from 'crypto';
 import { join } from 'path';
 import { homedir } from 'os';
 import { mkdirSync } from 'fs';
+import { AgentMemoryRepository } from '../db/agent-memory.js';
+import { logger } from '../lib/logger.js';
 
 const SUPERCLAW_DIR = join(homedir(), '.superclaw');
 const DB_PATH = join(SUPERCLAW_DIR, 'superclaw.db');
@@ -401,8 +403,20 @@ export class SessionManager {
 
   // ── Smart Context Window ────────────────────────────────────────────────────
 
-  /** Token-aware compaction with heuristic summarization. */
-  smartCompact(sessionId: string, maxTokens = 80_000): void {
+  /**
+   * smartCompact — Token-aware compaction with memory preservation.
+   *
+   * Sprint 66: Upgraded from regex heuristic to structured extraction.
+   * Before deleting old messages:
+   *   1. Save working memory (active goals, plan, next actions)
+   *   2. Extract facts/decisions/entities via heuristic patterns
+   *   3. Store extracted facts in agent_memory (L4)
+   *   4. Log compaction event in compaction_log
+   *   5. Log episode for temporal tracking
+   *
+   * The actual deletion + summary insertion happens after preservation.
+   */
+  smartCompact(sessionId: string, maxTokens = 80_000, agentId?: string): void {
     if (!this.getSession(sessionId)) return;
     const allMessages = this.getMessages(sessionId, { limit: 100_000 });
     if (allMessages.length === 0) return;
@@ -415,21 +429,104 @@ export class SessionManager {
     const oldMessages = allMessages.slice(0, cutIndex);
     const keptMessages = allMessages.slice(cutIndex);
 
-    // Heuristic summary extraction
+    const tokensBefore = totalApproxTokens;
+    const tokensCompacted = Math.ceil(oldMessages.reduce((s, m) => s + m.content.length / 4, 0));
+
+    // ── Step 1: Save working memory before compaction ─────────────────────────
+    let workingMemorySaved = false;
+    let memRepo: AgentMemoryRepository | null = null;
+    try {
+      memRepo = new AgentMemoryRepository(this.db);
+      if (agentId) {
+        // Extract working memory from recent assistant messages
+        const recentAssistant = oldMessages.filter(m => m.role === 'assistant').slice(-5);
+        const recentUser = oldMessages.filter(m => m.role === 'user').slice(-3);
+
+        const activeGoals: string[] = [];
+        const completedSteps: string[] = [];
+        const nextActions: string[] = [];
+        const openQuestions: string[] = [];
+        let pendingContext = '';
+
+        for (const msg of [...recentUser, ...recentAssistant]) {
+          const text = msg.content;
+          if (!text) continue;
+          for (const line of text.split('\n')) {
+            const lo = line.toLowerCase().trim();
+            if (!lo || lo.length < 5) continue;
+            // Detect goals/tasks patterns
+            if (/(?:goal|objective|target|aiming|need to|must|should|want to)\b/i.test(lo) && lo.length < 300) {
+              activeGoals.push(line.trim().slice(0, 200));
+            }
+            // Detect completed items
+            if (/(?:done|completed|finished|implemented|fixed|resolved|✅|✓)\b/i.test(lo) && lo.length < 300) {
+              completedSteps.push(line.trim().slice(0, 200));
+            }
+            // Detect next actions
+            if (/(?:next|todo|will do|plan to|going to|then we)\b/i.test(lo) && lo.length < 300) {
+              nextActions.push(line.trim().slice(0, 200));
+            }
+            // Detect questions
+            if (lo.endsWith('?') && msg.role === 'user') {
+              openQuestions.push(line.trim().slice(0, 200));
+            }
+          }
+        }
+
+        // Last user message as pending context
+        if (recentUser.length > 0) {
+          pendingContext = recentUser[recentUser.length - 1].content.slice(0, 500);
+        }
+
+        memRepo.saveWorkingMemory(sessionId, agentId, {
+          activeGoals: [...new Set(activeGoals)].slice(0, 10),
+          currentPlan: '',
+          completedSteps: [...new Set(completedSteps)].slice(0, 10),
+          nextActions: [...new Set(nextActions)].slice(0, 10),
+          pendingContext,
+          openQuestions: [...new Set(openQuestions)].slice(0, 5),
+        });
+        workingMemorySaved = true;
+      }
+    } catch (err) {
+      logger.warn('[SmartCompact] Working memory save failed: %s', (err as Error).message);
+    }
+
+    // ── Step 2: Extract durable facts from old messages ───────────────────────
+    const extractedFacts: Array<{ key: string; value: string; type: string }> = [];
     const codeFiles = new Set<string>();
     const decisions = new Set<string>();
     const topics = new Set<string>();
+    const entities = new Set<string>();
+    const preferences = new Set<string>();
     const codeExts = /\.(ts|js|py|tsx|jsx|json|md|yaml|yml|sql|sh|css|html)$/;
 
     for (const msg of oldMessages) {
       const text = msg.content;
       if (!text) continue;
+
+      // Files
       const fileMatches = text.match(/[\w/.-]+\.\w{1,10}/g);
       if (fileMatches) for (const f of fileMatches) { if (codeExts.test(f)) codeFiles.add(f); }
+
       for (const s of text.split(/[.!?\n]+/).filter(s => s.trim().length > 10)) {
         const lo = s.toLowerCase();
-        if (/decid|decision|agreed|will use|chosen|approach/.test(lo)) decisions.add(s.trim().slice(0, 200));
+        const trimmed = s.trim().slice(0, 300);
+
+        // Decisions
+        if (/(?:decid|decision|agreed|will use|chosen|approach|opted|confirmed)\b/.test(lo)) {
+          decisions.add(trimmed);
+        }
+        // Preferences
+        if (/(?:prefer|like|want|always|never|favorite|dislike)\b/.test(lo) && msg.role === 'user') {
+          preferences.add(trimmed);
+        }
+        // Named entities (proper nouns after common patterns)
+        const entityMatch = s.match(/(?:name is|called|known as|I'm|I am)\s+([A-Z][a-zA-Z]+)/);
+        if (entityMatch) entities.add(entityMatch[1]);
       }
+
+      // Topic keywords
       if (msg.role === 'user' || msg.role === 'assistant') {
         for (const w of text.slice(0, 500).split(/\s+/).filter(w => w.length > 5).slice(0, 5)) {
           topics.add(w.replace(/[^a-zA-Z0-9_-]/g, ''));
@@ -437,13 +534,37 @@ export class SessionManager {
       }
     }
 
-    const parts: string[] = [`Compacted ${oldMessages.length} messages (~${Math.ceil(
-      oldMessages.reduce((s, m) => s + m.content.length / 4, 0))} tokens).`];
+    // Store extracted facts in agent_memory (L4)
+    if (memRepo && agentId) {
+      try {
+        for (const d of [...decisions].slice(0, 10)) {
+          memRepo.set(agentId, `decision_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, d, 'decision', 0.8, undefined, { source: 'compaction_extract' });
+          extractedFacts.push({ key: 'decision', value: d, type: 'decision' });
+        }
+        for (const p of [...preferences].slice(0, 5)) {
+          memRepo.set(agentId, `preference_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, p, 'preference', 0.9, undefined, { source: 'compaction_extract' });
+          extractedFacts.push({ key: 'preference', value: p, type: 'preference' });
+        }
+        for (const e of [...entities].slice(0, 5)) {
+          memRepo.set(agentId, `entity_${e}`, e, 'entity', 0.9, undefined, { source: 'compaction_extract' });
+          extractedFacts.push({ key: `entity_${e}`, value: e, type: 'entity' });
+        }
+      } catch (err) {
+        logger.warn('[SmartCompact] Fact extraction save failed: %s', (err as Error).message);
+      }
+    }
+
+    // ── Step 3: Build summary ─────────────────────────────────────────────────
+    const parts: string[] = [`Compacted ${oldMessages.length} messages (~${tokensCompacted} tokens).`];
     if (codeFiles.size > 0) parts.push(`Files: ${[...codeFiles].slice(0, 20).join(', ')}`);
     if (decisions.size > 0) parts.push(`Decisions: ${[...decisions].slice(0, 10).join('; ')}`);
     if (topics.size > 0) parts.push(`Topics: ${[...topics].slice(0, 15).join(', ')}`);
+    if (extractedFacts.length > 0) parts.push(`Extracted ${extractedFacts.length} facts to long-term memory.`);
+    if (workingMemorySaved) parts.push('Working memory saved.');
 
-    // Delete old messages
+    const summary = parts.join(' | ');
+
+    // ── Step 4: Delete old messages ───────────────────────────────────────────
     const placeholders = oldMessages.map(() => '?').join(',');
     this.db.prepare(`DELETE FROM messages WHERE id IN (${placeholders})`).run(...oldMessages.map(m => m.id));
 
@@ -454,7 +575,41 @@ export class SessionManager {
     this.db.prepare(`
       INSERT INTO messages (id, session_id, role, agent_id, content, tokens_input, tokens_output, cost, created_at)
       VALUES (?, ?, 'system', '', ?, 0, 0, 0, ?)
-    `).run(randomUUID(), sessionId, stringToContentJson(`[Context Summary: ${parts.join(' | ')}]`), beforeTs);
+    `).run(randomUUID(), sessionId, stringToContentJson(`[Context Summary: ${summary}]`), beforeTs);
+
+    // ── Step 5: Log compaction event ──────────────────────────────────────────
+    if (memRepo) {
+      try {
+        const tokensAfter = Math.ceil(keptMessages.reduce((s, m) => s + m.content.length / 4, 0));
+        memRepo.logCompaction(sessionId, summary, {
+          extractedFacts: extractedFacts.length,
+          messagesCompacted: oldMessages.length,
+          tokensBefore,
+          tokensAfter,
+          workingMemorySaved,
+        });
+
+        // Log episode for temporal tracking
+        memRepo.logEpisode({
+          sessionId,
+          agentId: agentId ?? '',
+          type: 'compaction',
+          content: `Compacted ${oldMessages.length} messages. Extracted ${extractedFacts.length} facts. Working memory ${workingMemorySaved ? 'saved' : 'not saved'}.`,
+          eventAt: new Date().toISOString(),
+          metadata: {
+            tokensBefore,
+            tokensAfter,
+            messagesCompacted: oldMessages.length,
+            extractedFacts: extractedFacts.length,
+          },
+        });
+      } catch (err) {
+        logger.warn('[SmartCompact] Compaction log failed: %s', (err as Error).message);
+      }
+    }
+
+    logger.info('[SmartCompact] Session %s: %d messages compacted, %d facts extracted, WM=%s',
+      sessionId, oldMessages.length, extractedFacts.length, workingMemorySaved);
   }
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
