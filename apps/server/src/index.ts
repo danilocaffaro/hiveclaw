@@ -57,6 +57,7 @@ import { registerBacklogRoutes } from './api/backlog.js';
 import { registerRoutingRoutes } from './api/routing.js';
 import { registerAnalyticsRoutes } from './api/analytics.js';
 import { registerEmbeddingRoutes } from './api/embeddings.js';
+import { registerChannelRoutes } from './api/channels.js';
 import { WorkflowRepository } from './db/workflow-repository.js';
 import { WorkflowEngine, seedBuiltinWorkflows } from './engine/workflow-engine.js';
 import { getMessageBus } from './engine/message-bus.js';
@@ -363,6 +364,7 @@ async function main() {
   registerRoutingRoutes(app, providers);
   registerAnalyticsRoutes(app, db);
   registerEmbeddingRoutes(app);
+  registerChannelRoutes(app, db);
 
   // ─── Start ────────────────────────────────────────────────────────────
   try {

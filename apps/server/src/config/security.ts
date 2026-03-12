@@ -170,7 +170,8 @@ export const PUBLIC_ROUTES: string[] = [
   '/sse',
   '/agents/status/stream',
 
-  // Dashboard (read-only, same-origin access)
+  // Channel webhooks (inbound from Telegram/Discord/Slack — no API key, platform-verified)
+  // Only the /webhook suffix — managed via isPublicRoute regex check below
   '/routing/',
   '/analytics/',
   '/embeddings/status',
@@ -181,6 +182,10 @@ export const PUBLIC_ROUTES: string[] = [
  */
 export function isPublicRoute(url: string): boolean {
   const path = url.split('?')[0];
+
+  // Regex patterns for dynamic public routes
+  if (/^\/channels\/[^/]+\/webhook$/.test(path)) return true; // Platform webhooks
+
   for (const publicRoute of PUBLIC_ROUTES) {
     if (publicRoute.endsWith('/')) {
       if (path.startsWith(publicRoute)) return true;
