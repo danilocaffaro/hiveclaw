@@ -327,9 +327,28 @@ export function registerSetupRoutes(
     const db2 = initDatabase();
     const provRepo = new ProvRepo(db2);
     const provConfig = provRepo.getUnmasked(providerId);
-    if (!provConfig?.rawApiKey) {
+    if (!provConfig) {
       return reply.status(400).send({
-        error: { code: 'PROVIDER_ERROR', message: `Provider '${providerId}' not configured or has no API key.` },
+        error: { code: 'PROVIDER_ERROR', message: `Provider '${providerId}' not configured.` },
+      });
+    }
+
+    // Resolve API key: DB key, Copilot token file, or empty for keyless providers (Ollama)
+    let apiKey = provConfig.rawApiKey || '';
+    if (!apiKey && providerId === 'github-copilot') {
+      try {
+        const fs = await import('fs');
+        const path = await import('path');
+        const home = process.env.HOME || '/Users/AI';
+        const tokenPath = path.join(home, '.openclaw', 'credentials', 'github-copilot.token.json');
+        const data = JSON.parse(fs.readFileSync(tokenPath, 'utf-8')) as { token?: string };
+        apiKey = data.token || '';
+      } catch { /* no token file */ }
+    }
+    const isKeyless = providerId === 'ollama' || providerId === 'local' || providerId === 'lmstudio';
+    if (!apiKey && !isKeyless) {
+      return reply.status(400).send({
+        error: { code: 'PROVIDER_ERROR', message: `Provider '${providerId}' has no API key configured.` },
       });
     }
 
@@ -347,7 +366,7 @@ export function registerSetupRoutes(
       for await (const event of streamChat(msgs, {
         model: modelId,
         baseUrl,
-        apiKey: provConfig.rawApiKey,
+        apiKey,
         providerType: providerType as 'openai' | 'anthropic',
         temperature: agent.temperature ?? 0.7,
         maxTokens: 256,
