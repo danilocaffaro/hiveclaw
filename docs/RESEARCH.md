@@ -117,11 +117,26 @@
 
 ---
 
-## 4. Inspiração: Wolf & PicoClaw
+## 4. Inspiração: Wolf-Server (Proprietary Origin)
 
-> **Nota:** "Wolf" não foi encontrado como projeto específico no ecossistema OpenClaw. "ClawWolf" existe mas é um jogo de social reasoning, não uma plataforma. "PicoClaw" também não encontrado no GitHub.
->
-> **Danilo:** Se são projetos específicos que você conhece, me manda o link/nome exato. Se eram referências genéricas ("wolf" = Spacebot agressivo, "picoclaw" = versão leve), estou usando Spacebot + CoWork-OS como inspiração principal.
+**wolf-server** é o Go binary proprietário (14MB, auto-contido) que foi o engine original do SuperClaw — originário do HubAI Nitro / PicPay. SuperClaw já é o clean-room TypeScript rewrite dele.
+
+### O que aprendemos com Wolf (para levar ao Pure):
+- **12 built-in tools** — bash, edit, glob, grep, read, write, webfetch, task, todo, memory, plans, question
+- **40 endpoints REST** bem definidos (sessions, messages, memory, plans, skills, MCP, plugins, heartbeat)
+- **SQLite como DB principal** com WAL mode — single-file, zero config
+- **Plugin system** (`window.wolf` sandbox) com lifecycle hooks
+- **SSE streaming** para respostas em tempo real (8 event types)
+- **Port 4070** como padrão
+- **`~/.superclaw/`** como diretório de dados (separado do `~/.wolf/` proprietário)
+
+### Lições dos 57 sprints de SuperClaw:
+1. **Bridge pattern funciona** — abstrair o engine permite trocar backends sem mudar UI
+2. **SQLite > markdown files** para memória e planos — buscável, transacional
+3. **BridgePool multi-gateway** permite conectar agentes de múltiplas máquinas
+4. **ARCHER v2 @mention routing como code** + NEXUS v3 tags como prompt = melhor combo
+5. **Setup wizard é essencial** — sem ele, 80% dos users desistem nos primeiros 3 dias
+6. **Service Worker caching** causa mais problemas do que resolve — precisa de stamp versionado
 
 ---
 
