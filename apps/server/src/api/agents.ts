@@ -171,8 +171,8 @@ export function registerAgentRoutes(app: FastifyInstance, agents: AgentRepositor
         color: template.color,
         systemPrompt: template.systemPrompt,
         skills: [...template.skills],
-        providerPreference: 'openai',
-        modelPreference: 'gpt-4o',
+        providerPreference: '', // uses default provider configured in setup
+        modelPreference: '', // uses default model from provider
       });
       return reply.status(201).send({ data: agent });
     },

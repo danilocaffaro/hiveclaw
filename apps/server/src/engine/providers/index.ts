@@ -150,11 +150,11 @@ export async function initProviders(config: {
   const router = new ProviderRouter();
 
   if (config.anthropic?.apiKey) {
-    router.register({ id: 'anthropic', name: 'Anthropic', models: ['claude-sonnet-4-5-20250514', 'claude-haiku-4-5-20250514'] });
+    router.register({ id: 'anthropic', name: 'Anthropic', models: [] }); // models discovered at runtime via /v1/models
   }
 
   if (config.openai?.apiKey) {
-    router.register({ id: 'openai', name: 'OpenAI', models: ['gpt-4o', 'gpt-4o-mini'] });
+    router.register({ id: 'openai', name: 'OpenAI', models: [] }); // models discovered at runtime via /v1/models
   }
 
   if (config.defaults?.provider) {

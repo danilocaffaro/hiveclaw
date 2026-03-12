@@ -34,7 +34,7 @@ function getDefaultModelId(providerId: string): string {
   const db = initDatabase();
   const provRepo = new ProviderRepository(db);
   const provider = provRepo.list().find(p => p.id === providerId);
-  return provider?.models?.[0]?.id ?? 'gpt-4o-mini';
+  return provider?.models?.[0]?.id ?? 'auto';
 }
 
 function agentRowToConfig(agent: Agent): AgentConfig {

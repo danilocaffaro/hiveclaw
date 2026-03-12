@@ -319,15 +319,106 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   }, [step]);
 
   const PROVIDER_CARDS = [
-    { id: 'anthropic', name: 'Anthropic', icon: '🟣', desc: 'Claude Opus, Sonnet', hint: 'console.anthropic.com → API Keys' },
-    { id: 'openai', name: 'OpenAI', icon: '🟢', desc: 'GPT-4o, o3, o4-mini', hint: 'platform.openai.com → API Keys' },
-    { id: 'google', name: 'Google AI', icon: '🔵', desc: 'Gemini 2.5 Pro, Flash', hint: 'aistudio.google.com → API Keys — free tier available' },
-    { id: 'openrouter', name: 'OpenRouter', icon: '🔀', desc: '100+ models, one key', hint: 'openrouter.ai → Keys — access Claude, GPT, Gemini, Llama, and more' },
-    { id: 'deepseek', name: 'DeepSeek', icon: '🐋', desc: 'DeepSeek V3, R1', hint: 'platform.deepseek.com → API Keys' },
-    { id: 'groq', name: 'Groq', icon: '⚡', desc: 'Ultra-fast inference', hint: 'console.groq.com → API Keys — free tier available' },
-    { id: 'mistral', name: 'Mistral', icon: '🇫🇷', desc: 'Mistral Large, Codestral', hint: 'console.mistral.ai → API Keys' },
-    { id: 'ollama', name: 'Ollama', icon: '🦙', desc: 'Local models (free)', hint: 'ollama.com — run models locally, no API key needed' },
-    { id: 'custom', name: 'Other', icon: '🔧', desc: 'Any OpenAI-compatible API', hint: 'Works with Together AI, Fireworks, Azure, Perplexity, LM Studio, or any OpenAI-compatible endpoint' },
+    {
+      id: 'anthropic', name: 'Anthropic', icon: '🟣', desc: 'Claude Opus, Sonnet, Haiku',
+      hint: 'console.anthropic.com → API Keys',
+      steps: [
+        'Go to console.anthropic.com and sign up or log in',
+        'Click Settings → API Keys → Create Key',
+        'Give it a name (e.g. "SuperClaw"), click Create',
+        'Copy the key (starts with sk-ant-…) and paste it below',
+      ],
+      url: 'https://console.anthropic.com/settings/keys',
+    },
+    {
+      id: 'openai', name: 'OpenAI', icon: '🟢', desc: 'GPT-4o, o3, o4-mini',
+      hint: 'platform.openai.com → API Keys',
+      steps: [
+        'Go to platform.openai.com and sign up or log in',
+        'Click API Keys in the left sidebar (or Settings → API Keys)',
+        'Click "Create new secret key", name it, click Create',
+        'Copy the key (starts with sk-…) and paste it below',
+      ],
+      url: 'https://platform.openai.com/api-keys',
+    },
+    {
+      id: 'google', name: 'Google AI', icon: '🔵', desc: 'Gemini 2.5 Pro, Flash',
+      hint: 'aistudio.google.com — free tier available',
+      steps: [
+        'Go to aistudio.google.com and sign in with Google',
+        'Click "Get API key" in the top bar',
+        'Click "Create API key in new project" (or choose existing)',
+        'Copy the key and paste it below — free tier included!',
+      ],
+      url: 'https://aistudio.google.com/apikey',
+    },
+    {
+      id: 'openrouter', name: 'OpenRouter', icon: '🔀', desc: '100+ models, one key',
+      hint: 'One API key → Claude, GPT, Gemini, Llama, and more',
+      steps: [
+        'Go to openrouter.ai and sign up or log in',
+        'Click Keys in the top-right menu',
+        'Click "Create Key", name it, click Create',
+        'Copy the key (starts with sk-or-…) and paste it below',
+        'Add credits ($5 minimum) to start using paid models',
+      ],
+      url: 'https://openrouter.ai/keys',
+    },
+    {
+      id: 'deepseek', name: 'DeepSeek', icon: '🐋', desc: 'DeepSeek V3, R1',
+      hint: 'platform.deepseek.com → API Keys',
+      steps: [
+        'Go to platform.deepseek.com and sign up or log in',
+        'Click API Keys in the left sidebar',
+        'Click "Create new API key", name it',
+        'Copy the key and paste it below',
+      ],
+      url: 'https://platform.deepseek.com/api_keys',
+    },
+    {
+      id: 'groq', name: 'Groq', icon: '⚡', desc: 'Ultra-fast inference',
+      hint: 'console.groq.com — free tier available',
+      steps: [
+        'Go to console.groq.com and sign up (Google/GitHub login)',
+        'Click API Keys in the left sidebar',
+        'Click "Create API Key", name it',
+        'Copy the key (starts with gsk_…) and paste it below',
+        'Free tier: 14,400 requests/day for most models!',
+      ],
+      url: 'https://console.groq.com/keys',
+    },
+    {
+      id: 'mistral', name: 'Mistral', icon: '🇫🇷', desc: 'Mistral Large, Codestral',
+      hint: 'console.mistral.ai → API Keys',
+      steps: [
+        'Go to console.mistral.ai and sign up or log in',
+        'Click API Keys in the left sidebar',
+        'Click "Create new key", name it',
+        'Copy the key and paste it below',
+      ],
+      url: 'https://console.mistral.ai/api-keys',
+    },
+    {
+      id: 'ollama', name: 'Ollama', icon: '🦙', desc: 'Local models (free)',
+      hint: 'No API key needed — runs on your machine',
+      steps: [
+        'Download and install from ollama.com',
+        'Open Terminal and run: ollama pull llama3.3',
+        'Ollama runs at localhost:11434 by default',
+        'No API key needed — just paste the base URL below',
+      ],
+      url: 'https://ollama.com/download',
+    },
+    {
+      id: 'custom', name: 'Other', icon: '🔧', desc: 'Any OpenAI-compatible API',
+      hint: 'Together AI, Fireworks, Azure, Perplexity, LM Studio, vLLM…',
+      steps: [
+        'Get the base URL from your provider (e.g. https://api.together.xyz)',
+        'Must support the /v1/chat/completions endpoint',
+        'Get an API key from your provider\'s dashboard',
+        'Enter the name, base URL, and key below',
+      ],
+    },
   ];
 
   // ── Handlers ────────────────────────────────────────────────────────────────
@@ -594,9 +685,30 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                         style={inputStyle}
                         autoFocus
                       />
-                      <p style={{ fontSize: 11, color: 'var(--text-muted, #8b949e)', marginTop: 6, marginBottom: 0 }}>
-                        💡 {PROVIDER_CARDS.find((p) => p.id === activeProvider)?.hint}
-                      </p>
+                      {(() => {
+                        const prov = PROVIDER_CARDS.find((p) => p.id === activeProvider);
+                        if (!prov) return null;
+                        return (
+                          <div style={{ marginTop: 10, padding: '10px 12px', background: 'var(--surface-hover, #161b22)', borderRadius: 8, border: '1px solid var(--border, #30363d)' }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted, #8b949e)', marginBottom: 6 }}>
+                              📋 How to get your {prov.name} API key:
+                            </div>
+                            <ol style={{ margin: 0, paddingLeft: 18, fontSize: 11, color: 'var(--text-muted, #8b949e)', lineHeight: 1.8 }}>
+                              {prov.steps.map((s, i) => <li key={i}>{s}</li>)}
+                            </ol>
+                            {prov.url && (
+                              <a
+                                href={prov.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ display: 'inline-block', marginTop: 8, fontSize: 11, color: 'var(--blue, #58a6ff)', textDecoration: 'none' }}
+                              >
+                                🔗 Open {prov.name} dashboard →
+                              </a>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   ) : activeProvider === 'custom' ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

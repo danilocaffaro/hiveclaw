@@ -45,16 +45,15 @@ function getDefaultModelId(providerId: string): string {
   const db = initDatabase();
   const repo = new ProviderRepository(db);
   const provider = repo.get(providerId);
-  if (!provider) return 'claude-opus-4-20250918';
+  if (!provider || !provider.models.length) return 'auto'; // resolved at runtime
   const models = provider.models.map((m: { id: string }) => m.id);
-  const preferred = models.find((m: string) => m.includes('opus')) ?? models.find((m: string) => m.includes('gpt-4o')) ?? models[0];
-  return preferred ?? 'claude-opus-4-20250918';
+  return models[0] ?? 'auto';
 }
 
 const DEFAULT_AGENT_CONFIG: Omit<AgentConfig, 'id' | 'name'> = {
   systemPrompt: 'You are a helpful personal AI assistant. You can research, write, analyze data, plan, organize, and help with a wide range of tasks. Be concise, direct, and helpful.',
-  providerId: 'anthropic', // placeholder — overridden at runtime
-  modelId: 'claude-opus-4-20250918', // placeholder — overridden at runtime
+  providerId: 'auto', // resolved from user's first configured provider
+  modelId: 'auto', // resolved from provider's first available model
   temperature: 0.7,
   maxTokens: 8192,
 };
