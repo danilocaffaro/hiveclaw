@@ -1,6 +1,24 @@
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 
+// ─── Row types ──────────────────────────────────────────────────────────────────
+
+interface DatasetRow {
+  id: string; name: string; description: string; format: string;
+  source_path: string | null; row_count: number | null; size_bytes: number | null;
+  status: string; validation_errors: string | null; created_at: string; updated_at: string;
+}
+
+interface JobRow {
+  id: string; dataset_id: string; provider: string; base_model: string;
+  fine_tuned_model: string | null; status: string; hyperparameters: string | null;
+  metrics: string | null; provider_job_id: string | null; epochs: number | null;
+  learning_rate: number | null; error_message: string | null;
+  started_at: string | null; completed_at: string | null; created_at: string;
+}
+
+// ─── Interfaces ─────────────────────────────────────────────────────────────────
+
 export interface FinetuneDataset {
   id: string;
   name: string;
@@ -38,14 +56,14 @@ export class DatasetRepository {
 
   list(): FinetuneDataset[] {
     return (
-      this.db.prepare('SELECT * FROM finetune_datasets ORDER BY created_at DESC').all() as any[]
+      this.db.prepare('SELECT * FROM finetune_datasets ORDER BY created_at DESC').all() as DatasetRow[]
     ).map(this.rowToDataset);
   }
 
   getById(id: string): FinetuneDataset | undefined {
     const row = this.db
       .prepare('SELECT * FROM finetune_datasets WHERE id = ?')
-      .get(id) as any;
+      .get(id) as DatasetRow | undefined;
     return row ? this.rowToDataset(row) : undefined;
   }
 
@@ -121,16 +139,16 @@ export class DatasetRepository {
     );
   }
 
-  private rowToDataset(row: any): FinetuneDataset {
+  private rowToDataset(row: DatasetRow): FinetuneDataset {
     return {
       id: row.id,
       name: row.name,
       description: row.description ?? '',
-      format: row.format,
+      format: row.format as FinetuneDataset['format'],
       sourcePath: row.source_path,
       rowCount: row.row_count ?? 0,
       sizeBytes: row.size_bytes ?? 0,
-      status: row.status,
+      status: row.status as FinetuneDataset['status'],
       validationErrors: JSON.parse(row.validation_errors ?? '[]'),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -157,13 +175,13 @@ export class FinetuneJobRepository {
     if (conditions.length > 0) sql += ' WHERE ' + conditions.join(' AND ');
     sql += ' ORDER BY created_at DESC';
 
-    return (this.db.prepare(sql).all(...params) as any[]).map(this.rowToJob);
+    return (this.db.prepare(sql).all(...params) as JobRow[]).map(this.rowToJob);
   }
 
   getById(id: string): FinetuneJob | undefined {
     const row = this.db
       .prepare('SELECT * FROM finetune_jobs WHERE id = ?')
-      .get(id) as any;
+      .get(id) as JobRow | undefined;
     return row ? this.rowToJob(row) : undefined;
   }
 
@@ -238,14 +256,14 @@ export class FinetuneJobRepository {
     return this.update(id, { status: 'cancelled' });
   }
 
-  private rowToJob(row: any): FinetuneJob {
+  private rowToJob(row: JobRow): FinetuneJob {
     return {
       id: row.id,
       datasetId: row.dataset_id,
       provider: row.provider,
       baseModel: row.base_model,
       fineTunedModel: row.fine_tuned_model,
-      status: row.status,
+      status: row.status as FinetuneJob['status'],
       hyperparameters: JSON.parse(row.hyperparameters ?? '{}'),
       metrics: JSON.parse(row.metrics ?? '{}'),
       providerJobId: row.provider_job_id,

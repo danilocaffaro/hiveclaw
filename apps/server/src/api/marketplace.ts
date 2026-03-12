@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { MarketplaceRepository } from '../db/marketplace.js';
-import { CURATED_SKILLS, searchSkills, getSkillsByCategory, getCategoryStats } from '../engine/skill-hub.js';
+import { CURATED_SKILLS, searchSkills, getSkillsByCategory, getCategoryStats, type SkillCategory } from '../engine/skill-hub.js';
 import type Database from 'better-sqlite3';
 
 export function registerMarketplaceRoutes(app: FastifyInstance, db: Database.Database): void {
@@ -100,7 +100,7 @@ export function registerMarketplaceRoutes(app: FastifyInstance, db: Database.Dat
     let skills = req.query.search
       ? searchSkills(req.query.search)
       : req.query.category
-        ? getSkillsByCategory(req.query.category as any)
+        ? getSkillsByCategory(req.query.category as SkillCategory)
         : CURATED_SKILLS;
 
     if (req.query.badge) {

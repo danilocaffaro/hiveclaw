@@ -76,8 +76,7 @@ export async function llmCompact(
   ];
 
   // Resolve provider config
-  const providerRepo = providers as any; // ProviderRepository
-  const providerConfig = providerRepo.getUnmasked?.(modelResult.providerId) ?? providers.list().find((p: any) => p.id === modelResult.providerId);
+  const providerConfig = providers.getUnmasked(modelResult.providerId) ?? providers.list().find(p => p.id === modelResult.providerId);
   if (!providerConfig) return null;
 
   const providerType = resolveProviderType(modelResult.providerId, providerConfig.type);
@@ -93,7 +92,7 @@ export async function llmCompact(
       providerType: providerType,
       model: modelResult.modelId,
       baseUrl,
-      apiKey: providerConfig.rawApiKey ?? '',
+      apiKey: ('rawApiKey' in providerConfig ? (providerConfig as Record<string, unknown>).rawApiKey as string : providerConfig.apiKey) ?? '',
       maxTokens: 2000,
       temperature: 0.1,
     })) {

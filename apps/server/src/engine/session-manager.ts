@@ -511,7 +511,7 @@ export class SessionManager {
               agentId,
               `${fact.type}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
               fact.value,
-              fact.type as any,
+              (fact.type ?? 'fact') as import('../db/agent-memory.js').MemoryType,
               0.85,
               undefined,
               { source: 'llm_compaction' },

@@ -23,6 +23,15 @@ export interface SquadEvent {
   createdAt: string;
 }
 
+interface MemberRow {
+  squad_id: string; agent_id: string; role: string; added_by: string; added_at: string;
+}
+
+interface EventRow {
+  id: string; squad_id: string; event_type: string; agent_id: string | null;
+  actor: string; detail: string; created_at: string;
+}
+
 export class SquadMemberRepository {
   constructor(private db: Database.Database) {}
 
@@ -30,7 +39,7 @@ export class SquadMemberRepository {
   listBySquad(squadId: string): SquadMember[] {
     const rows = this.db.prepare(
       'SELECT * FROM squad_members WHERE squad_id = ? ORDER BY added_at ASC'
-    ).all(squadId) as any[];
+    ).all(squadId) as MemberRow[];
     return rows.map(this.toMember);
   }
 
@@ -38,7 +47,7 @@ export class SquadMemberRepository {
   get(squadId: string, agentId: string): SquadMember | null {
     const row = this.db.prepare(
       'SELECT * FROM squad_members WHERE squad_id = ? AND agent_id = ?'
-    ).get(squadId, agentId) as any;
+    ).get(squadId, agentId) as MemberRow | undefined;
     return row ? this.toMember(row) : null;
   }
 
@@ -107,7 +116,7 @@ export class SquadMemberRepository {
         CASE role WHEN 'admin' THEN 0 WHEN 'member' THEN 1 ELSE 2 END,
         added_at ASC
       LIMIT 1
-    `).get(squadId, removedOwnerId) as any;
+    `).get(squadId, removedOwnerId) as MemberRow | undefined;
 
     if (next) {
       this.db.prepare(
@@ -146,26 +155,26 @@ export class SquadMemberRepository {
   getEvents(squadId: string, limit: number = 20): SquadEvent[] {
     const rows = this.db.prepare(
       'SELECT * FROM squad_events WHERE squad_id = ? ORDER BY created_at DESC LIMIT ?'
-    ).all(squadId, limit) as any[];
+    ).all(squadId, limit) as EventRow[];
     return rows.map(this.toEvent);
   }
 
-  private toMember(row: any): SquadMember {
+  private toMember(row: MemberRow): SquadMember {
     return {
       squadId: row.squad_id,
       agentId: row.agent_id,
-      role: row.role,
+      role: row.role as SquadMember['role'],
       addedBy: row.added_by,
       addedAt: row.added_at,
     };
   }
 
-  private toEvent(row: any): SquadEvent {
+  private toEvent(row: EventRow): SquadEvent {
     return {
       id: row.id,
       squadId: row.squad_id,
       eventType: row.event_type,
-      agentId: row.agent_id,
+      agentId: row.agent_id ?? undefined,
       actor: row.actor,
       detail: row.detail,
       createdAt: row.created_at,

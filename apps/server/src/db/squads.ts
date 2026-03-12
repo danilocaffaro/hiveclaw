@@ -2,16 +2,22 @@ import { v4 as uuid } from 'uuid';
 import type Database from 'better-sqlite3';
 import type { Squad, SquadCreateInput } from '@superclaw/shared';
 
+interface SquadRow {
+  id: string; name: string; emoji: string; description: string;
+  agent_ids: string; sprint_config: string | null; routing_strategy: string;
+  debate_enabled: number; created_at: string; updated_at: string;
+}
+
 export class SquadRepository {
   constructor(private db: Database.Database) {}
 
   list(): Squad[] {
-    const rows = this.db.prepare('SELECT * FROM squads ORDER BY created_at DESC').all() as any[];
+    const rows = this.db.prepare('SELECT * FROM squads ORDER BY created_at DESC').all() as SquadRow[];
     return rows.map(this.toSquad);
   }
 
   getById(id: string): Squad | null {
-    const row = this.db.prepare('SELECT * FROM squads WHERE id = ?').get(id) as any;
+    const row = this.db.prepare('SELECT * FROM squads WHERE id = ?').get(id) as SquadRow | undefined;
     return row ? this.toSquad(row) : null;
   }
 
@@ -40,7 +46,7 @@ export class SquadRepository {
     if (!existing) return null;
 
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: (string | number | null)[] = [];
 
     if (patch.name !== undefined) { fields.push('name = ?'); values.push(patch.name); }
     if (patch.emoji !== undefined) { fields.push('emoji = ?'); values.push(patch.emoji); }
@@ -64,7 +70,7 @@ export class SquadRepository {
     return result.changes > 0;
   }
 
-  private toSquad(row: any): Squad {
+  private toSquad(row: SquadRow): Squad {
     return {
       id: row.id,
       name: row.name,
@@ -72,7 +78,7 @@ export class SquadRepository {
       description: row.description,
       agentIds: JSON.parse(row.agent_ids || '[]'),
       sprintConfig: JSON.parse(row.sprint_config || '{}'),
-      routingStrategy: row.routing_strategy,
+      routingStrategy: row.routing_strategy as Squad['routingStrategy'],
       debateEnabled: Boolean(row.debate_enabled),
       createdAt: row.created_at,
       updatedAt: row.updated_at,

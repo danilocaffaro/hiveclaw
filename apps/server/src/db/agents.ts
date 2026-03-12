@@ -2,16 +2,24 @@ import { v4 as uuid } from 'uuid';
 import type Database from 'better-sqlite3';
 import type { Agent, AgentCreateInput } from '@superclaw/shared';
 
+interface AgentRow {
+  id: string; name: string; emoji: string; role: string; type: string;
+  system_prompt: string; skills: string; model_preference: string | null;
+  provider_preference: string | null; fallback_providers: string;
+  temperature: number; max_tokens: number | null; status: string; color: string | null;
+  created_at: string; updated_at: string;
+}
+
 export class AgentRepository {
   constructor(private db: Database.Database) {}
 
   list(): Agent[] {
-    const rows = this.db.prepare('SELECT * FROM agents ORDER BY created_at DESC').all() as any[];
+    const rows = this.db.prepare('SELECT * FROM agents ORDER BY created_at DESC').all() as AgentRow[];
     return rows.map(this.toAgent);
   }
 
   getById(id: string): Agent | null {
-    const row = this.db.prepare('SELECT * FROM agents WHERE id = ?').get(id) as any;
+    const row = this.db.prepare('SELECT * FROM agents WHERE id = ?').get(id) as AgentRow | undefined;
     return row ? this.toAgent(row) : null;
   }
 
@@ -76,22 +84,22 @@ export class AgentRepository {
     return result.changes > 0;
   }
 
-  private toAgent(row: any): Agent {
+  private toAgent(row: AgentRow): Agent {
     return {
       id: row.id,
       name: row.name,
       emoji: row.emoji,
       role: row.role,
-      type: row.type,
+      type: row.type as Agent['type'],
       systemPrompt: row.system_prompt,
       skills: JSON.parse(row.skills || '[]'),
-      modelPreference: row.model_preference,
-      providerPreference: row.provider_preference,
+      modelPreference: row.model_preference ?? '',
+      providerPreference: row.provider_preference ?? '',
       fallbackProviders: JSON.parse(row.fallback_providers || '[]'),
       temperature: row.temperature,
       maxTokens: row.max_tokens ?? 4096,
-      status: row.status,
-      color: row.color,
+      status: row.status as Agent['status'],
+      color: row.color ?? '',
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
