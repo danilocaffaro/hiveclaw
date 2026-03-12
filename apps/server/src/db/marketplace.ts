@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import { randomUUID } from 'crypto';
+import { CURATED_SKILLS } from '../engine/skill-hub.js';
 
 export interface MarketplaceSkill {
   id: string;
@@ -139,7 +140,32 @@ export class MarketplaceRepository {
   }
 
   seed(): void {
-    // No-op: marketplace skills should come from ClawHub or user installs, not fake seeds
-    return;
+    // Seed from curated skill hub (Batch 7.5) — only insert if not already present
+    const insert = this.db.prepare(`
+      INSERT OR IGNORE INTO marketplace_skills
+        (id, name, description, author, version, category, tags, downloads, rating, rating_count, icon, install_command, config_schema, installed, installed_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const skill of CURATED_SKILLS) {
+      insert.run(
+        skill.slug,            // Use slug as ID for curated skills (deterministic)
+        skill.name,
+        skill.description,
+        skill.author,
+        skill.version,
+        skill.category,
+        JSON.stringify(skill.tags),
+        skill.usageCount,
+        skill.securityScore,   // Reuse securityScore as rating
+        1,
+        '⭐',                  // Default icon
+        null,                  // No install command needed (content bundled)
+        JSON.stringify({}),
+        0,                     // Not auto-installed
+        null,
+        new Date().toISOString(),
+      );
+    }
   }
 }

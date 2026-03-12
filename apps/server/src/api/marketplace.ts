@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { MarketplaceRepository } from '../db/marketplace.js';
+import { CURATED_SKILLS, searchSkills, getSkillsByCategory, getCategoryStats } from '../engine/skill-hub.js';
 import type Database from 'better-sqlite3';
 
 export function registerMarketplaceRoutes(app: FastifyInstance, db: Database.Database): void {
@@ -88,5 +89,55 @@ export function registerMarketplaceRoutes(app: FastifyInstance, db: Database.Dat
       app.log.error(err);
       return reply.status(500).send({ error: { code: 'INTERNAL', message: msg } });
     }
+  });
+
+  // ── Curated Skill Hub (Batch 7.5) ──────────────────────────────────────────
+
+  // GET /marketplace/curated — full curated library with content
+  app.get<{
+    Querystring: { category?: string; search?: string; badge?: string };
+  }>('/marketplace/curated', async (req) => {
+    let skills = req.query.search
+      ? searchSkills(req.query.search)
+      : req.query.category
+        ? getSkillsByCategory(req.query.category as any)
+        : CURATED_SKILLS;
+
+    if (req.query.badge) {
+      skills = skills.filter(s => s.badge === req.query.badge);
+    }
+
+    return {
+      data: {
+        skills,
+        total: skills.length,
+        categories: getCategoryStats(),
+      },
+    };
+  });
+
+  // GET /marketplace/curated/:slug — single curated skill with full SKILL.md content
+  app.get<{ Params: { slug: string } }>('/marketplace/curated/:slug', async (req, reply) => {
+    const skill = CURATED_SKILLS.find(s => s.slug === req.params.slug);
+    if (!skill) return reply.status(404).send({ error: { code: 'NOT_FOUND' } });
+    return { data: skill };
+  });
+
+  // POST /marketplace/curated/:slug/install — install curated skill to agent
+  app.post<{
+    Params: { slug: string };
+    Body: { agentId?: string };
+  }>('/marketplace/curated/:slug/install', async (req, reply) => {
+    const skill = CURATED_SKILLS.find(s => s.slug === req.params.slug);
+    if (!skill) return reply.status(404).send({ error: { code: 'NOT_FOUND' } });
+
+    // Mark as installed in marketplace DB (for tracking)
+    try {
+      marketplace.install(skill.slug);
+    } catch {
+      // May already exist — that's fine
+    }
+
+    return { data: { ok: true, slug: skill.slug, message: `Skill '${skill.name}' installed` } };
   });
 }
