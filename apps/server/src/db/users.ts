@@ -44,6 +44,12 @@ export class UserRepository {
     return rows.map(toUser);
   }
 
+  /** Get the first owner user without scanning full table (PERF-01) */
+  getOwner(): User | undefined {
+    const row = this.db.prepare("SELECT * FROM users WHERE role = 'owner' LIMIT 1").get() as RawRow | undefined;
+    return row ? toUser(row) : undefined;
+  }
+
   getById(id: string): User | undefined {
     const row = this.db.prepare('SELECT * FROM users WHERE id = ?').get(id) as RawRow | undefined;
     return row ? toUser(row) : undefined;

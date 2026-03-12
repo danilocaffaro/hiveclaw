@@ -13,8 +13,7 @@ export function getAuthUser(req: FastifyRequest, users: UserRepository): User | 
   const isDev = process.env.NODE_ENV === 'development' || process.env.SUPERCLAW_DEV_AUTH === 'true';
   if (process.env.NODE_ENV === 'production' && !isDev) {
     // In production, allow self-hosted owner fallback (SPA on same origin doesn't send x-api-key)
-    const cachedOwner = users.list().find(u => u.role === 'owner');
-    return cachedOwner ?? null;
+    return users.getOwner() ?? null;
   }
   if (!isDev) return null;
   const allUsers = users.list();

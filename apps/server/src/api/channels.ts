@@ -81,6 +81,19 @@ export function initChannelSchema(db: Database.Database): void {
   `);
 }
 
+// ─── DB Row Type ────────────────────────────────────────────────────────────────
+
+interface ChannelRow {
+  id: string;
+  name: string;
+  type: string;
+  enabled: number;
+  agent_id: string;
+  config: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // ─── Channel Repository ─────────────────────────────────────────────────────────
 
 export class ChannelRepository {
@@ -89,12 +102,12 @@ export class ChannelRepository {
   }
 
   list(): ChannelConfig[] {
-    const rows = this.db.prepare('SELECT * FROM channels ORDER BY created_at DESC').all() as any[];
+    const rows = this.db.prepare('SELECT * FROM channels ORDER BY created_at DESC').all() as ChannelRow[];
     return rows.map(this.rowToConfig);
   }
 
   get(id: string): ChannelConfig | undefined {
-    const row = this.db.prepare('SELECT * FROM channels WHERE id = ?').get(id) as any;
+    const row = this.db.prepare('SELECT * FROM channels WHERE id = ?').get(id) as ChannelRow | undefined;
     return row ? this.rowToConfig(row) : undefined;
   }
 
@@ -140,7 +153,7 @@ export class ChannelRepository {
     `).run(randomUUID(), channelId, direction, fromId ?? null, toId ?? null, content, raw ? JSON.stringify(raw) : null);
   }
 
-  private rowToConfig(row: any): ChannelConfig {
+  private rowToConfig(row: ChannelRow): ChannelConfig {
     return {
       id: row.id,
       name: row.name,
@@ -218,61 +231,82 @@ async function sendWebhook(config: Extract<ChannelTypeConfig, { type: 'webhook' 
   }
 }
 
+/** Extract a test target chat ID from channel config */
+function getChannelTestTarget(config: ChannelTypeConfig): string | undefined {
+  const c = config as Record<string, unknown>;
+  const ids = c.allowedChatIds as string[] | undefined;
+  return ids?.[0] ?? (c.defaultChatId as string | undefined);
+}
+
 /**
  * Route a message to the correct sender based on channel type.
  */
 async function sendViaChannel(channel: ChannelConfig, msg: OutboundMessage): Promise<void> {
-  const cfg = channel.config as any;
+  const cfg = channel.config as ChannelTypeConfig;
   switch (channel.type) {
-    case 'telegram': return sendTelegram(cfg, msg);
-    case 'discord':  return sendDiscord(cfg, msg);
-    case 'slack':    return sendSlack(cfg, msg);
-    case 'webhook':  return sendWebhook(cfg, msg);
+    case 'telegram': return sendTelegram(cfg as Extract<ChannelTypeConfig, { type: 'telegram' }>, msg);
+    case 'discord':  return sendDiscord(cfg as Extract<ChannelTypeConfig, { type: 'discord' }>, msg);
+    case 'slack':    return sendSlack(cfg as Extract<ChannelTypeConfig, { type: 'slack' }>, msg);
+    case 'webhook':  return sendWebhook(cfg as Extract<ChannelTypeConfig, { type: 'webhook' }>, msg);
     case 'whatsapp':
       throw new Error('WhatsApp not yet implemented — use Twilio or Meta Cloud API');
     default:
-      throw new Error(`Unknown channel type: ${(channel as any).type}`);
+      throw new Error(`Unknown channel type: ${channel.type}`);
   }
 }
 
 // ─── Inbound Parsing ────────────────────────────────────────────────────────────
 
-function parseTelegramUpdate(body: any): { fromId: string; text: string; replyToId?: string } | null {
-  const msg = body?.message || body?.edited_message;
-  if (!msg?.text) return null;
+function parseTelegramUpdate(body: unknown): { fromId: string; text: string; replyToId?: string } | null {
+  if (!body || typeof body !== 'object') return null;
+  const b = body as Record<string, unknown>;
+  const msg = (b.message ?? b.edited_message) as Record<string, unknown> | undefined;
+  if (!msg || typeof msg.text !== 'string') return null;
+  const chat = msg.chat as Record<string, unknown> | undefined;
+  const from = msg.from as Record<string, unknown> | undefined;
   return {
-    fromId: String(msg.chat?.id ?? msg.from?.id ?? ''),
+    fromId: String(chat?.id ?? from?.id ?? ''),
     text: msg.text,
     replyToId: msg.message_id ? String(msg.message_id) : undefined,
   };
 }
 
-function parseDiscordInteraction(body: any): { fromId: string; text: string } | null {
-  // Discord sends either interactions (slash commands) or webhook events
-  if (body?.type === 1) return null; // PING — handled separately
-  const content = body?.content || body?.data?.options?.[0]?.value;
-  if (!content) return null;
+function parseDiscordInteraction(body: unknown): { fromId: string; text: string } | null {
+  if (!body || typeof body !== 'object') return null;
+  const b = body as Record<string, unknown>;
+  if (b.type === 1) return null; // PING
+  const content = (b.content as string) ?? ((b.data as Record<string, unknown>)?.options as Array<Record<string, unknown>>)?.[0]?.value;
+  if (!content || typeof content !== 'string') return null;
+  const author = b.author as Record<string, unknown> | undefined;
+  const member = b.member as Record<string, unknown> | undefined;
+  const memberUser = member?.user as Record<string, unknown> | undefined;
   return {
-    fromId: body?.author?.id ?? body?.member?.user?.id ?? '',
+    fromId: String(author?.id ?? memberUser?.id ?? ''),
     text: content,
   };
 }
 
-function parseSlackEvent(body: any): { fromId: string; text: string } | null {
-  const event = body?.event;
+function parseSlackEvent(body: unknown): { fromId: string; text: string } | null {
+  if (!body || typeof body !== 'object') return null;
+  const b = body as Record<string, unknown>;
+  const event = b.event as Record<string, unknown> | undefined;
   if (!event || event.type !== 'message' || event.bot_id) return null;
   return {
-    fromId: event.user ?? '',
-    text: event.text ?? '',
+    fromId: String(event.user ?? ''),
+    text: String(event.text ?? ''),
   };
 }
 
-function parseInbound(channel: ChannelConfig, body: any): { fromId: string; text: string; replyToId?: string } | null {
+function parseInbound(channel: ChannelConfig, body: unknown): { fromId: string; text: string; replyToId?: string } | null {
   switch (channel.type) {
     case 'telegram': return parseTelegramUpdate(body);
     case 'discord':  return parseDiscordInteraction(body);
     case 'slack':    return parseSlackEvent(body);
-    default:         return body?.text ? { fromId: body.from ?? '', text: body.text } : null;
+    default: {
+      if (!body || typeof body !== 'object') return null;
+      const b = body as Record<string, unknown>;
+      return typeof b.text === 'string' ? { fromId: String(b.from ?? ''), text: b.text } : null;
+    }
   }
 }
 
@@ -368,7 +402,7 @@ export function registerChannelRoutes(app: FastifyInstance, db: Database.Databas
 
     // Slack URL verification challenge
     if (ch.type === 'slack' && body?.type === 'url_verification') {
-      return { challenge: (body as any).challenge };
+      return { challenge: body.challenge };
     }
 
     const parsed = parseInbound(ch, body);
@@ -405,7 +439,7 @@ export function registerChannelRoutes(app: FastifyInstance, db: Database.Databas
     try {
       await sendViaChannel(ch, {
         text: '✅ SuperClaw channel connection test — working!',
-        to: (ch.config as any).allowedChatIds?.[0] ?? (ch.config as any).defaultChatId,
+        to: getChannelTestTarget(ch.config),
       });
       return { data: { ok: true, message: 'Test message sent successfully' } };
     } catch (err) {
@@ -436,7 +470,7 @@ export function registerChannelRoutes(app: FastifyInstance, db: Database.Databas
 // ─── Helper: Mask sensitive config fields ───────────────────────────────────────
 
 function maskConfig(config: ChannelTypeConfig): object {
-  const c = { ...(config as any) };
+  const c = { ...(config as Record<string, unknown>) };
   for (const key of ['botToken', 'authToken', 'accessToken', 'webhookUrl', 'signingSecret', 'secret']) {
     if (c[key]) c[key] = `${String(c[key]).slice(0, 4)}...${String(c[key]).slice(-4)}`;
   }
