@@ -12,6 +12,7 @@ import { getToolRegistry } from './tools/index.js';
 import { AgentMemoryRepository } from '../db/agent-memory.js';
 import { getDb } from '../db/index.js';
 import { logger } from '../lib/logger.js';
+import { LoopDetector } from './loop-detector.js';
 
 // ─── SSE Event Types ──────────────────────────────────────────────────────────
 
@@ -261,6 +262,9 @@ export async function* runAgent(
   // ── 5. Signal start ──────────────────────────────────────────────────────────
   yield { event: 'message.start', data: { sessionId, agentId: agentConfig.id } };
 
+  // ── 5.5 Loop detector ─────────────────────────────────────────────────────────
+  const loopDetector = new LoopDetector();
+
   // Cumulative token / cost tracking
   let totalTokensIn = 0;
   let totalTokensOut = 0;
@@ -370,10 +374,39 @@ export async function* runAgent(
 
     // ── 7c. No tool calls → done ───────────────────────────────────────────────
     if (pendingToolCalls.length === 0) {
+      // Check for response loop
+      if (iterationText) {
+        const responseLoop = loopDetector.recordResponse(iterationText);
+        if (responseLoop.loopDetected) {
+          logger.warn(`[AgentRunner] Loop detected in session ${sessionId}: ${responseLoop.details}`);
+          yield {
+            event: 'message.delta',
+            data: { text: `\n\n[Loop detected: ${responseLoop.details}. Stopping to prevent repetition.]` },
+          };
+          fullAssistantText += `\n\n[Loop detected: ${responseLoop.details}. Stopping to prevent repetition.]`;
+        }
+      }
       break;
     }
 
-    // ── 7c. Execute tools ──────────────────────────────────────────────────────
+    // ── 7d. Check for tool call loops before executing ──────────────────────────
+    let loopBroken = false;
+    for (const tc of pendingToolCalls) {
+      const toolLoop = loopDetector.recordToolCall(tc.name, tc.input);
+      if (toolLoop.loopDetected) {
+        logger.warn(`[AgentRunner] Tool loop in session ${sessionId}: ${toolLoop.details}`);
+        yield {
+          event: 'message.delta',
+          data: { text: `\n\n[Loop detected: ${toolLoop.details}. Breaking loop.]` },
+        };
+        fullAssistantText += `\n\n[Loop detected: ${toolLoop.details}. Breaking loop.]`;
+        loopBroken = true;
+        break;
+      }
+    }
+    if (loopBroken) break;
+
+    // ── 7e. Execute tools ──────────────────────────────────────────────────────
 
     // Append assistant message with tool_calls to working messages
     // (OpenAI format: content + tool_calls array; Anthropic providers translate)
