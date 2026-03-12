@@ -20,6 +20,7 @@ import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { logger } from '../lib/logger.js';
 import { broadcastSSE } from './sse.js';
+import { handleChannelInbound } from '../engine/channel-responder.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -425,8 +426,36 @@ export function registerChannelRoutes(app: FastifyInstance, db: Database.Databas
       });
     }
 
-    // TODO: Route to agent session for auto-reply (Phase 2)
-    // For now: just log + broadcast to SSE
+    // Auto-reply: route to agent session (Phase 2)
+    // Runs in background — webhook returns 200 immediately so platform doesn't retry
+    if (ch.agentId && ch.enabled) {
+      const channelRef = ch;
+      const parsedRef = parsed;
+      setImmediate(async () => {
+        try {
+          const response = await handleChannelInbound({
+            channelId: channelRef.id,
+            agentId: channelRef.agentId,
+            fromId: parsedRef.fromId,
+            text: parsedRef.text,
+          });
+
+          // Send response back via channel
+          await sendViaChannel(channelRef, {
+            text: response,
+            to: parsedRef.fromId,
+            replyToId: parsedRef.replyToId,
+          });
+
+          // Log outbound
+          repo.logMessage(channelRef.id, 'outbound', response, undefined, parsedRef.fromId);
+
+          logger.info('[Channels] Auto-reply sent on %s to %s (%d chars)', channelRef.id, parsedRef.fromId, response.length);
+        } catch (err) {
+          logger.error({ err }, '[Channels] Auto-reply failed on %s', channelRef.id);
+        }
+      });
+    }
 
     return reply.status(200).send({ ok: true });
   });
