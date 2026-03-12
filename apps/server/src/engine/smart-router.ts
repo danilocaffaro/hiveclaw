@@ -1,22 +1,19 @@
 /**
- * engine/smart-router.ts — Quality-aware automatic model routing
+ * engine/smart-router.ts — Quality-aware model routing (simplified)
  *
- * Routes tasks to the cheapest model that meets the quality floor.
+ * 3 buckets: cheap / standard / premium
+ * Each bucket has a quality floor.
+ * Router picks cheapest model that meets the floor.
+ * If nothing qualifies → best available + warning.
  *
- * Design principle: "minimum quality, minimum cost"
- *   1. Each system task declares a QUALITY FLOOR (capability requirement)
- *   2. All user-available models get a quality score (0-100)
- *   3. Router picks the cheapest model that meets the floor
- *   4. If NO model meets the floor → uses best available + emits quality warning
- *
- * Quality scores come from:
- *   - Known model database (MODEL_QUALITY below)
- *   - Pricing-based inference (expensive = probably better)
- *   - User overrides in DB (future)
+ * Classification: 3 rules, no NLP, no ML.
+ *   1. heartbeat/cron → cheap
+ *   2. complex patterns (2+ regex matches) → premium
+ *   3. everything else → standard
  */
 
 import { ProviderRepository } from '../db/index.js';
-import { getModelPricing, type ModelPricing } from '../config/pricing.js';
+import { getModelPricing } from '../config/pricing.js';
 import { logger } from '../lib/logger.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
@@ -37,277 +34,178 @@ export interface RoutingDecision {
   qualityWarning?: string;
 }
 
-// ─── Quality Scores (0-100) ─────────────────────────────────────────────────────
-//
-// Score represents general capability. Sources:
-//   - LMSYS Chatbot Arena ELO (normalized)
-//   - Provider benchmarks (MMLU, HumanEval, etc.)
-//   - Practical experience
-//
-// Users can override via DB (future: model_quality_overrides table)
-//
-// Score bands:
-//   90-100  = Frontier (Opus, GPT-4o, Gemini Pro)
-//   70-89   = Strong (Sonnet, GPT-4o-mini, Gemini Flash 2.5)
-//   50-69   = Capable (Haiku, Gemini Flash 2.0, small local)
-//   30-49   = Basic (3.5-turbo, tiny local models)
-//   0-29    = Minimal (very small models, quantized)
+// ─── Quality Floors ─────────────────────────────────────────────────────────────
 
-const MODEL_QUALITY: Record<string, number> = {
-  // ── Anthropic ────────────────────────────────────────────────
-  'claude-opus-4':           95,
-  'claude-opus-4.6':         95,
-  'claude-opus-4-5':         95,
-  'claude-3-opus':           92,
-  'claude-sonnet-4':         88,
-  'claude-sonnet-4-5':       88,
-  'claude-sonnet-4.6':       88,
-  'claude-3-5-sonnet':       87,
-  'claude-haiku-4-5':        68,
-  'claude-3-5-haiku':        68,
-
-  // ── OpenAI ───────────────────────────────────────────────────
-  'gpt-4o':                  90,
-  'gpt-4-turbo':             88,
-  'gpt-4':                   85,
-  'o1':                      93,
-  'o1-pro':                  95,
-  'o1-mini':                 75,
-  'o3':                      95,
-  'o3-mini':                 78,
-  'o4-mini':                 78,
-  'gpt-4o-mini':             72,
-  'gpt-3.5-turbo':           45,
-
-  // ── Google ───────────────────────────────────────────────────
-  'gemini-2.5-pro':          92,
-  'gemini-2.5-flash':        75,
-  'gemini-2.0-flash':        65,
-  'gemini-1.5-pro':          85,
-  'gemini-1.5-flash':        60,
-
-  // ── DeepSeek ─────────────────────────────────────────────────
-  'deepseek-chat':           70,
-  'deepseek-reasoner':       85,
-
-  // ── Groq-hosted ──────────────────────────────────────────────
-  'llama-3.3-70b':           78,
-  'llama-3.1-70b':           75,
-  'llama-3.1-8b':            45,
-  'mixtral-8x7b':            55,
-
-  // ── Mistral ──────────────────────────────────────────────────
-  'mistral-large':           82,
-  'mistral-small':           55,
-  'codestral':               70,
-
-  // ── Common local models (Ollama) ─────────────────────────────
-  'qwen2.5:72b':             78,
-  'qwen2.5:32b':             68,
-  'qwen2.5:14b':             55,
-  'qwen2.5:7b':              42,
-  'qwen3:8b':                50,
-  'qwen3:32b':               72,
-  'llama3.1:8b':             45,
-  'llama3.1:70b':            75,
-  'llama3.2:3b':             30,
-  'llama3.3:70b':            78,
-  'deepseek-r1:32b':         72,
-  'deepseek-r1:14b':         58,
-  'deepseek-r1:8b':          42,
-  'phi3:14b':                55,
-  'phi3:3.8b':               35,
-  'gemma2:27b':              65,
-  'gemma2:9b':               48,
-  'gemma2:2b':               28,
-  'mistral:7b':              42,
-  'mixtral:8x7b':            55,
-  'codellama:34b':           60,
-  'codellama:7b':            38,
-  'nomic-embed-text':        0,  // Embedding model, not for chat
+export const QUALITY_FLOORS: Record<ModelTier, number> = {
+  cheap: 20,
+  standard: 50,
+  premium: 80,
 };
 
-// ─── Quality Floor per System Task ──────────────────────────────────────────────
-//
-// Each task type specifies the minimum quality score a model must have.
-// Below this threshold, the task may produce unreliable results.
-
+// Also export as SystemTask for backward compat with memory subsystem
 export type SystemTask =
-  | 'chat'               // General conversation
-  | 'heartbeat'          // Health checks, cron
-  | 'greeting'           // "Hi", "thanks"
-  | 'compaction'         // Summarize old messages before deletion
-  | 'extraction'         // Extract facts/entities/decisions from text
-  | 'embedding'          // Generate embeddings (dedicated model)
-  | 'tool_heavy'         // Multi-step tool use, coding
-  | 'complex_reasoning'; // Architecture, analysis, deep review
+  | 'chat' | 'heartbeat' | 'greeting' | 'compaction'
+  | 'extraction' | 'embedding' | 'tool_heavy' | 'complex_reasoning';
 
-export const QUALITY_FLOORS: Record<SystemTask, number> = {
-  heartbeat:          20,   // Trivial — anything works
-  greeting:           30,   // Simple response — basic models OK
-  chat:               50,   // General conversation — needs coherent reasoning
-  compaction:         60,   // Must understand context to summarize well
-  extraction:         60,   // Must parse semantics reliably
-  embedding:           0,   // Dedicated model, not quality-scored
-  tool_heavy:         75,   // Needs reliable tool calling + reasoning
-  complex_reasoning:  80,   // Needs frontier-level capability
+// Map system tasks to tiers (the only thing callers need)
+export const TASK_TO_TIER: Record<SystemTask, ModelTier> = {
+  heartbeat: 'cheap',
+  greeting: 'cheap',
+  chat: 'standard',
+  compaction: 'standard',
+  extraction: 'standard',
+  embedding: 'cheap',
+  tool_heavy: 'premium',
+  complex_reasoning: 'premium',
 };
 
-// ─── Model Quality Resolution ───────────────────────────────────────────────────
+// ─── Classification (3 rules) ───────────────────────────────────────────────────
+
+export interface RoutingContext {
+  userMessage: string;
+  historyLength: number;
+  totalContextTokens?: number;
+  isHeartbeat?: boolean;
+  isCron?: boolean;
+  hasToolUse?: boolean;
+  agentTier?: ModelTier;
+  systemTask?: SystemTask;
+}
+
+const COMPLEX_PATTERNS = [
+  /\b(analyze|analyse|compare|evaluate|architect|design|refactor|debug)\b/i,
+  /\b(step[ -]by[ -]step|break down|explain in detail|deep dive)\b/i,
+  /\b(pros and cons|trade-?offs|alternatives|implications)\b/i,
+  /\b(implement|build|create|develop)\b.*\b(system|engine|framework|architecture)\b/i,
+  /\b(review|audit|security|vulnerability|performance)\b/i,
+];
 
 /**
- * Get quality score for a model. Resolution order:
- * 1. Exact match in MODEL_QUALITY
- * 2. Fuzzy substring match
- * 3. Inference from pricing (expensive ≈ better)
+ * Classify into 3 buckets. That's it.
  */
-export function getModelQuality(providerId: string, modelId: string): number {
-  const modelLower = modelId.toLowerCase();
-
-  // 1. Exact match
-  if (MODEL_QUALITY[modelId] !== undefined) return MODEL_QUALITY[modelId];
-
-  // 2. Fuzzy substring match (check both directions)
-  for (const [key, score] of Object.entries(MODEL_QUALITY)) {
-    const keyLower = key.toLowerCase();
-    if (modelLower.includes(keyLower) || keyLower.includes(modelLower)) {
-      return score;
-    }
+export function classifyComplexity(ctx: RoutingContext): { tier: ModelTier; reason: string } {
+  // Agent override
+  if (ctx.agentTier) {
+    return { tier: ctx.agentTier, reason: `Agent configured for ${ctx.agentTier} tier` };
   }
 
-  // 3. Infer from pricing — expensive models tend to be better
-  //    $0/1M = 40 (local free), $0.1 = 55, $1 = 65, $3 = 80, $10 = 88, $15+ = 92
+  // Explicit system task
+  if (ctx.systemTask) {
+    return { tier: TASK_TO_TIER[ctx.systemTask], reason: `System task: ${ctx.systemTask}` };
+  }
+
+  // Rule 1: heartbeat/cron → cheap
+  if (ctx.isHeartbeat || ctx.isCron) {
+    return { tier: 'cheap', reason: 'Heartbeat/cron' };
+  }
+
+  // Rule 2: complex → premium
+  const complexHits = COMPLEX_PATTERNS.filter(p => p.test(ctx.userMessage)).length;
+  if (complexHits >= 2) {
+    return { tier: 'premium', reason: `Complex task (${complexHits} indicators)` };
+  }
+  if ((ctx.totalContextTokens ?? 0) > 80_000) {
+    return { tier: 'premium', reason: 'Large context' };
+  }
+
+  // Rule 3: everything else → standard
+  return { tier: 'standard', reason: 'General' };
+}
+
+// Backward-compat alias
+export function classifyTask(ctx: RoutingContext): { task: SystemTask; reason: string } {
+  if (ctx.systemTask) return { task: ctx.systemTask, reason: `Explicit: ${ctx.systemTask}` };
+  if (ctx.isHeartbeat || ctx.isCron) return { task: 'heartbeat', reason: 'Heartbeat/cron' };
+  const { tier, reason } = classifyComplexity(ctx);
+  const taskMap: Record<ModelTier, SystemTask> = { cheap: 'heartbeat', standard: 'chat', premium: 'complex_reasoning' };
+  return { task: taskMap[tier], reason };
+}
+
+// ─── Quality Scores (0-100) ─────────────────────────────────────────────────────
+
+const MODEL_QUALITY: Record<string, number> = {
+  // Anthropic
+  'claude-opus-4': 95, 'claude-opus-4.6': 95, 'claude-opus-4-5': 95, 'claude-3-opus': 92,
+  'claude-sonnet-4': 88, 'claude-sonnet-4-5': 88, 'claude-sonnet-4.6': 88, 'claude-3-5-sonnet': 87,
+  'claude-haiku-4-5': 68, 'claude-3-5-haiku': 68,
+  // OpenAI
+  'gpt-4o': 90, 'gpt-4-turbo': 88, 'gpt-4': 85,
+  'o1': 93, 'o1-pro': 95, 'o1-mini': 75, 'o3': 95, 'o3-mini': 78, 'o4-mini': 78,
+  'gpt-4o-mini': 72, 'gpt-3.5-turbo': 45,
+  // Google
+  'gemini-2.5-pro': 92, 'gemini-2.5-flash': 75, 'gemini-2.0-flash': 65,
+  'gemini-1.5-pro': 85, 'gemini-1.5-flash': 60,
+  // DeepSeek
+  'deepseek-chat': 70, 'deepseek-reasoner': 85,
+  // Groq / Open
+  'llama-3.3-70b': 78, 'llama-3.1-70b': 75, 'llama-3.1-8b': 45, 'mixtral-8x7b': 55,
+  // Mistral
+  'mistral-large': 82, 'mistral-small': 55, 'codestral': 70,
+  // Local (Ollama)
+  'qwen2.5:72b': 78, 'qwen2.5:32b': 68, 'qwen2.5:14b': 55, 'qwen2.5:7b': 42,
+  'qwen3:8b': 50, 'qwen3:32b': 72,
+  'llama3.1:8b': 45, 'llama3.1:70b': 75, 'llama3.2:3b': 30, 'llama3.3:70b': 78,
+  'deepseek-r1:32b': 72, 'deepseek-r1:14b': 58, 'deepseek-r1:8b': 42,
+  'phi3:14b': 55, 'phi3:3.8b': 35,
+  'gemma2:27b': 65, 'gemma2:9b': 48, 'gemma2:2b': 28,
+  'mistral:7b': 42, 'mixtral:8x7b': 55,
+  'codellama:34b': 60, 'codellama:7b': 38,
+};
+
+/**
+ * Get quality score for a model.
+ * Exact match → fuzzy match → infer from pricing.
+ */
+export function getModelQuality(providerId: string, modelId: string): number {
+  // Exact
+  if (MODEL_QUALITY[modelId] !== undefined) return MODEL_QUALITY[modelId];
+
+  // Fuzzy
+  const lo = modelId.toLowerCase();
+  for (const [key, score] of Object.entries(MODEL_QUALITY)) {
+    const klo = key.toLowerCase();
+    if (lo.includes(klo) || klo.includes(lo)) return score;
+  }
+
+  // Infer from pricing
   const pricing = getModelPricing(providerId, modelId);
-  const avgCost = (pricing.in + pricing.out) / 2;
-  if (avgCost === 0) return 40;  // Free/local — assume mid-low
-  if (avgCost < 0.5) return 55;
-  if (avgCost < 2) return 65;
-  if (avgCost < 5) return 80;
-  if (avgCost < 15) return 88;
+  const avg = (pricing.in + pricing.out) / 2;
+  if (avg === 0) return 40;
+  if (avg < 0.5) return 55;
+  if (avg < 2) return 65;
+  if (avg < 5) return 80;
+  if (avg < 15) return 88;
   return 92;
 }
 
-/**
- * Derive a tier label from quality score (for backward compatibility with UI).
- */
 export function qualityToTier(quality: number): ModelTier {
   if (quality >= 80) return 'premium';
   if (quality >= 55) return 'standard';
   return 'cheap';
 }
 
-// ─── Complexity Classification ──────────────────────────────────────────────────
-
-export interface RoutingContext {
-  userMessage: string;
-  historyLength: number;       // number of messages in session
-  totalContextTokens?: number; // estimated tokens in context
-  isHeartbeat?: boolean;       // heartbeat/cron task
-  isCron?: boolean;            // scheduled task
-  hasToolUse?: boolean;        // previous messages used tools
-  agentTier?: ModelTier;       // agent-level override
-  systemTask?: SystemTask;     // explicit system task type
-}
-
-/**
- * Classify a request into a system task.
- */
-export function classifyTask(ctx: RoutingContext): { task: SystemTask; reason: string } {
-  // Explicit override
-  if (ctx.systemTask) {
-    return { task: ctx.systemTask, reason: `Explicit system task: ${ctx.systemTask}` };
-  }
-
-  // Heartbeat/cron
-  if (ctx.isHeartbeat || ctx.isCron) {
-    return { task: 'heartbeat', reason: 'Heartbeat/cron task' };
-  }
-
-  const msgLen = ctx.userMessage.length;
-  const histLen = ctx.historyLength;
-  const contextTokens = ctx.totalContextTokens ?? 0;
-
-  // Simple greeting
-  const simplePatterns = /^(hi|hello|hey|thanks|ok|yes|no|sure|good|great|fine|oi|obrigado|valeu|ok)\b/i;
-  if (simplePatterns.test(ctx.userMessage.trim()) && msgLen < 50) {
-    return { task: 'greeting', reason: 'Simple greeting/acknowledgment' };
-  }
-
-  // Complex reasoning
-  const complexPatterns = [
-    /\b(analyze|analyse|compare|evaluate|architect|design|refactor|debug)\b/i,
-    /\b(step[ -]by[ -]step|break down|explain in detail|deep dive)\b/i,
-    /\b(pros and cons|trade-?offs|alternatives|implications)\b/i,
-    /\b(implement|build|create|develop)\b.*\b(system|engine|framework|architecture)\b/i,
-    /\b(review|audit|security|vulnerability|performance)\b/i,
-  ];
-  const complexMatchCount = complexPatterns.filter(p => p.test(ctx.userMessage)).length;
-  if (complexMatchCount >= 2) {
-    return { task: 'complex_reasoning', reason: `Complex reasoning (${complexMatchCount} indicators)` };
-  }
-
-  // Tool-heavy
-  if (ctx.hasToolUse && histLen > 10 && msgLen > 500) {
-    return { task: 'tool_heavy', reason: 'Active tool-use session with significant context' };
-  }
-  if (contextTokens > 80_000) {
-    return { task: 'complex_reasoning', reason: `Large context (${contextTokens} tokens)` };
-  }
-  if (msgLen > 2000 && histLen > 20) {
-    return { task: 'complex_reasoning', reason: 'Long message + extensive history' };
-  }
-
-  // Short simple question
-  if (msgLen < 100 && histLen <= 2 && !ctx.hasToolUse) {
-    return { task: 'chat', reason: 'Short message, minimal context' };
-  }
-
-  return { task: 'chat', reason: 'General conversation' };
-}
-
-/**
- * classifyComplexity — backward-compatible wrapper that maps task → tier.
- */
-export function classifyComplexity(ctx: RoutingContext): { tier: ModelTier; reason: string } {
-  // Agent-level override
-  if (ctx.agentTier) {
-    return { tier: ctx.agentTier, reason: `Agent configured for ${ctx.agentTier} tier` };
-  }
-  const { task, reason } = classifyTask(ctx);
-  const floor = QUALITY_FLOORS[task];
-  return { tier: qualityToTier(floor), reason };
-}
-
-// ─── Available Model Inventory ──────────────────────────────────────────────────
+// ─── Model Selection ────────────────────────────────────────────────────────────
 
 interface ScoredModel {
   providerId: string;
   modelId: string;
   quality: number;
-  costPer1M: number;   // average of in+out per 1M tokens
+  costPer1M: number;
 }
 
-/**
- * Build a scored inventory of all available models from user's providers.
- */
 function buildModelInventory(providers: ProviderRepository): ScoredModel[] {
   const models: ScoredModel[] = [];
-
   for (const provider of providers.list()) {
     if (!provider.enabled) continue;
     for (const model of provider.models) {
       const modelId = typeof model === 'string' ? model : model.id;
       const quality = getModelQuality(provider.id, modelId);
       const pricing = getModelPricing(provider.id, modelId);
-      const costPer1M = (pricing.in + pricing.out) / 2;
-      models.push({ providerId: provider.id, modelId, quality, costPer1M });
+      models.push({ providerId: provider.id, modelId, quality, costPer1M: (pricing.in + pricing.out) / 2 });
     }
   }
-
   return models;
 }
-
-// ─── Quality-Aware Model Selection ──────────────────────────────────────────────
 
 export interface QualityRoutingResult {
   providerId: string;
@@ -319,91 +217,70 @@ export interface QualityRoutingResult {
 }
 
 /**
- * Select the cheapest model that meets the quality floor for a task.
- *
- * If no model meets the floor:
- *   → Uses the BEST available model (highest quality)
- *   → Returns a qualityWarning explaining the gap
+ * Pick cheapest model that meets quality floor for a tier.
+ * If none qualifies → best available + warning.
  */
+export function selectModelForTier(
+  tier: ModelTier,
+  providers: ProviderRepository,
+): QualityRoutingResult | null {
+  const floor = QUALITY_FLOORS[tier];
+  const inventory = buildModelInventory(providers);
+  if (inventory.length === 0) return null;
+
+  const qualified = inventory.filter(m => m.quality >= floor);
+
+  if (qualified.length > 0) {
+    qualified.sort((a, b) => a.costPer1M - b.costPer1M || b.quality - a.quality);
+    const pick = qualified[0];
+    return { ...pick, meetsFloor: true };
+  }
+
+  // Nothing meets floor → best available + warning
+  inventory.sort((a, b) => b.quality - a.quality);
+  const best = inventory[0];
+  const warning = `⚠️ Quality warning: "${tier}" tier requires quality ≥${floor}, ` +
+    `but best available "${best.modelId}" scores ${best.quality}. ` +
+    `Consider adding a more capable model.`;
+  logger.warn('[SmartRouter] %s', warning);
+  return { ...best, meetsFloor: false, qualityWarning: warning };
+}
+
+// Backward compat alias
 export function selectModelForTask(
   task: SystemTask,
   providers: ProviderRepository,
 ): QualityRoutingResult | null {
-  const floor = QUALITY_FLOORS[task];
-  const inventory = buildModelInventory(providers);
-
-  if (inventory.length === 0) return null;
-
-  // Filter models that meet the quality floor
-  const qualified = inventory.filter(m => m.quality >= floor);
-
-  if (qualified.length > 0) {
-    // Sort by cost ascending (cheapest first), tie-break by quality descending
-    qualified.sort((a, b) => a.costPer1M - b.costPer1M || b.quality - a.quality);
-    const pick = qualified[0];
-    return {
-      providerId: pick.providerId,
-      modelId: pick.modelId,
-      quality: pick.quality,
-      costPer1M: pick.costPer1M,
-      meetsFloor: true,
-    };
-  }
-
-  // No model meets the floor — use the best available
-  inventory.sort((a, b) => b.quality - a.quality);
-  const best = inventory[0];
-  const warning = `⚠️ Quality warning: Task "${task}" requires quality ≥${floor}, ` +
-    `but best available model "${best.modelId}" scores ${best.quality}. ` +
-    `Results may be unreliable. Consider adding a more capable model.`;
-  logger.warn('[SmartRouter] %s', warning);
-
-  return {
-    providerId: best.providerId,
-    modelId: best.modelId,
-    quality: best.quality,
-    costPer1M: best.costPer1M,
-    meetsFloor: false,
-    qualityWarning: warning,
-  };
+  return selectModelForTier(TASK_TO_TIER[task], providers);
 }
 
-// ─── Tier Config Builder (backward compatible) ──────────────────────────────────
+export function getSystemModel(
+  task: SystemTask,
+  providers: ProviderRepository,
+): QualityRoutingResult | null {
+  return selectModelForTask(task, providers);
+}
 
-/**
- * Build tier configuration from available providers.
- * Uses quality scores instead of hardcoded model lists.
- */
+// ─── Tier Config ────────────────────────────────────────────────────────────────
+
 export function buildTierConfig(providers: ProviderRepository): TierConfig {
   const config: TierConfig = { cheap: null, standard: null, premium: null };
   const inventory = buildModelInventory(providers);
-
-  // Sort by quality ascending
   const sorted = [...inventory].sort((a, b) => a.quality - b.quality);
 
   for (const model of sorted) {
     const tier = qualityToTier(model.quality);
     if (!config[tier]) {
-      // For each tier, pick the cheapest model in that quality band
       config[tier] = { providerId: model.providerId, modelId: model.modelId };
     }
   }
 
-  // If we have premium but not standard, the premium model can fill standard
-  // If we have cheap but not standard, the cheap model can fill standard
-  if (!config.standard) {
-    config.standard = config.premium ?? config.cheap;
-  }
-
+  if (!config.standard) config.standard = config.premium ?? config.cheap;
   return config;
 }
 
-// ─── Route To Model ─────────────────────────────────────────────────────────────
+// ─── Route ──────────────────────────────────────────────────────────────────────
 
-/**
- * Route a request to the best model for the task.
- * Uses quality-aware selection when possible, falls back to tier config.
- */
 export function routeToModel(
   ctx: RoutingContext,
   tierConfig: TierConfig,
@@ -411,42 +288,27 @@ export function routeToModel(
   fallbackModel: string,
   providers?: ProviderRepository,
 ): RoutingDecision {
-  // If providers available, use quality-aware routing
+  const { tier, reason } = classifyComplexity(ctx);
+
+  // Quality-aware path
   if (providers) {
-    const { task, reason } = classifyTask(ctx);
-
-    // Agent-level override bypasses quality routing
-    if (ctx.agentTier) {
-      const tierSlot = tierConfig[ctx.agentTier];
-      if (tierSlot) {
-        return { tier: ctx.agentTier, ...tierSlot, reason: `Agent fixed tier: ${ctx.agentTier}` };
-      }
-    }
-
-    const result = selectModelForTask(task, providers);
+    const result = selectModelForTier(tier, providers);
     if (result) {
       return {
-        tier: qualityToTier(result.quality),
+        tier,
         providerId: result.providerId,
         modelId: result.modelId,
-        reason: `${reason} → quality ${result.quality} (floor ${QUALITY_FLOORS[task]})${result.meetsFloor ? '' : ' [BELOW FLOOR]'}`,
+        reason: `${reason} → q${result.quality}${result.meetsFloor ? '' : ' [BELOW FLOOR]'}`,
         qualityWarning: result.qualityWarning,
       };
     }
   }
 
-  // Fallback: tier-based routing (backward compatible)
-  const { tier, reason } = classifyComplexity(ctx);
-
-  if (ctx.agentTier && tierConfig[ctx.agentTier]) {
-    return { tier: ctx.agentTier, ...tierConfig[ctx.agentTier]!, reason: `Agent fixed tier: ${ctx.agentTier}` };
-  }
-
+  // Tier config fallback
   if (tierConfig[tier]) {
     return { tier, ...tierConfig[tier]!, reason };
   }
 
-  // Fallback chain
   const fallbackOrder: ModelTier[] =
     tier === 'cheap' ? ['standard', 'premium'] :
     tier === 'premium' ? ['standard', 'cheap'] :
@@ -454,33 +316,9 @@ export function routeToModel(
 
   for (const fb of fallbackOrder) {
     if (tierConfig[fb]) {
-      return {
-        tier: fb,
-        ...tierConfig[fb]!,
-        reason: `${reason} (wanted ${tier}, fell back to ${fb})`,
-      };
+      return { tier: fb, ...tierConfig[fb]!, reason: `${reason} (wanted ${tier}, using ${fb})` };
     }
   }
 
-  return {
-    tier,
-    providerId: fallbackProvider,
-    modelId: fallbackModel,
-    reason: `${reason} (no tier models available, using agent default)`,
-  };
-}
-
-// ─── System Task Routing (for internal subsystems) ──────────────────────────────
-
-/**
- * Get the best model for a system task (compaction, extraction, etc.)
- * This is the primary API for internal subsystems.
- *
- * Returns null if no providers are available at all.
- */
-export function getSystemModel(
-  task: SystemTask,
-  providers: ProviderRepository,
-): QualityRoutingResult | null {
-  return selectModelForTask(task, providers);
+  return { tier, providerId: fallbackProvider, modelId: fallbackModel, reason: `${reason} (agent default)` };
 }
