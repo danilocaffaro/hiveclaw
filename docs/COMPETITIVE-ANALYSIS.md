@@ -204,3 +204,83 @@ SuperClaw Pure é ideal pra isso: web UI para configurar, agent com tools (brows
 **Concorrente mais perigoso:** Spacebot (Rust, memory graph, 4-tier routing, circuit breaker) — mas é CLI+Discord, não web. CoWork-OS tem features mas é Electron-only.
 
 **A verdade:** Nenhum concorrente tem tudo. SuperClaw Pure é o que mais se aproxima do "everything in one web app" que o mercado pede.
+
+---
+
+## 8. QA de Segurança (Auditoria baseada no código)
+
+**Auditor:** Alice 🐕 | **Data:** 2026-03-12 | **Escopo:** server + frontend + engine
+
+### 8.1 O Que Está Implementado ✅
+
+| Controle | Implementação | Arquivo | Status |
+|----------|--------------|---------|--------|
+| **Credential encryption** | AES-256-GCM + scrypt (32-byte salt, 16-byte IV) | `engine/credential-manager.ts` | ✅ Sólido |
+| **Rate limiting** | 600 req/min por IP, in-memory Map, X-RateLimit headers | `index.ts:157-185` | ✅ Funcional |
+| **Auth (API key)** | `x-api-key` header → UserRepository lookup; production requer key | `api/auth.ts` | ✅ Funcional |
+| **Role-based access** | 4 roles (viewer < member < admin < owner) com hierarchy check | `api/auth.ts:requireRole()` | ✅ Funcional |
+| **Dangerous cmd blocking** | 6 regex patterns: `rm -rf /`, `mkfs`, `dd`, fork bomb, `shutdown`, `reboot` | `engine/tools/bash.ts:10-17` | ✅ Funcional |
+| **Path traversal guard** | `guardPath()` bloqueia `..` e paths fora do workspace | `api/files.ts:127-145` | ✅ Funcional |
+| **CORS configurable** | `SUPERCLAW_CORS_ORIGINS` env var → regex patterns; dev-only defaults | `index.ts:148-154`, `config/defaults.ts` | ✅ Funcional |
+| **SQL parameterized** | All queries use `?` placeholders; field names hardcoded (not user input) | `db/*.ts` | ✅ Seguro |
+| **Audit trail** | `AuditRepository` logs operations to `audit_log` table | `db/audit.ts`, `api/auth.ts` | ✅ Funcional |
+| **Public chat token-gated** | Guest chat requires valid `token` from `shared_links` table | `api/public-chat.ts:50-80` | ✅ Funcional |
+
+### 8.2 Vulnerabilidades Encontradas 🔴
+
+| # | Severidade | Vulnerabilidade | Detalhe | Mitigação Sugerida |
+|---|-----------|----------------|---------|---------------------|
+| **V1** | 🔴 **Alta** | **Bash tool sem workspace restriction** | `bash.ts` não tem `restrict_to_workspace`; agente pode executar `curl`, `wget`, acessar qualquer diretório do sistema. PicoClaw bloqueia isso nativamente. | Adicionar `cwd` enforcement + whitelist de diretórios |
+| **V2** | 🔴 **Alta** | **Read/Write tools sem workspace guard** | `read.ts` e `write.ts` não chamam `guardPath()` — podem ler/escrever QUALQUER arquivo do sistema (`.ssh/`, `/etc/passwd`, etc.) | Reutilizar `guardPath()` de files.ts nos tools |
+| **V3** | 🔴 **Alta** | **Sem auth em MAIORIA dos endpoints** | `getAuthUser()` existe mas NÃO é chamado como middleware global; apenas `auth.ts` endpoints o usam. `/api/sessions`, `/api/agents`, etc. são abertos. | Hook global de auth ou whitelist de rotas públicas |
+| **V4** | 🟡 **Média** | **Dangerous cmd list incompleta** | Faltam: `curl -o\|pipe`, `wget`, `nc` (netcat), `ssh`, `python -c`, `node -e`, `eval`, `env` dump, `cat /etc/shadow` | Expandir BLOCKED_PATTERNS; considerar allowlist em vez de blocklist |
+| **V5** | 🟡 **Média** | **Sem helmet/security headers** | Não usa `@fastify/helmet`; faltam `X-Frame-Options`, `X-Content-Type-Options`, `CSP`, `Strict-Transport-Security` | `npm i @fastify/helmet` + register |
+| **V6** | 🟡 **Média** | **SSE sem connection limit** | `sse.ts` não limita connections por IP; ataque de exhaustion possível (abrir 1000 SSE connections) | Max 10 SSE connections/IP |
+| **V7** | 🟡 **Média** | **Rate limiter in-memory** | Perde estado em restart; não funciona com múltiplas instâncias | Aceitável para single-server v1, migrar para Redis em v2 |
+| **V8** | 🟢 **Baixa** | **Dev fallback no auth** | Em `NODE_ENV !== 'production'`, retorna primeiro user sem API key | Aceitável — já gated por `NODE_ENV` |
+| **V9** | 🟢 **Baixa** | **Sem XSS sanitization explícita** | ReactMarkdown faz sanitize parcial, mas sem DOMPurify | Adicionar DOMPurify no MarkdownRenderer |
+| **V10** | 🟢 **Baixa** | **File upload sem size limit** | `files.ts` não configura `maxFileSize` no multipart | Configurar limit no Fastify multipart |
+
+### 8.3 Comparação de Segurança vs Concorrentes
+
+| Controle | SuperClaw Pure | PicoClaw | OpenClaw | CoWork-OS |
+|----------|---------------|----------|----------|-----------|
+| Credential encryption | ✅ AES-256-GCM | ❌ JSON plaintext | ❌ JSON plaintext | ✅ Electron keychain |
+| Workspace sandbox | ❌ **NÃO TEM** | ✅ `restrict_to_workspace` | ✅ Tool-level | ❌ |
+| Cmd blocking | ⚠️ 6 patterns | ✅ 8+ patterns | ❌ | ❌ |
+| Auth | ⚠️ Existe mas não global | ❌ `allowFrom` list | ❌ Single user | ✅ Full auth |
+| Rate limiting | ✅ IP-based | ❌ | ❌ | ❌ |
+| Security headers | ❌ Sem helmet | ❌ | N/A (CLI) | ✅ Electron headers |
+| Audit trail | ✅ | ❌ | ❌ | ✅ |
+| SQL injection | ✅ Parameterized | N/A (JSON files) | N/A (JSON files) | ✅ |
+
+### 8.4 Security Score
+
+| Aspecto | Score |
+|---------|-------|
+| Criptografia (vault) | 9/10 |
+| Autenticação | 4/10 (existe mas não enforced) |
+| Autorização | 5/10 (RBAC existe, não aplicado globalmente) |
+| Input validation | 5/10 (path guard OK, bash parcial) |
+| Tool sandboxing | 3/10 (cmd blocking mínimo, sem workspace restriction) |
+| Network security | 4/10 (rate limit OK, sem helmet, sem SSE limit) |
+| **TOTAL** | **5.0/10** |
+
+### 8.5 Prioridade de Fix
+
+| Sprint | Fix | Impacto |
+|--------|-----|---------|
+| **59** | V3: Auth middleware global | 🔴 Crítico — qualquer um pode CRUD agents/sessions |
+| **59** | V1+V2: Workspace restriction nos tools | 🔴 Crítico — agente pode ler `.ssh/id_rsa` |
+| **59** | V5: @fastify/helmet | 🟡 Fácil — 2 linhas de código |
+| **60** | V4: Expandir blocked patterns | 🟡 Lista maior de patterns |
+| **60** | V6: SSE connection limit | 🟡 Counter per IP |
+| **61** | V9: DOMPurify | 🟢 npm install + wrap |
+
+---
+
+## 9. Peer Review — Solicitação ao Adler 🦊
+
+> **Escopo:** Full QA da análise competitiva (seções 1-8), validação técnica das claims, e identificação de blind spots.
+
+**Pedido enviado via squad channel. Resposta abaixo quando recebida.**
