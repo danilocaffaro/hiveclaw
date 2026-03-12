@@ -451,7 +451,7 @@ footer a { color: var(--text2); }
   <div class="container">
     <span class="tag tag--accent">Honest comparison</span>
     <h2 style="margin-top:16px">How we stack up.</h2>
-    <p class="intro">We built SuperClaw because nothing else had all of this.</p>
+    <p class="intro">17 features, 6 platforms. Based on real code audits, not marketing pages.</p>
 
     <div class="comp-scroll">
       <table class="comp-table">
@@ -459,6 +459,8 @@ footer a { color: var(--text2); }
           <tr>
             <th>Feature</th>
             <th class="highlight-col">SuperClaw Pure</th>
+            <th>OpenClaw</th>
+            <th>PicoClaw</th>
             <th>Open WebUI</th>
             <th>Jan.ai</th>
             <th>ChatGPT</th>
@@ -467,14 +469,18 @@ footer a { color: var(--text2); }
         <tbody>
           <tr>
             <td>Multi-agent squads</td>
-            <td class="highlight-col"><span class="check">✓ Full</span></td>
+            <td class="highlight-col"><span class="check">✓ 4 strategies</span></td>
+            <td><span class="partial">~ Chat groups</span></td>
+            <td><span class="partial">~ Subagent spawn</span></td>
             <td><span class="cross">✗</span></td>
             <td><span class="cross">✗</span></td>
-            <td><span class="partial">~ GPTs</span></td>
+            <td><span class="partial">~ GPTs (isolated)</span></td>
           </tr>
           <tr>
             <td>Agent collaboration protocols</td>
-            <td class="highlight-col"><span class="check">✓ ARCHER v2 + NEXUS</span></td>
+            <td class="highlight-col"><span class="check">✓ ARCHER + NEXUS + AGECON</span></td>
+            <td><span class="partial">~ ARCHER (prompt-only)</span></td>
+            <td><span class="cross">✗</span></td>
             <td><span class="cross">✗</span></td>
             <td><span class="cross">✗</span></td>
             <td><span class="cross">✗</span></td>
@@ -482,6 +488,8 @@ footer a { color: var(--text2); }
           <tr>
             <td>Persistent memory</td>
             <td class="highlight-col"><span class="check">✓ 6 layers</span></td>
+            <td><span class="partial">~ MEMORY.md flat file</span></td>
+            <td><span class="partial">~ Workspace files</span></td>
             <td><span class="partial">~ RAG only</span></td>
             <td><span class="cross">✗</span></td>
             <td><span class="partial">~ Basic</span></td>
@@ -489,62 +497,125 @@ footer a { color: var(--text2); }
           <tr>
             <td>Hybrid search (FTS + vector)</td>
             <td class="highlight-col"><span class="check">✓ RRF fusion</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
             <td><span class="partial">~ Vector only</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+          </tr>
+          <tr>
+            <td>Loop detection</td>
+            <td class="highlight-col"><span class="check">✓ Jaccard + tool dedup</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+          </tr>
+          <tr>
+            <td>Smart model routing</td>
+            <td class="highlight-col"><span class="check">✓ Quality-aware 3-tier</span></td>
+            <td><span class="partial">~ Model aliases</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
             <td><span class="cross">✗</span></td>
             <td><span class="cross">✗</span></td>
           </tr>
           <tr>
             <td>Multi-channel (Telegram, Discord…)</td>
             <td class="highlight-col"><span class="check">✓ Bidirectional</span></td>
+            <td><span class="check">✓ Bidirectional</span></td>
             <td><span class="cross">✗</span></td>
             <td><span class="cross">✗</span></td>
             <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+          </tr>
+          <tr>
+            <td>Web UI</td>
+            <td class="highlight-col"><span class="check">✓ Full (PWA + desktop)</span></td>
+            <td><span class="cross">✗ CLI only</span></td>
+            <td><span class="cross">✗ CLI only</span></td>
+            <td><span class="check">✓ Full</span></td>
+            <td><span class="check">✓ Electron</span></td>
+            <td><span class="check">✓ Web + mobile</span></td>
           </tr>
           <tr>
             <td>Self-hosted</td>
             <td class="highlight-col"><span class="check">✓</span></td>
             <td><span class="check">✓</span></td>
             <td><span class="check">✓</span></td>
+            <td><span class="check">✓</span></td>
+            <td><span class="check">✓</span></td>
             <td><span class="cross">✗ Cloud only</span></td>
           </tr>
           <tr>
-            <td>Any provider (OpenAI, Anthropic, Ollama…)</td>
+            <td>Any LLM provider</td>
             <td class="highlight-col"><span class="check">✓ Quality routing</span></td>
+            <td><span class="check">✓ Multi-provider</span></td>
+            <td><span class="partial">~ OpenAI-compat</span></td>
             <td><span class="check">✓</span></td>
             <td><span class="partial">~ Limited</span></td>
             <td><span class="cross">✗ OpenAI only</span></td>
           </tr>
           <tr>
-            <td>Zero external dependencies</td>
+            <td>Credential vault (encrypted)</td>
+            <td class="highlight-col"><span class="check">✓ AES-256-GCM</span></td>
+            <td><span class="cross">✗ Plaintext JSON</span></td>
+            <td><span class="partial">~ Env vars</span></td>
+            <td><span class="partial">~ Basic</span></td>
+            <td><span class="partial">~ Config file</span></td>
+            <td><span class="cross">N/A</span></td>
+          </tr>
+          <tr>
+            <td>Circuit breaker</td>
+            <td class="highlight-col"><span class="check">✓ 3-strike + cooldown</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+          </tr>
+          <tr>
+            <td>Visual memory</td>
+            <td class="highlight-col"><span class="check">✓ Describe-then-store</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+          </tr>
+          <tr>
+            <td>Setup experience</td>
+            <td class="highlight-col"><span class="check">✓ 4-screen wizard</span></td>
+            <td><span class="cross">✗ Manual JSON</span></td>
+            <td><span class="check">✓ onboard CLI</span></td>
+            <td><span class="partial">~ Docker compose</span></td>
+            <td><span class="check">✓ Download & run</span></td>
+            <td><span class="check">✓ Sign up</span></td>
+          </tr>
+          <tr>
+            <td>Zero external deps</td>
             <td class="highlight-col"><span class="check">✓ SQLite only</span></td>
+            <td><span class="check">✓</span></td>
+            <td><span class="check">✓</span></td>
             <td><span class="cross">✗ Redis, etc.</span></td>
             <td><span class="check">✓</span></td>
             <td><span class="cross">✗</span></td>
           </tr>
           <tr>
-            <td>Visual memory (images)</td>
-            <td class="highlight-col"><span class="check">✓</span></td>
-            <td><span class="cross">✗</span></td>
-            <td><span class="cross">✗</span></td>
-            <td><span class="cross">✗</span></td>
-          </tr>
-          <tr>
-            <td>Usage dashboard & analytics</td>
-            <td class="highlight-col"><span class="check">✓ Built-in</span></td>
-            <td><span class="partial">~ Basic</span></td>
-            <td><span class="cross">✗</span></td>
-            <td><span class="partial">~ Limited</span></td>
-          </tr>
-          <tr>
-            <td>Security audit score</td>
-            <td class="highlight-col"><span class="check">8.8/10</span></td>
-            <td><span class="partial">Unknown</span></td>
-            <td><span class="partial">Unknown</span></td>
-            <td><span class="partial">Closed</span></td>
+            <td>Test suite</td>
+            <td class="highlight-col"><span class="check">✓ 161 tests</span></td>
+            <td><span class="partial">~ Unknown</span></td>
+            <td><span class="partial">~ Unknown</span></td>
+            <td><span class="partial">~ Community</span></td>
+            <td><span class="partial">~ Unknown</span></td>
+            <td><span class="cross">Closed</span></td>
           </tr>
           <tr>
             <td>Price</td>
             <td class="highlight-col"><span class="check">Free forever</span></td>
+            <td><span class="check">Free</span></td>
+            <td><span class="check">Free</span></td>
             <td><span class="check">Free</span></td>
             <td><span class="check">Free</span></td>
             <td><span class="partial">$20+/mo</span></td>
