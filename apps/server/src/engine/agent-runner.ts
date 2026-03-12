@@ -156,9 +156,10 @@ export async function* runAgent(
   let systemPrompt = agentConfig.systemPrompt;
   try {
     const memoryRepo = new AgentMemoryRepository(getDb());
-    const memoryContext = memoryRepo.getContextString(agentConfig.id);
+    // Sprint 65: Budget-aware context injection (core blocks + working memory + top-K)
+    const memoryContext = memoryRepo.getContextStringBudgeted(agentConfig.id, sessionId);
     if (memoryContext) {
-      systemPrompt = `${agentConfig.systemPrompt}\n\n## Agent Memory\n${memoryContext}`;
+      systemPrompt = `${agentConfig.systemPrompt}${memoryContext}`;
     }
   } catch {
     // Non-fatal — continue without memory injection

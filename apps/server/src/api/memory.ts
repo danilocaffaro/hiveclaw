@@ -251,5 +251,126 @@ export async function memoryRoutes(app: FastifyInstance) {
       return reply.status(500).send({ error: { code: 'INTERNAL', message: String(err) } });
     }
   });
+
+  // ── Sprint 65: Eidetic Memory Layer APIs ──────────────────────────────────
+
+  // GET /memory/search/fts — Full-text search across ALL message history
+  app.get<{
+    Querystring: { q: string; session_id?: string; limit?: string; snippets?: string };
+  }>('/memory/search/fts', async (req, reply) => {
+    try {
+      const { q, session_id, limit, snippets } = req.query;
+      if (!q) return reply.status(400).send({ error: { code: 'VALIDATION', message: 'q (query) is required' } });
+
+      const maxResults = limit ? parseInt(limit, 10) : 20;
+
+      if (snippets === 'true') {
+        const results = agentMemRepo.archivalSearchWithSnippets(q, { sessionId: session_id, limit: maxResults });
+        return { data: results };
+      }
+
+      const results = agentMemRepo.archivalSearch(q, { sessionId: session_id, limit: maxResults });
+      return { data: results };
+    } catch (err) {
+      app.log.error(err);
+      return reply.status(500).send({ error: { code: 'INTERNAL', message: String(err) } });
+    }
+  });
+
+  // GET /memory/agents/:agentId/core — Get core memory blocks
+  app.get<{
+    Params: { agentId: string };
+  }>('/memory/agents/:agentId/core', async (req, reply) => {
+    try {
+      const blocks = agentMemRepo.getCoreBlocks(req.params.agentId);
+      return { data: blocks };
+    } catch (err) {
+      app.log.error(err);
+      return reply.status(500).send({ error: { code: 'INTERNAL', message: String(err) } });
+    }
+  });
+
+  // PUT /memory/agents/:agentId/core/:blockName — Set core memory block
+  app.put<{
+    Params: { agentId: string; blockName: string };
+    Body: { content: string; max_tokens?: number };
+  }>('/memory/agents/:agentId/core/:blockName', async (req, reply) => {
+    try {
+      const { agentId, blockName } = req.params;
+      const { content, max_tokens } = req.body ?? {};
+      if (content === undefined) {
+        return reply.status(400).send({ error: { code: 'VALIDATION', message: 'content is required' } });
+      }
+      agentMemRepo.setCoreBlock(agentId, blockName, content, max_tokens);
+      return { data: { success: true, block: blockName } };
+    } catch (err) {
+      app.log.error(err);
+      return reply.status(500).send({ error: { code: 'INTERNAL', message: String(err) } });
+    }
+  });
+
+  // GET /memory/agents/:agentId/temporal — Get memories valid at a specific date
+  app.get<{
+    Params: { agentId: string };
+    Querystring: { date: string; type?: MemoryType; limit?: string };
+  }>('/memory/agents/:agentId/temporal', async (req, reply) => {
+    try {
+      const { agentId } = req.params;
+      const { date, type, limit } = req.query;
+      if (!date) return reply.status(400).send({ error: { code: 'VALIDATION', message: 'date is required' } });
+
+      const entries = agentMemRepo.getValidAt(agentId, date, {
+        type,
+        limit: limit ? parseInt(limit, 10) : undefined,
+      });
+      return { data: entries };
+    } catch (err) {
+      app.log.error(err);
+      return reply.status(500).send({ error: { code: 'INTERNAL', message: String(err) } });
+    }
+  });
+
+  // GET /memory/working/:sessionId — Get working memory for a session
+  app.get<{
+    Params: { sessionId: string };
+  }>('/memory/working/:sessionId', async (req, reply) => {
+    try {
+      const wm = agentMemRepo.getWorkingMemory(req.params.sessionId);
+      return { data: wm };
+    } catch (err) {
+      app.log.error(err);
+      return reply.status(500).send({ error: { code: 'INTERNAL', message: String(err) } });
+    }
+  });
+
+  // PUT /memory/working/:sessionId — Save working memory
+  app.put<{
+    Params: { sessionId: string };
+    Body: {
+      agent_id?: string;
+      active_goals?: string[];
+      current_plan?: string;
+      completed_steps?: string[];
+      next_actions?: string[];
+      pending_context?: string;
+      open_questions?: string[];
+    };
+  }>('/memory/working/:sessionId', async (req, reply) => {
+    try {
+      const body = req.body ?? {};
+      agentMemRepo.saveWorkingMemory(req.params.sessionId, body.agent_id ?? '', {
+        activeGoals: body.active_goals,
+        currentPlan: body.current_plan,
+        completedSteps: body.completed_steps,
+        nextActions: body.next_actions,
+        pendingContext: body.pending_context,
+        openQuestions: body.open_questions,
+      });
+      return { data: { success: true } };
+    } catch (err) {
+      app.log.error(err);
+      return reply.status(500).send({ error: { code: 'INTERNAL', message: String(err) } });
+    }
+  });
 }
 

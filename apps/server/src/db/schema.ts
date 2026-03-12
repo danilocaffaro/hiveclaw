@@ -271,7 +271,7 @@ export function initDatabase(): Database.Database {
     CREATE TABLE IF NOT EXISTS agent_memory (
       id TEXT PRIMARY KEY,
       agent_id TEXT NOT NULL,
-      type TEXT NOT NULL CHECK(type IN ('short_term','long_term','entity','preference','fact','decision','goal','event')),
+      type TEXT NOT NULL CHECK(type IN ('short_term','long_term','entity','preference','fact','decision','goal','event','procedure','correction')),
       key TEXT NOT NULL,
       value TEXT NOT NULL,
       relevance REAL DEFAULT 1.0,
@@ -279,6 +279,8 @@ export function initDatabase(): Database.Database {
       tags TEXT DEFAULT '[]',
       access_count INTEGER DEFAULT 0,
       last_accessed DATETIME,
+      event_at DATETIME,
+      valid_until DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       expires_at DATETIME,
       FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
@@ -440,6 +442,151 @@ export function initDatabase(): Database.Database {
   const taskCols = (db.prepare("PRAGMA table_info(tasks)").all() as Array<{ name: string }>).map(c => c.name);
   if (!taskCols.includes('source_message_id')) {
     db.exec("ALTER TABLE tasks ADD COLUMN source_message_id TEXT");
+  }
+
+  // ── Sprint 65: Eidetic Memory Layer ───────────────────────────────────────
+
+  // 1. FTS5 index on messages — full-text search across all chat history
+  try {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+        content,
+        session_id UNINDEXED,
+        agent_id UNINDEXED,
+        role UNINDEXED,
+        created_at UNINDEXED,
+        tokenize='porter unicode61 remove_diacritics 2',
+        content_rowid='rowid'
+      )
+    `);
+  } catch {
+    // FTS5 may already exist or tokenizer unavailable — non-fatal
+  }
+
+  // 2. Auto-sync triggers: new messages → FTS5 index
+  try {
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
+        INSERT INTO messages_fts(rowid, content, session_id, agent_id, role, created_at)
+        VALUES (NEW.rowid, NEW.content, NEW.session_id, NEW.agent_id, NEW.role, NEW.created_at);
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
+        INSERT INTO messages_fts(messages_fts, rowid, content, session_id, agent_id, role, created_at)
+        VALUES ('delete', OLD.rowid, OLD.content, OLD.session_id, OLD.agent_id, OLD.role, OLD.created_at);
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE ON messages BEGIN
+        INSERT INTO messages_fts(messages_fts, rowid, content, session_id, agent_id, role, created_at)
+        VALUES ('delete', OLD.rowid, OLD.content, OLD.session_id, OLD.agent_id, OLD.role, OLD.created_at);
+        INSERT INTO messages_fts(rowid, content, session_id, agent_id, role, created_at)
+        VALUES (NEW.rowid, NEW.content, NEW.session_id, NEW.agent_id, NEW.role, NEW.created_at);
+      END;
+    `);
+  } catch {
+    // Triggers may already exist — non-fatal
+  }
+
+  // 3. Working Memory — task continuation state, saved before compaction
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS working_memory (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      agent_id TEXT NOT NULL DEFAULT '',
+      active_goals TEXT DEFAULT '[]',
+      current_plan TEXT DEFAULT '',
+      completed_steps TEXT DEFAULT '[]',
+      next_actions TEXT DEFAULT '[]',
+      pending_context TEXT DEFAULT '',
+      open_questions TEXT DEFAULT '[]',
+      tool_state TEXT DEFAULT '{}',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  // Unique constraint on session
+  try {
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_working_memory_session ON working_memory(session_id)");
+  } catch { /* may exist */ }
+
+  // 4. Core Memory Blocks — always-in-prompt, agent-editable structured memory
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS core_memory_blocks (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      block_name TEXT NOT NULL,
+      content TEXT NOT NULL DEFAULT '',
+      max_tokens INTEGER DEFAULT 500,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE,
+      UNIQUE(agent_id, block_name)
+    )
+  `);
+  try {
+    db.exec("CREATE INDEX IF NOT EXISTS idx_core_memory_agent ON core_memory_blocks(agent_id)");
+  } catch { /* may exist */ }
+
+  // 5. Episodes — temporal log of events (Zep/Graphiti-inspired)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS episodes (
+      id TEXT PRIMARY KEY,
+      session_id TEXT,
+      agent_id TEXT NOT NULL DEFAULT '',
+      type TEXT NOT NULL CHECK(type IN ('message','compaction','extraction','decision','event')),
+      content TEXT NOT NULL,
+      event_at DATETIME NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      metadata TEXT DEFAULT '{}'
+    )
+  `);
+  try {
+    db.exec("CREATE INDEX IF NOT EXISTS idx_episodes_session ON episodes(session_id)");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_episodes_agent ON episodes(agent_id)");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_episodes_event_at ON episodes(event_at)");
+  } catch { /* may exist */ }
+
+  // 6. Compaction Log — audit trail of compaction events
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS compaction_log (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      extracted_facts INTEGER DEFAULT 0,
+      messages_compacted INTEGER DEFAULT 0,
+      tokens_before INTEGER DEFAULT 0,
+      tokens_after INTEGER DEFAULT 0,
+      working_memory_saved INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  try {
+    db.exec("CREATE INDEX IF NOT EXISTS idx_compaction_log_session ON compaction_log(session_id)");
+  } catch { /* may exist */ }
+
+  // 7. Migrate agent_memory: add event_at, valid_until columns if missing (existing DBs)
+  const amCols = (db.prepare("PRAGMA table_info(agent_memory)").all() as Array<{ name: string }>).map(c => c.name);
+  if (!amCols.includes('event_at')) {
+    try { db.exec("ALTER TABLE agent_memory ADD COLUMN event_at DATETIME"); } catch { /* */ }
+  }
+  if (!amCols.includes('valid_until')) {
+    try { db.exec("ALTER TABLE agent_memory ADD COLUMN valid_until DATETIME"); } catch { /* */ }
+  }
+
+  // 8. Migrate: backfill FTS5 from existing messages (one-time)
+  try {
+    const ftsCount = (db.prepare("SELECT COUNT(*) as cnt FROM messages_fts").get() as { cnt: number }).cnt;
+    if (ftsCount === 0) {
+      const msgCount = (db.prepare("SELECT COUNT(*) as cnt FROM messages").get() as { cnt: number }).cnt;
+      if (msgCount > 0) {
+        db.exec(`
+          INSERT INTO messages_fts(rowid, content, session_id, agent_id, role, created_at)
+          SELECT rowid, content, session_id, agent_id, role, created_at FROM messages
+        `);
+      }
+    }
+  } catch {
+    // Non-fatal — FTS backfill can be retried
   }
 
   // No default agent seed — the setup wizard creates the first agent

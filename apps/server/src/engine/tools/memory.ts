@@ -1,120 +1,192 @@
-import Database from 'better-sqlite3';
-import { join } from 'path';
-import { homedir } from 'os';
-import { mkdirSync } from 'fs';
-import { randomUUID } from 'crypto';
-import type { Tool, ToolInput, ToolOutput, ToolDefinition } from './types.js';
+// ============================================================
+// Memory Tool — unified agent memory (Sprint 65: Eidetic Memory)
+//
+// Replaces the legacy MemoryTool that used a separate `memories` table.
+// Now delegates to AgentMemoryRepository (agent_memory table) +
+// FTS5 archival search (messages_fts) for Total Recall.
+// ============================================================
 
-const DB_DIR = join(homedir(), '.superclaw');
-const DB_PATH = join(DB_DIR, 'superclaw.db');
-
-function getDb(): Database.Database {
-  mkdirSync(DB_DIR, { recursive: true });
-  const db = new Database(DB_PATH);
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS memories (
-      id         TEXT PRIMARY KEY,
-      type       TEXT NOT NULL DEFAULT 'general',
-      content    TEXT NOT NULL,
-      tags       TEXT NOT NULL DEFAULT '[]',
-      created_at TEXT NOT NULL
-    )
-  `);
-  return db;
-}
+import { AgentMemoryRepository } from '../../db/agent-memory.js';
+import type { MemoryType } from '../../db/agent-memory.js';
+import type { Tool, ToolInput, ToolOutput, ToolDefinition, ToolContext } from './types.js';
+import { getDb } from '../../db/schema.js';
 
 export class MemoryTool implements Tool {
   readonly definition: ToolDefinition = {
     name: 'memory',
-    description: 'Store and retrieve persistent memories. Supports create, list, search (by content), and delete.',
+    description: `Store, search, and manage persistent agent memories. Also search full chat history.
+Actions:
+- create: Store a new memory (fact, decision, goal, preference, entity, event, procedure, correction)
+- search: Search agent memories by query (LIKE match on key/value)
+- archival_search: Full-text search across ALL past messages (FTS5 BM25)
+- list: List memories, optionally filtered by type
+- delete: Delete a memory by ID
+- core_read: Read a core memory block (always in prompt)
+- core_replace: Surgical edit of a core memory block
+- core_append: Append text to a core memory block
+
+MANDATORY: Before saying "I don't know" or "I don't remember", you MUST:
+1. search(query) — check agent memories
+2. archival_search(query) — check full chat history
+Only after both return empty may you say you lack the information.`,
     parameters: {
       type: 'object',
       properties: {
         action: {
           type: 'string',
-          enum: ['list', 'create', 'search', 'delete'],
+          enum: ['create', 'search', 'archival_search', 'list', 'delete', 'core_read', 'core_replace', 'core_append'],
           description: 'Action to perform',
         },
-        id: { type: 'string', description: 'Memory ID (required for delete)' },
+        // create
+        key: { type: 'string', description: 'Memory key/label (required for create)' },
+        value: { type: 'string', description: 'Memory content (required for create)' },
         type: {
           type: 'string',
-          description: 'Memory type/category, e.g. "fact", "preference", "note" (default: "general")',
+          enum: ['fact', 'decision', 'goal', 'preference', 'entity', 'event', 'procedure', 'correction', 'short_term', 'long_term'],
+          description: 'Memory type (default: fact)',
         },
-        content: { type: 'string', description: 'Memory content (required for create/search)' },
         tags: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Tags for the memory (optional, for create)',
+          description: 'Tags for the memory (optional)',
         },
-        query: {
-          type: 'string',
-          description: 'Search query — performs LIKE match on content (required for search)',
-        },
-        filter_type: {
-          type: 'string',
-          description: 'Filter by type when listing',
-        },
+        // search / archival_search
+        query: { type: 'string', description: 'Search query (required for search/archival_search)' },
+        session_id: { type: 'string', description: 'Scope archival_search to a session (optional)' },
+        // delete
+        id: { type: 'string', description: 'Memory ID (required for delete)' },
+        // list
+        filter_type: { type: 'string', description: 'Filter by type when listing' },
+        limit: { type: 'number', description: 'Max results (default: 20)' },
+        // core_*
+        block: { type: 'string', description: 'Core memory block name (persona, human, project, scratchpad)' },
+        old_text: { type: 'string', description: 'Text to replace (for core_replace)' },
+        new_text: { type: 'string', description: 'Replacement text (for core_replace)' },
+        text: { type: 'string', description: 'Text to append (for core_append)' },
       },
       required: ['action'],
     },
   };
 
-  async execute(input: ToolInput): Promise<ToolOutput> {
+  async execute(input: ToolInput, context?: ToolContext): Promise<ToolOutput> {
     const action = input['action'] as string;
+    const agentId = context?.agentId ?? 'default';
 
     try {
-      const db = getDb();
+      const db = context?.db ?? getDb();
+      const repo = new AgentMemoryRepository(db);
 
       switch (action) {
-        case 'list': {
-          const filterType = input['filter_type'] as string | undefined;
-          const rows = filterType
-            ? db.prepare('SELECT * FROM memories WHERE type = ? ORDER BY created_at DESC').all(filterType)
-            : db.prepare('SELECT * FROM memories ORDER BY created_at DESC').all();
-          // Parse tags back to array
-          const parsed = (rows as Array<Record<string, unknown>>).map(r => ({
-            ...r,
-            tags: JSON.parse(r['tags'] as string),
-          }));
-          return { success: true, result: parsed };
-        }
-
         case 'create': {
-          const content = input['content'] as string;
-          if (!content) return { success: false, error: 'content is required for create' };
-          const id = randomUUID();
-          const now = new Date().toISOString();
-          const tags = JSON.stringify(Array.isArray(input['tags']) ? input['tags'] : []);
-          const type = (input['type'] as string | undefined) ?? 'general';
-          db.prepare('INSERT INTO memories (id, type, content, tags, created_at) VALUES (?, ?, ?, ?, ?)').run(
-            id, type, content, tags, now,
+          const key = input['key'] as string;
+          const value = input['value'] as string;
+          if (!key || !value) return { success: false, error: 'key and value are required for create' };
+
+          const type = (input['type'] as MemoryType | undefined) ?? 'fact';
+          const tags = Array.isArray(input['tags']) ? input['tags'] as string[] : undefined;
+
+          const { memory, contradicted } = repo.setWithContradictionCheck(
+            agentId, key, value, type, { source: 'agent_tool', tags },
           );
-          return { success: true, result: { id, message: `Memory stored (type: ${type})` } };
+
+          const result: Record<string, unknown> = {
+            id: memory.id,
+            message: `Memory stored: [${type}] ${key}`,
+          };
+          if (contradicted.length > 0) {
+            result.contradicted = contradicted.map(c => `[${c.type}] ${c.key}: ${c.value}`);
+            result.message = `Memory stored (${contradicted.length} previous value(s) invalidated)`;
+          }
+          return { success: true, result };
         }
 
         case 'search': {
-          const query = (input['query'] as string | undefined) ?? (input['content'] as string | undefined);
-          if (!query) return { success: false, error: 'query or content is required for search' };
-          const rows = db
-            .prepare('SELECT * FROM memories WHERE content LIKE ? ORDER BY created_at DESC')
-            .all(`%${query}%`);
-          const parsed = (rows as Array<Record<string, unknown>>).map(r => ({
-            ...r,
-            tags: JSON.parse(r['tags'] as string),
-          }));
-          return { success: true, result: parsed };
+          const query = input['query'] as string;
+          if (!query) return { success: false, error: 'query is required for search' };
+
+          const limit = (input['limit'] as number) ?? 20;
+          const results = repo.search(query, limit);
+
+          if (results.length === 0) {
+            return { success: true, result: 'No memories found matching query.' };
+          }
+
+          const formatted = results.map(m =>
+            `[${m.type}] ${m.key}: ${m.value}${m.valid_until ? ' (EXPIRED)' : ''}`
+          );
+          return { success: true, result: formatted };
+        }
+
+        case 'archival_search': {
+          const query = input['query'] as string;
+          if (!query) return { success: false, error: 'query is required for archival_search' };
+
+          const limit = (input['limit'] as number) ?? 10;
+          const sessionId = input['session_id'] as string | undefined;
+          const results = repo.archivalSearchWithSnippets(query, { sessionId, limit });
+
+          if (results.length === 0) {
+            return { success: true, result: 'No messages found in chat history matching query.' };
+          }
+
+          const formatted = results.map(r =>
+            `[${r.created_at}] ${r.snippet}`
+          );
+          return { success: true, result: formatted };
+        }
+
+        case 'list': {
+          const filterType = input['filter_type'] as MemoryType | undefined;
+          const limit = (input['limit'] as number) ?? 20;
+          const results = repo.list(agentId, { type: filterType, limit });
+
+          if (results.length === 0) {
+            return { success: true, result: 'No memories stored.' };
+          }
+
+          const formatted = results.map(m =>
+            `[${m.type}] ${m.key}: ${m.value}${m.valid_until ? ' (EXPIRED)' : ''}`
+          );
+          return { success: true, result: formatted };
         }
 
         case 'delete': {
           const id = input['id'] as string;
           if (!id) return { success: false, error: 'id is required for delete' };
-          const result = db.prepare('DELETE FROM memories WHERE id = ?').run(id);
-          if (result.changes === 0) return { success: false, error: `Memory not found: ${id}` };
+          const deleted = repo.delete(id);
+          if (!deleted) return { success: false, error: `Memory not found: ${id}` };
           return { success: true, result: `Memory deleted: ${id}` };
         }
 
+        case 'core_read': {
+          const block = input['block'] as string;
+          if (!block) return { success: false, error: 'block name is required' };
+          const content = repo.getCoreBlock(agentId, block);
+          return { success: true, result: content || '(empty)' };
+        }
+
+        case 'core_replace': {
+          const block = input['block'] as string;
+          const oldText = input['old_text'] as string;
+          const newText = input['new_text'] as string;
+          if (!block || !oldText || newText === undefined) {
+            return { success: false, error: 'block, old_text, and new_text are required' };
+          }
+          const replaced = repo.coreBlockReplace(agentId, block, oldText, newText);
+          if (!replaced) return { success: false, error: `Text "${oldText}" not found in block "${block}"` };
+          return { success: true, result: `Core memory block "${block}" updated.` };
+        }
+
+        case 'core_append': {
+          const block = input['block'] as string;
+          const text = input['text'] as string;
+          if (!block || !text) return { success: false, error: 'block and text are required' };
+          repo.coreBlockAppend(agentId, block, text);
+          return { success: true, result: `Appended to core memory block "${block}".` };
+        }
+
         default:
-          return { success: false, error: `Unknown action: ${action}. Use list, create, search, or delete.` };
+          return { success: false, error: `Unknown action: ${action}. Use create, search, archival_search, list, delete, core_read, core_replace, core_append.` };
       }
     } catch (err: unknown) {
       return { success: false, error: (err as Error).message };
