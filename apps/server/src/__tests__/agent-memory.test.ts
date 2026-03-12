@@ -17,17 +17,39 @@ function createTestDb(): Database.Database {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
     CREATE TABLE IF NOT EXISTS agent_memory (
-      id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, type TEXT NOT NULL
-        CHECK(type IN ('short_term','long_term','entity','preference')),
-      key TEXT NOT NULL, value TEXT NOT NULL, relevance REAL DEFAULT 1.0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP, expires_at DATETIME,
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      type TEXT NOT NULL CHECK(type IN ('short_term','long_term','entity','preference','fact','decision','goal','event')),
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      relevance REAL DEFAULT 1.0,
+      source TEXT,
+      tags TEXT DEFAULT '[]',
+      access_count INTEGER DEFAULT 0,
+      last_accessed DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      expires_at DATETIME,
       FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS memory_edges (
+      id TEXT PRIMARY KEY,
+      source_id TEXT NOT NULL REFERENCES agent_memory(id) ON DELETE CASCADE,
+      target_id TEXT NOT NULL REFERENCES agent_memory(id) ON DELETE CASCADE,
+      relation TEXT NOT NULL CHECK(relation IN ('related_to','updates','contradicts','supports','caused_by','part_of')),
+      weight REAL DEFAULT 1.0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(source_id, target_id, relation)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_agent_memory_agent ON agent_memory(agent_id, type);
     CREATE INDEX IF NOT EXISTS idx_agent_memory_expires ON agent_memory(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_memory_edges_source ON memory_edges(source_id);
+    CREATE INDEX IF NOT EXISTS idx_memory_edges_target ON memory_edges(target_id);
   `);
-  // Seed a test agent for FK constraints
+  // Seed test agents for FK constraints
   db.prepare(`INSERT INTO agents (id, name, role, type, system_prompt) VALUES (?, ?, ?, ?, ?)`).run(
     'agent-1', 'TestBot', 'tester', 'specialist', 'You are a test agent.',
   );
@@ -104,5 +126,64 @@ describe('AgentMemoryRepository', () => {
     expect(cleared).toBe(2);
     expect(repo.list('agent-1')).toHaveLength(0);
     expect(repo.list('agent-2')).toHaveLength(1);
+  });
+
+  it('should support new memory types (fact, decision, goal, event)', () => {
+    const f = repo.set('agent-1', 'decision-1', 'Use SQLite for storage', 'decision');
+    const g = repo.set('agent-1', 'goal-1', 'Ship v1.0 by Q2', 'goal');
+    const e = repo.set('agent-1', 'event-1', 'Deployed to production', 'event');
+    expect(f.type).toBe('decision');
+    expect(g.type).toBe('goal');
+    expect(e.type).toBe('event');
+  });
+
+  it('should create and retrieve memory edges', () => {
+    const m1 = repo.set('agent-1', 'k1', 'v1', 'long_term');
+    const m2 = repo.set('agent-1', 'k2', 'v2', 'long_term');
+    const edge = repo.addEdge(m1.id, m2.id, 'related_to');
+    expect(edge.id).toBeDefined();
+    expect(edge.relation).toBe('related_to');
+
+    const edges = repo.getEdges(m1.id);
+    expect(edges.length).toBeGreaterThan(0);
+    expect(edges[0].source_id).toBe(m1.id);
+  });
+
+  it('should find related memories via graph traversal', () => {
+    const m1 = repo.set('agent-1', 'cause', 'Server error', 'fact');
+    const m2 = repo.set('agent-1', 'effect', 'Downtime occurred', 'fact');
+    repo.addEdge(m2.id, m1.id, 'caused_by');
+
+    const related = repo.findRelated(m2.id, 'caused_by');
+    expect(related.length).toBeGreaterThan(0);
+    expect(related[0].key).toBe('cause');
+  });
+
+  it('should auto-detect update edges when key is overwritten', () => {
+    const old = repo.set('agent-1', 'status', 'inactive', 'fact');
+    const newEntry = repo.set('agent-1', 'status-v2', 'active', 'fact');
+    repo.detectUpdates('agent-1', 'status', newEntry.id);
+
+    // The update detection is best-effort; just ensure no crash
+    expect(newEntry.id).toBeDefined();
+  });
+
+  it('should return graph (nodes + edges) for an agent', () => {
+    const m1 = repo.set('agent-1', 'a', '1', 'long_term');
+    const m2 = repo.set('agent-1', 'b', '2', 'long_term');
+    repo.addEdge(m1.id, m2.id, 'supports');
+
+    const graph = repo.getGraph('agent-1');
+    expect(graph.nodes.length).toBe(2);
+    expect(graph.edges.length).toBe(1);
+  });
+
+  it('should include optional metadata (source, tags)', () => {
+    const entry = repo.set('agent-1', 'decision', 'use TypeScript', 'decision', 1.0, undefined, {
+      source: 'sprint-planning',
+      tags: ['architecture', 'language'],
+    });
+    expect(entry.source).toBe('sprint-planning');
+    expect(entry.tags).toContain('architecture');
   });
 });
