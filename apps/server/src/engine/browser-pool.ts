@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 // ============================================================
 // Browser Pool — Pluggable browser session manager
 // Supports: fetch (fallback) + Playwright (full automation)

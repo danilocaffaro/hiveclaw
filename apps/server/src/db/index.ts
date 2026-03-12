@@ -25,5 +25,3 @@ export { SessionUsageRepository } from './session-usage.js';
 export type { UsageRecord, UsageSummary } from './session-usage.js';
 export { WorkflowRepository } from './workflow-repository.js';
 export type { WorkflowTemplate, WorkflowStep, WorkflowRun, WorkflowRunStep } from './workflow-repository.js';
-export { GatewayRepository } from './gateways.js';
-export type { Gateway, CreateGatewayInput, UpdateGatewayInput } from './gateways.js';

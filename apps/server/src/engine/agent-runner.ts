@@ -326,24 +326,26 @@ export async function* runAgent(
 
         } else if (chunk.type === 'tool_call') {
           // ── 7b. Tool call detected ───────────────────────────────────────
+          const toolInput = ((chunk as unknown as { input?: Record<string, unknown> }).input ?? {}) as Record<string, unknown>;
           pendingToolCalls.push({
-            id: chunk.id,
-            name: chunk.name,
-            input: chunk.input,
+            id: chunk.id ?? '',
+            name: chunk.name ?? '',
+            input: toolInput,
           });
           yield {
             event: 'tool.start',
-            data: { id: chunk.id, name: chunk.name, input: chunk.input },
+            data: { id: chunk.id, name: chunk.name, input: toolInput },
           };
 
         } else if (chunk.type === 'usage') {
-          iterationTokensIn += chunk.inputTokens;
-          iterationTokensOut += chunk.outputTokens;
+          iterationTokensIn += chunk.inputTokens ?? 0;
+          iterationTokensOut += chunk.outputTokens ?? 0;
 
         } else if (chunk.type === 'finish') {
-          finishReason = chunk.reason;
+          const reason = (chunk as unknown as { reason?: string; finishReason?: string }).reason ?? (chunk as unknown as { finishReason?: string }).finishReason ?? 'stop';
+          finishReason = reason;
 
-          if (chunk.reason === 'error') {
+          if (reason === 'error') {
             yield {
               event: 'error',
               data: { message: 'Provider returned an error', code: 'PROVIDER_ERROR' },

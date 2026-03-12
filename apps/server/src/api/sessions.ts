@@ -13,9 +13,9 @@ import { runAgent, serializeSSE } from '../engine/agent-runner.js';
 import type { AgentConfig, SSEEvent } from '../engine/agent-runner.js';
 import { runSquad } from '../engine/squad-runner.js';
 import type { SquadConfig } from '../engine/squad-runner.js';
-import { getProviderRouter } from '../engine/providers/index.js';
 import { AgentRepository } from '../db/agents.js';
 import { SquadRepository } from '../db/squads.js';
+import { ProviderRepository } from '../db/providers.js';
 import { initDatabase } from '../db/index.js';
 import { SessionUsageRepository } from '../db/session-usage.js';
 import { handoffSession } from '../engine/session-handoff.js';
@@ -32,9 +32,9 @@ sessionEvents.setMaxListeners(200);
 // Provider is resolved dynamically based on what's actually available
 
 function getDefaultProviderId(): string {
-  const router = getProviderRouter();
-  const available = router.list();
-  // Priority: anthropic > openai > github-copilot > first available
+  const db = initDatabase();
+  const repo = new ProviderRepository(db);
+  const available = repo.list().filter(p => p.status === 'connected');
   for (const preferred of ['anthropic', 'openai', 'github-copilot']) {
     if (available.some(p => p.id === preferred)) return preferred;
   }
@@ -42,13 +42,12 @@ function getDefaultProviderId(): string {
 }
 
 function getDefaultModelId(providerId: string): string {
-  const router = getProviderRouter();
-  const provider = router.get(providerId);
+  const db = initDatabase();
+  const repo = new ProviderRepository(db);
+  const provider = repo.get(providerId);
   if (!provider) return 'claude-opus-4-20250918';
-  // Pick the best model from the provider
-  const models = provider.models;
-  // Prefer opus/large models
-  const preferred = models.find(m => m.includes('opus')) ?? models.find(m => m.includes('gpt-4o') || m.includes('gpt-5')) ?? models[0];
+  const models = provider.models.map((m: { id: string }) => m.id);
+  const preferred = models.find((m: string) => m.includes('opus')) ?? models.find((m: string) => m.includes('gpt-4o')) ?? models[0];
   return preferred ?? 'claude-opus-4-20250918';
 }
 
@@ -300,10 +299,10 @@ export function registerSessionRoutes(app: FastifyInstance) {
     if (sessionRow.squad_id) {
       const squadRow = squadRepo.getById(sessionRow.squad_id);
       if (squadRow) {
-        const squadAgents = (squadRow.agentIds ?? [])
-          .map((aid) => agentRepo.getById(aid))
+        const squadAgents = ((squadRow.agentIds ?? []) as string[])
+          .map((aid: string) => agentRepo.getById(aid))
           .filter((a): a is Agent => a !== null)
-          .map((a) => agentRowToConfig(a));
+          .map((a: Agent) => agentRowToConfig(a));
 
         // Map shared Squad routing strategies to squad-runner strategies.
         // 'auto' → 'specialist', 'manual' → 'sequential', unknown → 'round-robin'

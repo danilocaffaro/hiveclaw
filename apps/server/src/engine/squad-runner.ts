@@ -252,11 +252,11 @@ async function* runSpecialist(
   let pickedId = '';
   try {
     const routingMessages: LLMMessage[] = [{ role: 'user', content: routingPrompt }];
-    for await (const chunk of provider.chat(routingMessages, {
+    for await (const chunk of router.chatWithFallback(routingMessages, {
       model: coordinator.modelId,
       maxTokens: 50,
       temperature: 0,
-    })) {
+    }, [coordinator.providerId])) {
       if (chunk.type === 'text') pickedId += chunk.text;
     }
     // Record coordinator's turn
@@ -383,11 +383,11 @@ async function* runDebate(
       ];
 
       try {
-        for await (const chunk of provider.chat(debateMessages, {
+        for await (const chunk of router.chatWithFallback(debateMessages, {
           model: agent.modelId,
           maxTokens: 1000,
           temperature: 0.8,
-        })) {
+        }, [agent.providerId])) {
           if (chunk.type === 'text') {
             response += chunk.text;
             yield { event: 'message.delta', data: { text: chunk.text, agentId: agent.id } };
@@ -491,11 +491,11 @@ async function* runDebate(
       ];
 
       try {
-        for await (const chunk of resolverProvider.chat(resolutionMessages, {
+        for await (const chunk of router.chatWithFallback(resolutionMessages, {
           model: resolverAgent.modelId,
           maxTokens: 500,
           temperature: 0.5,
-        })) {
+        }, [resolverAgent.providerId])) {
           if (chunk.type === 'text') {
             yield { event: 'message.delta', data: { text: chunk.text } };
           }

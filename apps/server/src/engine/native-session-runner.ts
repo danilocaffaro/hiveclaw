@@ -53,7 +53,7 @@ export function resolveAgent(
   agents: AgentRepository,
   providers: ProviderRepository,
 ): ResolvedAgent | null {
-  const agent = agents.findById(agentId);
+  const agent = agents.getById(agentId);
   if (!agent) return null;
 
   // Find provider — try agent's preference, then first available
@@ -74,7 +74,8 @@ export function resolveAgent(
   const baseUrl = provider.baseUrl || PROVIDER_BASE_URLS[provider.id] || 'https://api.openai.com';
 
   // Determine model
-  const model = agent.modelPreference || provider.models[0] || 'gpt-4o';
+  const firstModel = provider.models[0];
+  const model = agent.modelPreference || (typeof firstModel === 'string' ? firstModel : firstModel?.id) || 'gpt-4o';
 
   return {
     id: agent.id,

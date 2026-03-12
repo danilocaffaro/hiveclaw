@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { ProviderRepository, ProviderConfig } from '../db/providers.js';
 import { AgentRepository } from '../db/agents.js';
+import { ProviderRepository as ProvRepo } from '../db/providers.js';
 import { initDatabase } from '../db/index.js';
-import { getProviderRouter } from '../engine/providers/index.js';
-import type { StreamChunk } from '../engine/providers/types.js';
+import { streamChat } from '../engine/chat-engine.js';
 
 // ============================================================
 // Setup API — First-run wizard endpoints
@@ -260,37 +260,37 @@ export function registerSetupRoutes(
       });
     }
 
-    // Use the provider router to get a simple non-streaming response
-    const router = getProviderRouter();
     const providerId = agent.providerPreference || 'anthropic';
-    const provider = router.get(providerId);
-    if (!provider) {
+    const db2 = initDatabase();
+    const provRepo = new ProvRepo(db2);
+    const provConfig = provRepo.getUnmasked(providerId);
+    if (!provConfig?.rawApiKey) {
       return reply.status(400).send({
-        error: { code: 'PROVIDER_ERROR', message: `Provider '${providerId}' not available. Restart the server after configuring API keys for changes to take effect.` },
+        error: { code: 'PROVIDER_ERROR', message: `Provider '${providerId}' not configured or has no API key.` },
       });
     }
 
     try {
       const chunks: string[] = [];
-      const gen = provider.chat(
-        [{ role: 'user', content: message }],
-        {
-          model: agent.modelPreference || undefined,
-          systemPrompt: agent.systemPrompt,
-          temperature: agent.temperature ?? 0.7,
-          maxTokens: 256,
-        },
-      );
+      const firstModel = provConfig.models[0];
+      const modelId = agent.modelPreference || (typeof firstModel === 'object' ? firstModel.id : firstModel) || 'gpt-4o';
+      const providerType = (provConfig.type as string) === 'anthropic' ? 'anthropic' : 'openai';
+      const baseUrl = provConfig.baseUrl ?? (providerType === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com');
 
-      for await (const chunk of gen) {
-        if (chunk.type === 'text') {
-          chunks.push(chunk.text);
-        }
-        if (chunk.type === 'finish' && chunk.reason === 'error') {
-          return reply.status(500).send({
-            error: { code: 'LLM_ERROR', message: 'LLM returned an error' },
-          });
-        }
+      const msgs: import('../engine/chat-engine.js').ChatMessage[] = [];
+      if (agent.systemPrompt) msgs.push({ role: 'system', content: agent.systemPrompt });
+      msgs.push({ role: 'user', content: message });
+
+      for await (const event of streamChat(msgs, {
+        model: modelId,
+        baseUrl,
+        apiKey: provConfig.rawApiKey,
+        providerType: providerType as 'openai' | 'anthropic',
+        temperature: agent.temperature ?? 0.7,
+        maxTokens: 256,
+      })) {
+        if (event.type === 'delta' && event.content) chunks.push(event.content);
+        if (event.type === 'error') throw new Error(event.error);
       }
 
       return {

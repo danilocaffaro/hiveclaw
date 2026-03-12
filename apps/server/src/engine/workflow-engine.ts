@@ -102,10 +102,10 @@ export class WorkflowEngine {
           ];
 
           let output = '';
-          for await (const chunk of provider.chat(messages, {
-            model: provider.models[0],
+          for await (const chunk of router.chatWithFallback(messages, {
+            model: typeof provider.models[0] === 'string' ? provider.models[0] : provider.models[0],
             maxTokens: 4096,
-          })) {
+          }, [provider.id])) {
             if (signal.aborted) return;
             if (chunk.type === 'text') output += chunk.text;
           }

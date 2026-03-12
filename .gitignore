@@ -8,3 +8,5 @@ dist/
 .DS_Store
 superclaw.db
 apps/desktop/server-pack/server/
+apps/web/out/
+apps/server/dist/

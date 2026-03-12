@@ -1,12 +1,51 @@
-import type { LLMProvider, LLMMessage, LLMOptions, StreamChunk } from './types.js';
-import { AnthropicProvider } from './anthropic.js';
-import { OpenAIProvider } from './openai.js';
-import { OllamaProvider } from './ollama.js';
-import { GitHubCopilotProvider } from './github-copilot.js';
-import { logger } from '../../lib/logger.js';
+/**
+ * Provider Router — thin layer over native chat-engine.ts
+ *
+ * In SuperClaw Pure, all LLM communication goes through chat-engine.ts
+ * which uses native fetch(). This file provides backward-compatible
+ * interfaces for code that references ProviderRouter.
+ */
 
-export type { LLMProvider, LLMMessage, LLMOptions, StreamChunk };
-export { AnthropicProvider, OpenAIProvider, OllamaProvider, GitHubCopilotProvider };
+import { logger } from '../../lib/logger.js';
+import { streamChat } from '../chat-engine.js';
+import { initDatabase } from '../../db/index.js';
+import { ProviderRepository } from '../../db/providers.js';
+
+export interface LLMProvider {
+  id: string;
+  name: string;
+  models: string[];
+}
+
+export interface LLMMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string | Array<{ type: string; text?: string; [k: string]: unknown }>;
+  tool_call_id?: string;
+}
+
+export interface LLMOptions {
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+  stream?: boolean;
+  systemPrompt?: string;
+  tools?: unknown[];
+}
+
+export interface StreamChunk {
+  type: 'text' | 'tool_call' | 'usage' | 'finish' | 'error';
+  text?: string;
+  id?: string;
+  name?: string;
+  args?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  finishReason?: string;
+  error?: string;
+  // compat fields
+  delta?: string;
+  done?: boolean;
+}
 
 export class ProviderRouter {
   private providers = new Map<string, LLMProvider>();
@@ -27,113 +66,112 @@ export class ProviderRouter {
   }
 
   setDefault(id: string): void {
-    if (this.providers.has(id)) {
-      this.defaultProviderId = id;
-    }
+    if (this.providers.has(id)) this.defaultProviderId = id;
   }
 
-  list(): Array<{ id: string; name: string; models: string[] }> {
-    return Array.from(this.providers.values()).map((p) => ({
-      id: p.id,
-      name: p.name,
-      models: p.models,
-    }));
+  list(): LLMProvider[] {
+    return [...this.providers.values()];
   }
 
-  /** Chat with fallback chain — tries each provider in order */
+  /**
+   * chatWithFallback — streams chat using native chat-engine.ts
+   * Tries each provider in the fallback chain until one succeeds.
+   * Translates chat-engine events → StreamChunk for backward compat.
+   */
   async *chatWithFallback(
     messages: LLMMessage[],
     options: LLMOptions,
-    providerIds?: string[],
+    fallbackChain: string[],
   ): AsyncGenerator<StreamChunk> {
-    const ids = providerIds ?? (this.defaultProviderId ? [this.defaultProviderId] : []);
+    const db = initDatabase();
+    const providerRepo = new ProviderRepository(db);
 
-    for (let i = 0; i < ids.length; i++) {
-      const provider = this.providers.get(ids[i]);
-      if (!provider) continue;
+    for (const providerId of fallbackChain) {
+      const provConfig = providerRepo.getUnmasked(providerId);
+      if (!provConfig?.rawApiKey) continue;
+
+      const firstModel = provConfig.models[0];
+      const modelId = options.model ?? (typeof firstModel === 'object' ? firstModel.id : firstModel) ?? 'gpt-4o';
+      const providerType = (provConfig.type as 'openai' | 'anthropic') === 'anthropic' ? 'anthropic' : 'openai';
+      const baseUrl = provConfig.baseUrl ?? (providerType === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com');
+
+      const chatMessages: import('../chat-engine.js').ChatMessage[] = messages.map(m => ({
+        role: (m.role === 'tool' ? 'assistant' : m.role) as 'user' | 'assistant' | 'system',
+        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+      }));
+
+      const chatOptions: import('../chat-engine.js').ChatOptions = {
+        model: modelId,
+        baseUrl,
+        apiKey: provConfig.rawApiKey,
+        providerType,
+        temperature: options.temperature,
+        maxTokens: options.maxTokens,
+      };
+
+      // Inject system prompt as first message if provided
+      if (options.systemPrompt) {
+        chatMessages.unshift({ role: 'system', content: options.systemPrompt });
+      }
 
       try {
-        const gen = provider.chat(messages, options);
-        let hasError = false;
-
-        for await (const chunk of gen) {
-          if (chunk.type === 'finish' && chunk.reason === 'error' && i < ids.length - 1) {
-            hasError = true;
-            break;
+        for await (const event of streamChat(chatMessages, chatOptions)) {
+          if (event.type === 'delta' && event.content) {
+            yield { type: 'text', text: event.content };
+          } else if (event.type === 'done') {
+            yield { type: 'finish', finishReason: 'stop' };
+          } else if (event.type === 'error') {
+            throw new Error(event.error);
           }
-          yield chunk;
         }
-
-        if (!hasError) return;
-
-        logger.warn(`[ProviderRouter] Provider ${ids[i]} failed, trying fallback...`);
+        return;
       } catch (err) {
-        if (i < ids.length - 1) {
-          logger.warn(`[ProviderRouter] Provider ${ids[i]} threw, trying fallback: %s`, (err as Error).message);
-          continue;
-        }
-        throw err;
+        logger.warn(`[ProviderRouter] Provider ${providerId} failed: ${(err as Error).message} — trying next`);
+        continue;
       }
     }
 
-    yield { type: 'finish', reason: 'error' };
+    // All providers exhausted
+    yield { type: 'error', error: 'All providers in fallback chain failed or have no API key configured' };
   }
 }
 
-// Global singleton router
-let routerInstance: ProviderRouter | null = null;
-
-export function getProviderRouter(): ProviderRouter {
-  if (!routerInstance) routerInstance = new ProviderRouter();
-  return routerInstance;
-}
-
+/**
+ * Initialize providers from config.
+ */
 export async function initProviders(config: {
-  anthropic?: { apiKey: string; defaultModel?: string };
-  openai?: { apiKey: string; defaultModel?: string };
-  copilot?: { token: string };
-  defaults?: { provider?: string };
-}): Promise<ProviderRouter> {
-  const router = getProviderRouter();
+  anthropic?: { apiKey: string };
+  openai?: { apiKey: string };
+  defaults?: { provider: string };
+} = {}): Promise<ProviderRouter> {
+  const router = new ProviderRouter();
 
   if (config.anthropic?.apiKey) {
-    router.register(new AnthropicProvider(config.anthropic.apiKey));
+    router.register({ id: 'anthropic', name: 'Anthropic', models: ['claude-sonnet-4-5-20250514', 'claude-haiku-4-5-20250514'] });
   }
 
   if (config.openai?.apiKey) {
-    router.register(new OpenAIProvider(config.openai.apiKey));
-  }
-
-  // Ollama (local) — always try to connect, silently skip if not running
-  try {
-    const ollamaBaseUrl = 'http://localhost:11434';
-    const ollamaModels = await OllamaProvider.discoverModels(ollamaBaseUrl);
-    if (ollamaModels.length > 0) {
-      router.register(new OllamaProvider({ baseUrl: ollamaBaseUrl, models: ollamaModels }));
-      logger.info(`   Providers: Ollama (${ollamaModels.length} models)`);
-    }
-  } catch {
-    /* Ollama not available */
-  }
-
-  // GitHub Copilot — try to load token from OpenClaw credential cache or environment
-  try {
-    const copilotToken = config.copilot?.token || null;
-    const tokenData = copilotToken ? { token: copilotToken, expiresAt: 0 } : await GitHubCopilotProvider.loadToken();
-    if (tokenData) {
-      const copilotModels = await GitHubCopilotProvider.discoverModels(tokenData.token);
-      if (copilotModels.length > 0) {
-        router.register(new GitHubCopilotProvider(tokenData.token, copilotModels));
-        logger.info(`   Providers: GitHub Copilot (${copilotModels.length} models)`);
-      }
-    }
-  } catch {
-    /* GitHub Copilot not available */
+    router.register({ id: 'openai', name: 'OpenAI', models: ['gpt-4o', 'gpt-4o-mini'] });
   }
 
   if (config.defaults?.provider) {
     router.setDefault(config.defaults.provider);
   }
 
+  logger.info(`[Providers] Initialized ${router.list().length} providers`);
   return router;
+}
+
+// ─── Singleton shim ────────────────────────────────────────────────────────────
+let _router: ProviderRouter | null = null;
+
+export function getProviderRouter(): ProviderRouter {
+  if (!_router) {
+    _router = new ProviderRouter();
+  }
+  return _router;
+}
+
+export function setProviderRouter(router: ProviderRouter): void {
+  _router = router;
 }

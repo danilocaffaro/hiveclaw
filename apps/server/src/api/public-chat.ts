@@ -54,7 +54,7 @@ export function registerPublicChatRoutes(app: FastifyInstance): void {
     // Get agent info from DB
     const db = initDatabase();
     const agents = new AgentRepository(db);
-    const agent = agents.findById(link.agent_id);
+    const agent = agents.getById(link.agent_id);
     const agentName = agent?.name ?? link.agent_id;
     const agentEmoji = agent?.emoji ?? '🤖';
 
