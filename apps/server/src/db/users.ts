@@ -75,7 +75,9 @@ export class UserRepository {
       )
       .run(id, data.email ?? null, data.name, role, data.avatarUrl ?? null, apiKey, null);
 
-    return this.getById(id)!;
+    const created = this.getById(id);
+    if (!created) throw new Error(`User '${id}' not found after insert`);
+    return created;
   }
 
   update(id: string, patch: Partial<User>): User {
@@ -96,7 +98,9 @@ export class UserRepository {
       this.db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).run(...values);
     }
 
-    return this.getById(id)!;
+    const updated = this.getById(id);
+    if (!updated) throw new Error(`User '${id}' not found after update`);
+    return updated;
   }
 
   delete(id: string): boolean {

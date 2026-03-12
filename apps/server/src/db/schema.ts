@@ -227,7 +227,7 @@ export function initDatabase(): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
     CREATE INDEX IF NOT EXISTS idx_artifacts_session ON artifacts(session_id);
     CREATE INDEX IF NOT EXISTS idx_artifacts_squad ON artifacts(squad_id);
-    CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id);
+    -- idx_tasks_session moved to after tasks table creation (B056 migration block)
     -- CREATE INDEX IF NOT EXISTS idx_debate_entries_debate ON debate_entries(debate_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_squad ON sessions(squad_id);
@@ -444,6 +444,9 @@ export function initDatabase(): Database.Database {
   if (!taskCols.includes('source_message_id')) {
     db.exec("ALTER TABLE tasks ADD COLUMN source_message_id TEXT");
   }
+
+  // BUG-01: Create tasks index here (after table exists), not in initial block
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id)`);
 
   // ── Sprint 65: Eidetic Memory Layer ───────────────────────────────────────
 
