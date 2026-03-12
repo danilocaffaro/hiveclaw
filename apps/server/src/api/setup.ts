@@ -122,6 +122,31 @@ async function testProviderConnection(
       return { success: true };
     }
 
+    // Custom / generic OpenAI-compatible provider
+    if (providerId === 'custom') {
+      if (!baseUrl) return { success: false, error: 'Base URL is required for custom providers' };
+      const url = baseUrl.replace(/\/+$/, '');
+      const res = await fetch(`${url}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'hi' }],
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+      // Accept 200 (success) or 404/model-not-found (means API works, model just differs)
+      if (res.ok || res.status === 404) {
+        return { success: true };
+      }
+      const body = await res.text();
+      return { success: false, error: `API returned ${res.status}: ${body.slice(0, 200)}` };
+    }
+
     if (providerId === 'github-copilot') {
       // Try to load the Copilot token from OpenClaw credential cache
       try {
@@ -204,17 +229,17 @@ export function registerSetupRoutes(
 
   // ── POST /setup/provider ───────────────────────────────────────────────────
   app.post<{
-    Body: { providerId: string; apiKey: string; baseUrl?: string };
+    Body: { providerId: string; apiKey: string; baseUrl?: string; name?: string };
   }>('/setup/provider', async (req, reply) => {
-    const { providerId, apiKey, baseUrl } = req.body ?? {};
+    const { providerId, apiKey, baseUrl, name: customName } = req.body ?? {};
     if (!providerId) {
       return reply.status(400).send({
         error: { code: 'VALIDATION', message: 'providerId is required' },
       });
     }
 
-    // For ollama and github-copilot, apiKey is optional
-    if (providerId !== 'ollama' && providerId !== 'github-copilot' && !apiKey) {
+    // For ollama, github-copilot, and custom (may have no key), apiKey is optional
+    if (providerId !== 'ollama' && providerId !== 'github-copilot' && providerId !== 'custom' && !apiKey) {
       return reply.status(400).send({
         error: { code: 'VALIDATION', message: 'apiKey is required' },
       });
@@ -229,8 +254,12 @@ export function registerSetupRoutes(
     }
 
     // Save the key to the provider
+    const saveId = providerId === 'custom' && customName
+      ? customName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      : providerId;
     const updated = providerRepo.upsert({
-      id: providerId,
+      id: saveId,
+      name: customName || undefined,
       apiKey: providerId !== 'ollama' && providerId !== 'github-copilot' ? apiKey : undefined,
       baseUrl,
     });

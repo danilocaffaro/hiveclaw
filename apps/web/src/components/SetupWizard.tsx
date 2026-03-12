@@ -244,6 +244,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const [activeProvider, setActiveProvider] = useState<string | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [baseUrlInput, setBaseUrlInput] = useState('');
+  const [customProviderName, setCustomProviderName] = useState('');
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [testError, setTestError] = useState('');
   const [testedModels, setTestedModels] = useState<string[]>([]);
@@ -316,6 +317,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     { id: 'mistral', name: 'Mistral', icon: '🇫🇷', desc: 'Mistral Large, Codestral', hint: 'console.mistral.ai → API Keys' },
     { id: 'github-copilot', name: 'GitHub Copilot', icon: '🐙', desc: 'Claude, GPT via Copilot', hint: 'Needs active Copilot subscription + GitHub CLI auth' },
     { id: 'ollama', name: 'Ollama', icon: '🦙', desc: 'Local models (free)', hint: 'ollama.com — run models locally, no API key needed' },
+    { id: 'custom', name: 'Other', icon: '🔧', desc: 'Any OpenAI-compatible API', hint: 'Works with Together AI, Fireworks, Azure, Perplexity, LM Studio, or any OpenAI-compatible endpoint' },
   ];
 
   // ── Handlers ────────────────────────────────────────────────────────────────
@@ -328,6 +330,10 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     try {
       const body: Record<string, string> = { providerId: activeProvider, apiKey: apiKeyInput };
       if (activeProvider === 'ollama' && baseUrlInput) body.baseUrl = baseUrlInput;
+      if (activeProvider === 'custom') {
+        body.baseUrl = baseUrlInput;
+        if (customProviderName) body.name = customProviderName;
+      }
       const res = await fetch(`${API}/setup/provider`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -566,7 +572,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             {activeProvider && (
               <div style={{ ...cardStyle, marginBottom: 16 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {activeProvider !== 'ollama' && activeProvider !== 'github-copilot' ? (
+                  {activeProvider !== 'ollama' && activeProvider !== 'github-copilot' && activeProvider !== 'custom' ? (
                     <div>
                       <label style={labelStyle}>API Key</label>
                       <input
@@ -580,6 +586,47 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                       />
                       <p style={{ fontSize: 11, color: 'var(--text-muted, #8b949e)', marginTop: 6, marginBottom: 0 }}>
                         💡 {PROVIDER_CARDS.find((p) => p.id === activeProvider)?.hint}
+                      </p>
+                    </div>
+                  ) : activeProvider === 'custom' ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      <div>
+                        <label style={labelStyle}>Provider Name</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Together AI, Fireworks, Azure OpenAI…"
+                          value={customProviderName}
+                          onChange={(e) => setCustomProviderName(e.target.value)}
+                          style={inputStyle}
+                          autoFocus
+                        />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Base URL</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. https://api.together.xyz"
+                          value={baseUrlInput}
+                          onChange={(e) => setBaseUrlInput(e.target.value)}
+                          style={inputStyle}
+                        />
+                        <p style={{ fontSize: 11, color: 'var(--text-muted, #8b949e)', marginTop: 4, marginBottom: 0 }}>
+                          Must be OpenAI-compatible (supports <code style={{ background: 'var(--surface-hover)', padding: '1px 5px', borderRadius: 3 }}>/v1/chat/completions</code>)
+                        </p>
+                      </div>
+                      <div>
+                        <label style={labelStyle}>API Key</label>
+                        <input
+                          type="password"
+                          placeholder="Paste your API key"
+                          value={apiKeyInput}
+                          onChange={(e) => setApiKeyInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && apiKeyInput && baseUrlInput) void handleTestConnection(); }}
+                          style={inputStyle}
+                        />
+                      </div>
+                      <p style={{ fontSize: 11, color: 'var(--text-muted, #8b949e)', marginTop: 0, marginBottom: 0 }}>
+                        💡 Any provider with an OpenAI-compatible API works — Together AI, Fireworks, Azure, Perplexity, LM Studio, vLLM, etc.
                       </p>
                     </div>
                   ) : activeProvider === 'github-copilot' ? (
