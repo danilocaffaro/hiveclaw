@@ -33,7 +33,7 @@ export class SharedLinkRepository {
       INSERT INTO shared_links (id, token, agent_id, title, welcome_message, max_messages, expires_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(id, token, agentId, title ?? '', welcomeMessage ?? '', maxMessages ?? 100, expiresAt ?? null);
-    return this.db.prepare('SELECT * FROM shared_links WHERE id = ?').get(id) as SharedLink;
+    return this.db.prepare('SELECT * FROM shared_links WHERE id = ?').get(id) as SharedLink; // safe: just inserted
   }
 
   findByToken(token: string): SharedLink | undefined {

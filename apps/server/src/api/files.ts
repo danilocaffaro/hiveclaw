@@ -125,12 +125,30 @@ function buildTree(dirPath: string, depth: number, maxDepth: number, rootPath: s
 // ─── Security Guard ───────────────────────────────────────────────────────────
 
 function guardPath(requestedPath: string, workspacePath: string): string | null {
-  // Allow absolute paths directly (for project selector / external dirs)
+  // Block path traversal attempts (.. escaping)
+  if (requestedPath.includes('..')) return null;
+
   const resolved = requestedPath.startsWith('/')
     ? resolve(requestedPath)
     : resolve(join(workspacePath, requestedPath));
-  // Block path traversal attempts (.. escaping)
-  if (requestedPath.includes('..')) return null;
+
+  // Absolute paths must still be within workspace root or common safe dirs
+  const allowedRoots = [
+    resolve(workspacePath),
+    resolve(join(workspacePath, '..')),  // parent for monorepo project selector
+  ];
+
+  // Block sensitive system paths regardless
+  const blocked = ['/etc', '/var', '/usr', '/bin', '/sbin', '/root', '/home',
+    '/private/etc', '/System', '/Library'];
+  for (const b of blocked) {
+    if (resolved.startsWith(b + '/') || resolved === b) return null;
+  }
+
+  // Allow paths within workspace or its parent (project selector)
+  const inAllowed = allowedRoots.some(root => resolved.startsWith(root + '/') || resolved === root);
+  if (!inAllowed) return null;
+
   return resolved;
 }
 
