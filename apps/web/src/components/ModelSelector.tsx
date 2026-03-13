@@ -2,6 +2,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useUIStore } from '@/stores/ui-store';
+import { useSessionStore } from '@/stores/session-store';
+import { useAgentStore } from '@/stores/agent-store';
 
 // ─── Types ───────────────────────────────────────────────────────────────────────
 
@@ -43,6 +45,15 @@ export default function ModelSelector() {
   const [loading, setLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+
+  // Get active agent's model preference to sync selector
+  const activeSessionId = useSessionStore((s) => s.activeSessionId);
+  const sessions = useSessionStore((s) => s.sessions);
+  const agents = useAgentStore((s) => s.agents);
+  const activeSession = sessions.find((s) => s.id === activeSessionId);
+  const activeAgent = activeSession?.agent_id
+    ? agents.find((a) => a.id === activeSession.agent_id)
+    : null;
 
   // Fetch models from API on mount
   useEffect(() => {
@@ -89,6 +100,19 @@ export default function ModelSelector() {
     fetchModels();
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync selector with active agent's model preference
+  useEffect(() => {
+    if (!activeAgent?.modelPreference || models.length === 0) return;
+    const agentModelId = activeAgent.modelPreference;
+    const provId = activeAgent.providerPreference ?? '';
+    // Try exact match: "provider/model"
+    const fullId = `${provId}/${agentModelId}`;
+    const match = models.find((m) => m.id === fullId) ?? models.find((m) => m.id.endsWith(`/${agentModelId}`));
+    if (match && match.id !== selectedModel) {
+      setSelectedModel(match.id);
+    }
+  }, [activeAgent?.modelPreference, activeAgent?.providerPreference, models, selectedModel, setSelectedModel]);
 
   const currentModel = models.find((m) => m.id === selectedModel) ?? models[0];
 
