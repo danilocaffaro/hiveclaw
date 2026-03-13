@@ -177,11 +177,10 @@ async function sendTelegram(config: Extract<ChannelTypeConfig, { type: 'telegram
   const url = `https://api.telegram.org/bot${config.botToken}/sendMessage`;
 
   // Try with Markdown first, fallback to plain text if Telegram rejects formatting
-  const payload = {
+  const payload: Record<string, unknown> = {
     chat_id: chatId,
     text: msg.text,
     parse_mode: 'Markdown',
-    ...(msg.replyToId ? { reply_to_message_id: msg.replyToId } : {}),
   };
 
   let res = await fetch(url, {
