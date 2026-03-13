@@ -392,7 +392,10 @@ export function registerSetupRoutes(
       });
     }
 
-    const providerId = agent.providerPreference || 'anthropic';
+    const providerId = agent.providerPreference || (() => {
+      const connected = providerRepo.list().filter(p => p.status === 'connected');
+      return connected[0]?.id ?? 'anthropic';
+    })();
     const db2 = initDatabase();
     const provRepo = new ProvRepo(db2);
     const provConfig = provRepo.getUnmasked(providerId);

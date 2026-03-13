@@ -144,7 +144,7 @@ export function AgentFormModal({ agent, onClose, onSaved }: AgentFormModalProps)
           <input
             value={providerPreference}
             onChange={(e) => setProviderPreference(e.target.value)}
-            placeholder="e.g. anthropic, openai, google, openrouter…"
+            placeholder="e.g. anthropic, openai, github-copilot, google, openrouter…"
             style={inputStyle}
           />
         </div>

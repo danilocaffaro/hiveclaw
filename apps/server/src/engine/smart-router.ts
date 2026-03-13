@@ -125,9 +125,11 @@ export function classifyTask(ctx: RoutingContext): { task: SystemTask; reason: s
 
 const MODEL_QUALITY: Record<string, number> = {
   // Anthropic
+  'claude-opus-4-6': 96, 'claude-opus-4-6-20250725': 96,
   'claude-opus-4': 95, 'claude-opus-4.6': 95, 'claude-opus-4-5': 95, 'claude-3-opus': 92,
-  'claude-sonnet-4': 88, 'claude-sonnet-4-5': 88, 'claude-sonnet-4.6': 88, 'claude-3-5-sonnet': 87,
-  'claude-haiku-4-5': 68, 'claude-3-5-haiku': 68,
+  'claude-sonnet-4-6': 90, 'claude-sonnet-4-6-20250725': 90,
+  'claude-sonnet-4': 88, 'claude-sonnet-4-5': 88, 'claude-sonnet-4-5-20250514': 88, 'claude-sonnet-4.6': 88, 'claude-3-5-sonnet': 87,
+  'claude-haiku-4-5': 68, 'claude-haiku-4-5-20250514': 68, 'claude-3-5-haiku': 68,
   // OpenAI
   'gpt-4o': 90, 'gpt-4-turbo': 88, 'gpt-4': 85,
   'o1': 93, 'o1-pro': 95, 'o1-mini': 75, 'o3': 95, 'o3-mini': 78, 'o4-mini': 78,

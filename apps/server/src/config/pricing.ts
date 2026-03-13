@@ -23,17 +23,23 @@ export interface ModelPricing {
  */
 export const MODEL_PRICING: Record<string, ModelPricing> = {
   // ── Anthropic ──────────────────────────────────────────────────────────
+  'claude-opus-4-6':                { in: 15.0,  out: 75.0  },
+  'claude-opus-4-6-20250725':       { in: 15.0,  out: 75.0  },
   'claude-opus-4-5':                { in: 15.0,  out: 75.0  },
   'claude-opus-4':                  { in: 15.0,  out: 75.0  },
   'claude-opus-4.6':                { in: 15.0,  out: 75.0  },
+  'claude-sonnet-4-6':              { in: 3.0,   out: 15.0  },
+  'claude-sonnet-4-6-20250725':     { in: 3.0,   out: 15.0  },
   'claude-sonnet-4-5':              { in: 3.0,   out: 15.0  },
+  'claude-sonnet-4-5-20250514':     { in: 3.0,   out: 15.0  },
   'claude-sonnet-4':                { in: 3.0,   out: 15.0  },
   'claude-sonnet-4.6':              { in: 3.0,   out: 15.0  },
+  'claude-haiku-4-5':               { in: 0.8,   out: 4.0   },
+  'claude-haiku-4-5-20250514':      { in: 0.8,   out: 4.0   },
   'claude-3-5-sonnet':              { in: 3.0,   out: 15.0  },
   'claude-3-5-sonnet-20241022':     { in: 3.0,   out: 15.0  },
   'claude-3-5-haiku':               { in: 0.8,   out: 4.0   },
   'claude-3-5-haiku-20241022':      { in: 0.8,   out: 4.0   },
-  'claude-haiku-4-5':               { in: 0.8,   out: 4.0   },
   'claude-3-opus':                  { in: 15.0,  out: 75.0  },
 
   // ── OpenAI ─────────────────────────────────────────────────────────────

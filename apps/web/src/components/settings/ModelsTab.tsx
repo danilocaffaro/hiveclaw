@@ -21,10 +21,14 @@ interface ModelDef {
 const PROVIDER_META: Record<string, { icon: string; displayName: string }> = {
   anthropic: { icon: '🟠', displayName: 'Anthropic' },
   openai: { icon: '🟢', displayName: 'OpenAI' },
+  'github-copilot': { icon: '🐙', displayName: 'GitHub Copilot' },
   ollama: { icon: '🦙', displayName: 'Ollama (local)' },
   'ollama-cluster': { icon: '🦙', displayName: 'Ollama Cluster' },
   google: { icon: '🔵', displayName: 'Google AI' },
   openrouter: { icon: '🔀', displayName: 'OpenRouter' },
+  deepseek: { icon: '🐋', displayName: 'DeepSeek' },
+  groq: { icon: '⚡', displayName: 'Groq' },
+  mistral: { icon: '🇫🇷', displayName: 'Mistral' },
 };
 
 export default function ModelsTab() {
