@@ -165,6 +165,12 @@ export async function* runAgent(
     logger.debug({ err: e }, '[agent-runner] Memory injection failed, continuing without memory');
   }
 
+  // ── 2.7 Inject runtime context (model, provider, capabilities) ──────────────
+  const runtimeModel = agentConfig.modelId || 'unknown';
+  const runtimeProvider = agentConfig.providerId || 'unknown';
+  const runtimeContext = `\n\n[Runtime Info]\nModel: ${runtimeModel}\nProvider: ${runtimeProvider}\nDate: ${new Date().toISOString().split('T')[0]}`;
+  systemPrompt = systemPrompt + runtimeContext;
+
   // ── 3. Build messages array ─────────────────────────────────────────────────
   // Re-read messages after potential compaction
   const freshMessages = sessionManager.getMessages(sessionId);
