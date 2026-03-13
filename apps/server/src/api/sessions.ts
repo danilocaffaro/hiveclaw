@@ -34,7 +34,7 @@ function getDefaultProviderId(): string {
   const db = initDatabase();
   const repo = new ProviderRepository(db);
   const available = repo.list().filter(p => p.status === 'connected');
-  for (const preferred of ['anthropic', 'openai', 'google', 'openrouter']) {
+  for (const preferred of ['anthropic', 'openai', 'google', 'openrouter', 'github-copilot', 'deepseek', 'groq', 'mistral']) {
     if (available.some(p => p.id === preferred)) return preferred;
   }
   return available[0]?.id ?? 'anthropic';

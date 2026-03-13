@@ -127,16 +127,20 @@ export class ProviderRouter {
             const tokenData = await tokenRes.json() as { token?: string; endpoints?: { api?: string } };
             if (tokenData.token) {
               chatOptions.apiKey = tokenData.token;
-              // Use the endpoint from the token response if available
               if (tokenData.endpoints?.api) {
                 chatOptions.baseUrl = tokenData.endpoints.api;
               }
+              console.log(`[copilot] Token exchanged OK, endpoint: ${chatOptions.baseUrl}`);
             }
+          } else {
+            console.error(`[copilot] Token exchange failed: ${tokenRes.status} ${await tokenRes.text().catch(() => '')}`);
           }
-        } catch {
-          // Fall through with original token
+        } catch (err) {
+          console.error(`[copilot] Token exchange error:`, (err as Error).message);
         }
       }
+
+      console.log(`[provider] Using ${providerId} / ${chatOptions.model} @ ${chatOptions.baseUrl}`);
 
       // Inject system prompt as first message if provided
       if (options.systemPrompt) {

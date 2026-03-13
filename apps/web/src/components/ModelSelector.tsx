@@ -21,9 +21,13 @@ interface ModelDef {
 const PROVIDER_META: Record<string, { icon: string; color: string }> = {
   anthropic: { icon: '🟠', color: '#D97706' },
   openai: { icon: '🟢', color: '#10B981' },
+  'github-copilot': { icon: '🐙', color: '#A371F7' },
   ollama: { icon: '🦙', color: 'var(--green)' },
   google: { icon: '🔵', color: '#4285F4' },
   openrouter: { icon: '🔀', color: '#A855F7' },
+  deepseek: { icon: '🐋', color: '#0EA5E9' },
+  groq: { icon: '⚡', color: '#F97316' },
+  mistral: { icon: '🇫🇷', color: '#F97316' },
 };
 
 function getProviderMeta(providerId: string) {
