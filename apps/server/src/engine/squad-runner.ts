@@ -27,6 +27,9 @@ import { getMessageBus } from './message-bus.js';
 import { TurnManager } from './turn-manager.js';
 import type { AgentWorker } from './agent-worker.js';
 import { logger } from '../lib/logger.js';
+import { dispatchToExternalAgent, type SquadMessageContext } from './external-agent-bridge.js';
+import { ExternalAgentRepository } from '../db/external-agents.js';
+import { initDatabase } from '../db/index.js';
 
 // ─── Squad Config ─────────────────────────────────────────────────────────────
 
@@ -105,6 +108,67 @@ function tryGetWorker(config: AgentConfig): AgentWorker | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Check if an agent is external (providerId === '__external__') and if so,
+ * dispatch via webhook instead of running locally.
+ * Returns an async generator that yields SSE events, or null if not external.
+ */
+function isExternalAgent(agent: AgentConfig): boolean {
+  return agent.providerId === '__external__' || (agent as unknown as Record<string, unknown>).isExternal === true;
+}
+
+async function* runExternalAgent(
+  sessionId: string,
+  message: string,
+  agent: AgentConfig,
+  config: SquadConfig,
+  previousResponses: Array<{ agentId: string; name: string; emoji: string; text: string }> = [],
+  turnNumber = 1,
+): AsyncGenerator<SSEEvent> {
+  const db = initDatabase();
+  const extRepo = new ExternalAgentRepository(db);
+  const extAgent = extRepo.getById(agent.id);
+
+  if (!extAgent) {
+    yield { event: 'message.delta', data: { text: `⚠️ External agent ${agent.name} not found in registry`, agentId: agent.id } };
+    return;
+  }
+
+  yield {
+    event: 'message.delta',
+    data: { text: `\n\n**${agent.emoji ?? '🤖'} ${agent.name}** _(external, ${extAgent.tier})_\n\n`, agentId: agent.id, isHeader: true },
+  };
+
+  const ctx: SquadMessageContext = {
+    squadId: config.id,
+    squadName: config.name,
+    members: config.agents.map(a => ({
+      name: a.name,
+      emoji: a.emoji ?? '🤖',
+      role: (a as unknown as Record<string, unknown>).role as string ?? 'member',
+      isExternal: isExternalAgent(a),
+    })),
+    userMessage: message,
+    senderName: 'User',
+    previousResponses: previousResponses.map(r => ({
+      agentName: r.name,
+      agentEmoji: r.emoji,
+      text: r.text,
+    })),
+    turnNumber,
+    totalTurns: config.agents.length,
+    wasMentioned: true,
+  };
+
+  const baseUrl = process.env.SUPERCLAW_PUBLIC_URL ?? 'http://localhost:4070';
+  const response = await dispatchToExternalAgent(extAgent, ctx, baseUrl);
+
+  yield {
+    event: 'message.delta',
+    data: { text: response, agentId: agent.id, agentName: agent.name, agentEmoji: agent.emoji },
+  };
 }
 
 // ─── Main entry point ─────────────────────────────────────────────────────────
@@ -209,8 +273,12 @@ async function* runRoundRobin(
     return;
   }
 
-  // Fallback: direct runAgent()
-  yield* runAgent(sessionId, message, agent);
+  // Fallback: direct runAgent() or external dispatch
+  if (isExternalAgent(agent)) {
+    yield* runExternalAgent(sessionId, message, agent, config);
+  } else {
+    yield* runAgent(sessionId, message, agent);
+  }
 }
 
 // ─── Routing Strategy: Specialist ────────────────────────────────────────────
@@ -560,7 +628,21 @@ async function* runSequential(
 
     // Try worker-based execution
     const worker = tryGetWorker(agent);
-    if (worker && turnMgr.canSpeak(agent.id)) {
+    if (isExternalAgent(agent)) {
+      // External agent — dispatch via webhook
+      const prevResponses = config.agents.slice(0, i).map((a, idx) => ({
+        agentId: a.id, name: a.name, emoji: a.emoji ?? '🤖', text: '', // TODO: accumulate
+      }));
+      for await (const event of runExternalAgent(sessionId, prompt, agent, config, prevResponses, i + 1)) {
+        yield event;
+        if (event.event === 'message.delta') {
+          const d = event.data as Record<string, unknown>;
+          if (typeof d.text === 'string' && !d.isHeader) {
+            response += d.text;
+          }
+        }
+      }
+    } else if (worker && turnMgr.canSpeak(agent.id)) {
       for await (const event of worker.processUserMessage(sessionId, prompt)) {
         yield event;
         if (event.event === 'message.delta') {

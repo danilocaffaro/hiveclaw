@@ -19,6 +19,7 @@ import { initDatabase } from '../db/index.js';
 import { SessionUsageRepository } from '../db/session-usage.js';
 import { handoffSession } from '../engine/session-handoff.js';
 import type { Agent } from '@superclaw/shared';
+import { ExternalAgentRepository } from '../db/external-agents.js';
 
 // ─── In-memory pub/sub for multi-listener SSE ──────────────────────────────────
 //
@@ -297,10 +298,36 @@ export function registerSessionRoutes(app: FastifyInstance) {
     if (sessionRow.squad_id) {
       const squadRow = squadRepo.getById(sessionRow.squad_id);
       if (squadRow) {
-        const squadAgents = ((squadRow.agentIds ?? []) as string[])
-          .map((aid: string) => agentRepo.getById(aid))
-          .filter((a): a is Agent => a !== null)
-          .map((a: Agent) => agentRowToConfig(a));
+        // Resolve agents — check both local and external agent tables
+        const extAgentRepo = new ExternalAgentRepository(db);
+        const squadAgents: AgentConfig[] = [];
+        for (const aid of (squadRow.agentIds ?? []) as string[]) {
+          // Try local agent first
+          const localAgent = agentRepo.getById(aid);
+          if (localAgent) {
+            squadAgents.push(agentRowToConfig(localAgent));
+            continue;
+          }
+          // Try external agent
+          const extAgent = extAgentRepo.getById(aid);
+          if (extAgent && extAgent.status === 'active') {
+            squadAgents.push({
+              id: extAgent.id,
+              name: extAgent.name,
+              emoji: extAgent.emoji,
+              systemPrompt: '', // External agents have their own prompts
+              providerId: '__external__',
+              modelId: '__external__',
+              temperature: 0.7,
+              maxTokens: 4096,
+              role: extAgent.role,
+              isExternal: true,
+              webhookUrl: extAgent.webhookUrl,
+              outboundToken: extAgent.outboundToken,
+              tier: extAgent.tier,
+            } as AgentConfig & { isExternal: boolean; webhookUrl: string; outboundToken: string; tier: string });
+          }
+        }
 
         // Map shared Squad routing strategies to squad-runner strategies.
         // 'auto' → 'specialist', 'manual' → 'sequential', unknown → 'round-robin'
