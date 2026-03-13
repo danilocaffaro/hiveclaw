@@ -168,6 +168,24 @@ function ProviderCard({ provider }: { provider: ProviderDef }) {
   const update = <K extends keyof ProviderConfig>(key: K, val: ProviderConfig[K]) =>
     setCfg((c) => ({ ...c, [key]: val }));
 
+  // Load existing provider config from DB on mount
+  useEffect(() => {
+    fetch(`/api/config/providers/${provider.id}`)
+      .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
+      .then((data: { api_key?: string; apiKey?: string; base_url?: string; baseUrl?: string; enabled?: boolean | number }) => {
+        const maskedKey = data.api_key ?? data.apiKey ?? '';
+        const baseUrl = data.base_url ?? data.baseUrl ?? provider.defaultBaseUrl;
+        const hasKey = maskedKey.length > 0;
+        setCfg(c => ({
+          ...c,
+          apiKey: maskedKey,
+          baseUrl: baseUrl || provider.defaultBaseUrl,
+          connected: hasKey || provider.id === 'ollama',
+        }));
+      })
+      .catch(() => { /* provider not configured yet — keep defaults */ });
+  }, [provider.id, provider.defaultBaseUrl]);
+
   // Save the provider config to DB, then immediately test the connection
   const testConnection = async () => {
     update('testing', true);

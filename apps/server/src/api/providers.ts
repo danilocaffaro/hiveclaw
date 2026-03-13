@@ -120,6 +120,20 @@ export function registerProviderRoutes(app: FastifyInstance, repo: ProviderRepos
   });
 
   // ----------------------------------------------------------
+  // GET /config/providers/:id — get single provider (masked key)
+  // ----------------------------------------------------------
+  app.get<{ Params: { id: string } }>('/config/providers/:id', async (req, reply) => {
+    try {
+      const provider = repo.get(req.params.id);
+      if (!provider) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Provider not found' } });
+      return reply.send(provider);
+    } catch (err) {
+      app.log.error(err);
+      return reply.status(500).send({ error: { code: 'INTERNAL_ERROR', message: (err as Error).message } });
+    }
+  });
+
+  // ----------------------------------------------------------
   // PUT /config/providers/:id
   // ----------------------------------------------------------
   app.put<{ Params: { id: string }; Body: UpsertProviderBody }>(
