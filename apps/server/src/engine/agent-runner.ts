@@ -23,6 +23,7 @@ export interface SSEEvent {
     | 'message.finish'
     | 'tool.start'
     | 'tool.finish'
+    | 'squad.skip'
     | 'error';
   data: unknown;
 }

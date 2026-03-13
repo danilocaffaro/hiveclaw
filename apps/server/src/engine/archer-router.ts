@@ -101,7 +101,8 @@ export function parseMentions(message: string, agents: SquadAgent[]): MentionPar
   }
 
   // Extract @mentions using regex
-  // Matches: @word, @"multi word" — but NOT email addresses (word@word)
+  // Matches: @word, @"multi word" — NOTE: email addresses (user@word) ARE matched as tokens
+  // but will fail agent lookup, falling through to PO fallback. This is acceptable behavior.
   const mentionRegex = /@(\w[\w\s]*?)(?=\s|$|[.,!?;:])/g;
   const mentionTokens: string[] = [];
   const mentionedAgents = new Set<SquadAgent>();
@@ -123,7 +124,7 @@ export function parseMentions(message: string, agents: SquadAgent[]): MentionPar
       } else {
         // Try partial match (e.g., "@res" for "Researcher")
         for (const [key, a] of agentByLower) {
-          if (key.startsWith(token) && token.length >= 2) {
+          if (key.startsWith(token) && token.length >= 3) {
             mentionedAgents.add(a);
             break;
           }

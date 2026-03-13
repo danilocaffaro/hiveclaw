@@ -850,7 +850,7 @@ async function* runSequential(
     if (mentionResult.isAllMention || mentionResult.isNoMention) {
       if (shouldSkipAgent(agent, configIndex, message, mentionResult)) {
         yield {
-          event: 'squad.skip' as SSEEvent['event'],
+          event: 'squad.skip',
           data: {
             agentId: agent.id,
             agentName: agent.name,

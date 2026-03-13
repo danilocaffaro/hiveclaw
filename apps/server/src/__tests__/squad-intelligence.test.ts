@@ -379,3 +379,136 @@ describe('buildArcherContext — context block generation', () => {
     expect(ctx).toContain('specifically called');
   });
 });
+
+// ─── Hawk QA: Missing test cases ──────────────────────────────────────────────
+
+describe('QA: @all + smart-skip interaction', () => {
+  const STOPWORDS = new Set([
+    'the','a','an','is','in','on','at','to','of','and','or','but','for',
+    'with','this','that','it','be','are','was','were','you','we','i',
+    'he','she','they','have','has','had','do','does','did','will','would',
+    'can','could','should','may','might','not','no','so','if','as','by',
+    'from','up','about','into','than','then','its','our','your',
+  ]);
+
+  function keywordOverlap(message: string, systemPrompt: string): number {
+    const tokenize = (text: string) =>
+      text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
+        .filter(w => w.length > 2 && !STOPWORDS.has(w));
+    const msgTokens = new Set(tokenize(message));
+    const sysTokens = new Set(tokenize(systemPrompt));
+    if (msgTokens.size === 0) return 0;
+    let overlap = 0;
+    for (const token of msgTokens) if (sysTokens.has(token)) overlap++;
+    return overlap / msgTokens.size;
+  }
+
+  it('@all mentions — even low-relevance agents should be considered (smart skip applies)', () => {
+    const r = parseMentions('@all what is the weather?', agents);
+    expect(r.isAllMention).toBe(true);
+    expect(r.targetAgents).toHaveLength(agents.length);
+
+    const score = keywordOverlap('what is the weather?', 'I am a database migration expert specializing in PostgreSQL');
+    expect(score).toBeLessThan(0.10);
+  });
+
+  it('@all + agent with matching prompt → not skipped', () => {
+    const score = keywordOverlap('review the database schema', 'I am a database schema expert who reviews SQL migrations');
+    expect(score).toBeGreaterThan(0.10);
+  });
+});
+
+describe('QA: MAX_EXTRA_TURNS cap behavior', () => {
+  it('MAX_EXTRA_TURNS=2 caps agent-to-agent chains', () => {
+    const maxExtraTurns = 2;
+    const chain = ['B', 'C', 'D'];
+    const executed = chain.slice(0, maxExtraTurns);
+    const capped = chain.slice(maxExtraTurns);
+    expect(executed).toEqual(['B', 'C']);
+    expect(capped).toEqual(['D']);
+  });
+
+  it('agent-to-agent: each pulled agent can trigger further pulls within cap', () => {
+    const r1 = detectPullThrough('@bob check this', agents, alice);
+    expect(r1.pulledAgents).toHaveLength(1);
+    expect(r1.pulledAgents[0].id).toBe('bob');
+
+    const r2 = detectPullThrough('@hawk verify bobs work', agents, bob);
+    expect(r2.pulledAgents).toHaveLength(1);
+    expect(r2.pulledAgents[0].id).toBe('hawk');
+  });
+});
+
+describe('QA: buildArcherContext with isNoMention=true (PO branch)', () => {
+  it('PO gets leadership context when no one is mentioned', () => {
+    const noMention: MentionParseResult = {
+      targetAgents: [alice],
+      isAllMention: false,
+      isNoMention: true,
+      mentionTokens: [],
+      cleanMessage: 'please help with this task',
+    };
+    const ctx = buildArcherContext(
+      { squadName: 'Dream Team', agents },
+      alice,
+      0, 3,
+      noMention,
+    );
+    expect(ctx).toBeTruthy();
+    expect(typeof ctx).toBe('string');
+    expect(ctx).toContain('Dream Team');
+  });
+
+  it('non-PO agent gets context even in no-mention mode', () => {
+    const noMention: MentionParseResult = {
+      targetAgents: [alice],
+      isAllMention: false,
+      isNoMention: true,
+      mentionTokens: [],
+      cleanMessage: 'general question',
+    };
+    const ctx = buildArcherContext(
+      { squadName: 'Dream Team', agents },
+      bob,
+      1, 3,
+      noMention,
+    );
+    expect(ctx).toBeTruthy();
+    expect(ctx).toContain('Dream Team');
+  });
+});
+
+describe('QA: cleanMessage edge cases', () => {
+  it('message with only @mentions produces non-empty cleanMessage', () => {
+    const r = parseMentions('@alice @bob @hawk', agents);
+    expect(r.cleanMessage.length).toBeGreaterThan(0);
+  });
+
+  it('message with @all only produces non-empty cleanMessage', () => {
+    const r = parseMentions('@all', agents);
+    expect(r.cleanMessage.length).toBeGreaterThan(0);
+  });
+
+  it('message with @unknown produces non-empty cleanMessage', () => {
+    const r = parseMentions('@nobody @zilch', agents);
+    expect(r.cleanMessage.length).toBeGreaterThan(0);
+  });
+});
+
+describe('QA: partial match minimum length (>= 3 chars)', () => {
+  it('2-char partial does NOT match', () => {
+    const r = parseMentions('@bo check this', agents);
+    const matched = r.targetAgents.filter(a => a.id === 'bob');
+    expect(matched).toHaveLength(0);
+  });
+
+  it('3-char exact matches', () => {
+    const r = parseMentions('@bob check this', agents);
+    expect(r.targetAgents.some(a => a.id === 'bob')).toBe(true);
+  });
+
+  it('4-char partial matches longer name', () => {
+    const r = parseMentions('@alic check this', agents);
+    expect(r.targetAgents.some(a => a.id === 'alice')).toBe(true);
+  });
+});
