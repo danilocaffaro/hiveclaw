@@ -23,25 +23,41 @@ export default function VaultTab() {
       if (res.ok) {
         const j = await res.json();
         const config = j.data ?? {};
-        // Extract provider keys and known env patterns
+        // Extract provider keys from server config
         const creds: CredentialEntry[] = [];
         const providers = config.providers ?? config.config?.providers ?? {};
         for (const [name, val] of Object.entries(providers)) {
           if (val && typeof val === 'object' && 'apiKey' in (val as Record<string, unknown>)) {
             const key = (val as Record<string, string>).apiKey ?? '';
-            creds.push({
-              name: `${name.toUpperCase()}_API_KEY`,
-              masked: key ? key.slice(0, 4) + '••••' + key.slice(-4) : '(not set)',
-              source: 'superclaw',
-            });
+            if (key && key !== '(not set)') {
+              creds.push({
+                name: `${name.toUpperCase()}_API_KEY`,
+                masked: key ? key.slice(0, 4) + '••••' + key.slice(-4) : '(not set)',
+                source: 'superclaw',
+              });
+            }
           }
         }
-        // Common env vars
-        for (const envKey of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GITHUB_TOKEN', 'GOOGLE_API_KEY', 'BRAVE_API_KEY']) {
-          if (!creds.find(c => c.name === envKey)) {
-            creds.push({ name: envKey, masked: '(stored in server config)', source: 'superclaw' });
+
+        // Also check for providers stored in the providers table
+        try {
+          const provRes = await fetch('/api/config/providers');
+          if (provRes.ok) {
+            const provData = await provRes.json();
+            const models = provData?.data?.models ?? [];
+            const seenProviders = new Set<string>();
+            for (const m of models as Array<{ provider?: string }>) {
+              if (m.provider) seenProviders.add(m.provider);
+            }
+            for (const provId of seenProviders) {
+              const keyName = `${provId.toUpperCase().replace(/-/g, '_')}_KEY`;
+              if (!creds.find(c => c.name === keyName)) {
+                creds.push({ name: keyName, masked: '(configured)', source: 'superclaw' });
+              }
+            }
           }
-        }
+        } catch { /* ignore */ }
+
         setCredentials(creds);
       } else {
         setError('Unable to load credentials');
