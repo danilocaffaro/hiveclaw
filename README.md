@@ -34,6 +34,17 @@ pnpm start
 ### Option 2: Docker
 
 ```bash
+docker run -d \
+  --name superclaw \
+  -p 4070:4070 \
+  -v superclaw-data:/data \
+  ghcr.io/danilocaffaro/superclaw-pure:latest
+# Open http://localhost:4070
+```
+
+Or with Docker Compose:
+
+```bash
 docker compose up -d
 # Open http://localhost:4070
 ```
@@ -81,8 +92,9 @@ superclaw-pure/
 |----------|----------|---------|-------------|
 | `PORT` | No | `4070` | Server port |
 | `NODE_ENV` | No | `development` | `production` enables auth |
-| `SUPERCLAW_API_KEY` | In prod | - | API key for auth |
-| `DATABASE_PATH` | No | `~/.superclaw/superclaw.db` | SQLite DB location |
+| `SUPERCLAW_DB_PATH` | No | `~/.superclaw/superclaw.db` | SQLite DB location |
+| `SUPERCLAW_WEB_DIR` | No | auto-detected | Path to static frontend |
+| `SUPERCLAW_WORKSPACE` | No | `./workspace` | Agent workspace directory |
 
 ### Provider Setup
 
@@ -95,7 +107,7 @@ curl -X POST http://localhost:4070/api/config/providers \
   -d '{"id":"openai","name":"OpenAI","type":"openai","baseUrl":"https://api.openai.com/v1","apiKey":"sk-..."}'
 ```
 
-Supported providers: OpenAI, Anthropic, Google (Gemini), Ollama, OpenRouter, GitHub Copilot, Groq, Together, Fireworks, DeepSeek, Mistral, and any OpenAI-compatible endpoint.
+Supported providers: OpenAI, Anthropic, Google (Gemini), Ollama, OpenRouter, Groq, DeepSeek, Mistral, and any OpenAI-compatible endpoint.
 
 ## Memory System
 

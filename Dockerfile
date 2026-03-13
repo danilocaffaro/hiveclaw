@@ -6,32 +6,59 @@
 # ── Stage 1: Build ────────────────────────────────────────────────────────────
 FROM node:22-alpine AS builder
 
+# Native deps for better-sqlite3
+RUN apk add --no-cache python3 make g++
+
+# Enable corepack for pnpm
+RUN corepack enable
+
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json* ./
+# Copy package files first (cache layer)
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml* ./
 COPY apps/server/package.json ./apps/server/
 COPY apps/web/package.json ./apps/web/
 
-# Install dependencies
-RUN npm ci --ignore-scripts
+# Install ALL dependencies
+RUN pnpm install --frozen-lockfile
 
 # Copy source
 COPY apps/server ./apps/server
 COPY apps/web ./apps/web
+COPY tsconfig.json ./
 
-# Build server
-WORKDIR /app/apps/server
-RUN npx tsc
+# Build server (TypeScript → dist/)
+RUN pnpm --filter @superclaw/server build
 
-# Build frontend
-WORKDIR /app/apps/web
+# Build frontend (Next.js static export → out/)
 ENV NEXT_OUTPUT=export
-RUN npx next build
-# SW stamp
-RUN node -e "const fs=require('fs');const ts=Date.now();const f='public/sw.js';if(fs.existsSync(f)){let c=fs.readFileSync(f,'utf8');c=c.replace(/v[0-9]+/,'v'+ts);fs.writeFileSync('out/sw.js',c);console.log('SW stamped',ts)}"
+RUN pnpm --filter @superclaw/web build
 
-# ── Stage 2: Runtime ──────────────────────────────────────────────────────────
+# Stamp service worker with build timestamp
+RUN node -e "\
+  const fs=require('fs');\
+  const ts=Date.now();\
+  const f='apps/web/public/sw.js';\
+  if(fs.existsSync(f)){\
+    let c=fs.readFileSync(f,'utf8');\
+    c=c.replace(/v[0-9]+/,'v'+ts);\
+    fs.writeFileSync('apps/web/out/sw.js',c);\
+    console.log('SW stamped',ts);\
+  }"
+
+# ── Stage 2: Production deps ─────────────────────────────────────────────────
+FROM node:22-alpine AS deps
+
+RUN apk add --no-cache python3 make g++
+RUN corepack enable
+
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml* ./
+COPY apps/server/package.json ./apps/server/
+
+RUN pnpm install --frozen-lockfile --prod --filter @superclaw/server
+
+# ── Stage 3: Runtime (minimal) ───────────────────────────────────────────────
 FROM node:22-alpine AS runtime
 
 WORKDIR /app
@@ -39,26 +66,21 @@ WORKDIR /app
 # Security: non-root user
 RUN addgroup -S superclaw && adduser -S superclaw -G superclaw
 
-# Copy built artifacts
+# Copy built artifacts only (no source, no devDeps)
 COPY --from=builder /app/apps/server/dist ./apps/server/dist
 COPY --from=builder /app/apps/server/package.json ./apps/server/
 COPY --from=builder /app/apps/web/out ./apps/web/out
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/server/node_modules ./apps/server/node_modules
 
-# Copy root package for workspaces
+# Copy root package.json
 COPY package.json ./
 
-# Install production dependencies only
-COPY apps/server/package.json ./apps/server/
-WORKDIR /app/apps/server
-RUN npm install --omit=dev --ignore-scripts 2>/dev/null || true
-
-WORKDIR /app
-
-# Data volume for SQLite
+# Data volume for SQLite DB
 RUN mkdir -p /data && chown superclaw:superclaw /data
 VOLUME ["/data"]
 
-# Workspace for agents
+# Workspace volume for agent files
 RUN mkdir -p /workspace && chown superclaw:superclaw /workspace
 VOLUME ["/workspace"]
 

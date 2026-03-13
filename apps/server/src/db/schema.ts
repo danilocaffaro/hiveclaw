@@ -1,17 +1,16 @@
 import Database from 'better-sqlite3';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { mkdirSync } from 'fs';
 
-const SUPERCLAW_DIR = join(homedir(), '.superclaw');
-const DB_PATH = join(SUPERCLAW_DIR, 'superclaw.db');
+const DB_PATH = process.env.SUPERCLAW_DB_PATH || join(homedir(), '.superclaw', 'superclaw.db');
 
 let _dbInstance: Database.Database | null = null;
 
 export function initDatabase(): Database.Database {
   if (_dbInstance) return _dbInstance;
 
-  mkdirSync(SUPERCLAW_DIR, { recursive: true });
+  mkdirSync(dirname(DB_PATH), { recursive: true });
 
   const db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');

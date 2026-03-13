@@ -1,41 +1,12 @@
-# Logs
-*.log
-npm-debug.log*
-
-# Dependencies
 node_modules
-
-# Build output (rebuilt in Docker)
+.git
+.gitignore
+*.md
+!README.md
+apps/desktop
 apps/server/dist
 apps/web/.next
 apps/web/out
-
-# IDE
-.vscode
-.idea
-*.swp
-*.swo
-
-# OS
+.env*
 .DS_Store
-Thumbs.db
-
-# Env files (secrets)
-.env
-.env.*
-!.env.example
-
-# Data files
-*.db
-*.db-journal
-*.db-wal
-
-# Desktop (not needed in container)
-apps/desktop
-
-# Docs (not needed in runtime)
-docs/
-
-# Tests (not needed in runtime)
-**/*.test.ts
-**/vitest.config.*
+*.log
