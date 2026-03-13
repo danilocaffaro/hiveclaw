@@ -67,6 +67,20 @@ async function testProviderConnection(
         const body = await res.text();
         return { success: false, error: `API returned ${res.status}: ${body.slice(0, 200)}` };
       }
+      // Discover available models
+      try {
+        const modelsRes = await fetch(`${url}/v1/models`, {
+          headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (modelsRes.ok) {
+          const modelsData = await modelsRes.json() as { data?: Array<{ id: string }> };
+          const chatModels = (modelsData.data ?? [])
+            .map(m => m.id)
+            .filter(id => !/-\d{8}$/.test(id)); // remove dated versions like claude-sonnet-4-5-20250514
+          if (chatModels.length > 0) return { success: true, models: chatModels };
+        }
+      } catch { /* fallback */ }
       return { success: true };
     }
 
@@ -88,6 +102,26 @@ async function testProviderConnection(
         const body = await res.text();
         return { success: false, error: `API returned ${res.status}: ${body.slice(0, 200)}` };
       }
+      // Discover available models
+      try {
+        const modelsRes = await fetch(`${url}/v1/models`, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (modelsRes.ok) {
+          const modelsData = await modelsRes.json() as { data?: Array<{ id: string }> };
+          const chatModels = (modelsData.data ?? [])
+            .map(m => m.id)
+            .filter(id =>
+              !id.includes('embedding') && !id.includes('whisper') &&
+              !id.includes('tts') && !id.includes('dall-e') &&
+              !id.includes('moderation') && !id.includes('ada') &&
+              !id.includes('babbage') && !id.includes('davinci') &&
+              !/-\d{4}-\d{2}-\d{2}$/.test(id)
+            );
+          if (chatModels.length > 0) return { success: true, models: chatModels };
+        }
+      } catch { /* fallback */ }
       return { success: true };
     }
 
@@ -120,6 +154,15 @@ async function testProviderConnection(
         const body = await res.text();
         return { success: false, error: `API returned ${res.status}: ${body.slice(0, 200)}` };
       }
+      // Parse model list from the same response
+      try {
+        const data = await res.json() as { models?: Array<{ name: string; supportedGenerationMethods?: string[] }> };
+        const chatModels = (data.models ?? [])
+          .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
+          .map(m => m.name.replace('models/', ''))
+          .filter(id => !id.includes('embedding') && !id.includes('aqa') && !id.includes('bisimulation'));
+        if (chatModels.length > 0) return { success: true, models: chatModels };
+      } catch { /* fallback */ }
       return { success: true };
     }
 
@@ -151,6 +194,25 @@ async function testProviderConnection(
         const body = await res.text();
         return { success: false, error: `API returned ${res.status}: ${body.slice(0, 200)}` };
       }
+
+      // Discover available models from /v1/models endpoint
+      const modelsUrl = compat.modelsEndpoint || `${url}/v1/models`;
+      try {
+        const modelsRes = await fetch(modelsUrl, {
+          headers: { Authorization: `Bearer ${apiKey}`, 'Accept': 'application/json' },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (modelsRes.ok) {
+          const modelsData = await modelsRes.json() as { data?: Array<{ id: string }> };
+          const allModels = (modelsData.data ?? []).map(m => m.id);
+          const chatModels = allModels.filter(id =>
+            !id.includes('embedding') && !id.includes('whisper') &&
+            !id.includes('tts') && !id.includes('dall-e') &&
+            !id.includes('moderation') && !id.includes('ada-002')
+          );
+          if (chatModels.length > 0) return { success: true, models: chatModels };
+        }
+      } catch { /* fallback — no model discovery */ }
       return { success: true };
     }
 
