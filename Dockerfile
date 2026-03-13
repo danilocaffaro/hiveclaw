@@ -15,17 +15,22 @@ RUN corepack enable
 WORKDIR /app
 
 # Copy package files first (cache layer)
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml* ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/server/package.json ./apps/server/
 COPY apps/web/package.json ./apps/web/
+COPY packages/shared/package.json ./packages/shared/
 
 # Install ALL dependencies
 RUN pnpm install --frozen-lockfile
 
 # Copy source
+COPY packages/shared ./packages/shared
 COPY apps/server ./apps/server
 COPY apps/web ./apps/web
 COPY tsconfig.json ./
+
+# Build shared package first
+RUN pnpm --filter @superclaw/shared build
 
 # Build server (TypeScript → dist/)
 RUN pnpm --filter @superclaw/server build
@@ -53,10 +58,11 @@ RUN apk add --no-cache python3 make g++
 RUN corepack enable
 
 WORKDIR /app
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml* ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/server/package.json ./apps/server/
+COPY packages/shared/package.json ./packages/shared/
 
-RUN pnpm install --frozen-lockfile --prod --filter @superclaw/server
+RUN pnpm install --frozen-lockfile --prod
 
 # ── Stage 3: Runtime (minimal) ───────────────────────────────────────────────
 FROM node:22-alpine AS runtime
@@ -67,11 +73,12 @@ WORKDIR /app
 RUN addgroup -S superclaw && adduser -S superclaw -G superclaw
 
 # Copy built artifacts only (no source, no devDeps)
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+COPY --from=builder /app/packages/shared/package.json ./packages/shared/
 COPY --from=builder /app/apps/server/dist ./apps/server/dist
 COPY --from=builder /app/apps/server/package.json ./apps/server/
 COPY --from=builder /app/apps/web/out ./apps/web/out
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/server/node_modules ./apps/server/node_modules
 
 # Copy root package.json
 COPY package.json ./
