@@ -94,6 +94,28 @@ async function main() {
 
   // Seed defaults on first run
   providers.seedDefaults();
+
+  // Sync Ollama models from live server (non-blocking)
+  // Replaces DEFAULT_PROVIDERS placeholder models with actually installed models
+  void (async () => {
+    try {
+      const ollamaRow = providers.get('ollama');
+      if (!ollamaRow) return;
+      const baseUrl = ollamaRow.baseUrl ?? 'http://localhost:11434';
+      const res = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(3000) });
+      if (!res.ok) return;
+      const data = await res.json() as { models?: Array<{ name: string; details?: { parameter_size?: string } }> };
+      const installed = data.models ?? [];
+      if (installed.length === 0) return; // No models — keep defaults for display
+      const modelConfigs = installed.map(m => ({
+        id: m.name, name: m.name, provider: 'ollama',
+        contextWindow: 128000, maxOutput: 8192,
+        costPerMInput: 0, costPerMOutput: 0, capabilities: ['text'] as string[],
+      }));
+      providers.upsert({ id: 'ollama', models: modelConfigs });
+      logger.info(`[Ollama] Synced ${installed.length} installed model(s): ${installed.map(m => m.name).join(', ')}`);
+    } catch { /* Ollama not running — ignore, keep defaults */ }
+  })();
   const marketplace = new MarketplaceRepository(db);
   marketplace.seed();
   const userRepo = new UserRepository(db);

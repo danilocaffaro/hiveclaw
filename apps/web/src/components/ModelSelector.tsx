@@ -54,6 +54,8 @@ export default function ModelSelector() {
         const { data: providers } = await res.json();
         const fetched: ModelDef[] = [];
         for (const prov of providers) {
+          // Only show models from configured/connected providers (skip not_configured)
+          if (prov.status === 'not_configured') continue;
           const meta = getProviderMeta(prov.id);
           const isLocal = ['ollama', 'local', 'lmstudio'].includes(prov.type ?? prov.id);
           for (const m of prov.models ?? []) {

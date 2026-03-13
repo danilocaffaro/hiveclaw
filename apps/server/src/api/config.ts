@@ -36,8 +36,20 @@ export function registerConfigRoutes(app: FastifyInstance) {
   app.get('/models', async () => {
     try {
       const db = getDb();
-      const rows = db.prepare("SELECT models FROM providers WHERE enabled = 1").all() as { models: string }[];
-      const allModels = rows.flatMap(r => { try { return JSON.parse(r.models); } catch { return []; } });
+      const rows = db.prepare("SELECT id, config_json FROM providers WHERE enabled = 1").all() as { id: string; config_json: string | null }[];
+      const allModels: Array<{ id: string; name: string; provider: string }> = [];
+      for (const row of rows) {
+        try {
+          const cfg = row.config_json ? JSON.parse(row.config_json) : {};
+          for (const m of cfg.models ?? []) {
+            allModels.push({
+              id: typeof m === 'string' ? m : m.id,
+              name: typeof m === 'string' ? m : (m.name ?? m.id),
+              provider: row.id,
+            });
+          }
+        } catch { /* skip malformed config */ }
+      }
       return { data: allModels };
     } catch { return { data: [] }; }
   });

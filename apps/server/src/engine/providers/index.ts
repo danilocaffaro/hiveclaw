@@ -94,7 +94,14 @@ export class ProviderRouter {
       if (providerNeedsApiKey(provConfig.type ?? '') && !provConfig.rawApiKey) continue;
 
       const firstModel = provConfig.models[0];
-      const modelId = options.model ?? (typeof firstModel === 'object' ? firstModel.id : firstModel) ?? '';
+      // Resolve model: prefer agent's model_preference, but only if it exists in provider's model list
+      // For Ollama (and local providers), validate the requested model is actually installed
+      const requestedModel = options.model;
+      const availableIds = provConfig.models.map(m => typeof m === 'object' ? m.id : m);
+      const resolvedModel = requestedModel && availableIds.includes(requestedModel)
+        ? requestedModel
+        : (typeof firstModel === 'object' ? firstModel.id : firstModel) ?? '';
+      const modelId = resolvedModel;
       const providerType = resolveProviderType(providerId, provConfig.type);
       const baseUrl = resolveProviderBaseUrl(providerId, provConfig.baseUrl);
 

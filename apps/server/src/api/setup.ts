@@ -77,7 +77,20 @@ async function testProviderConnection(
       const url = resolveProviderBaseUrl('ollama', baseUrl);
       const res = await fetch(`${url}/api/tags`, { signal: AbortSignal.timeout(5000) });
       if (!res.ok) return { success: false, error: `Ollama not reachable at ${url}` };
-      return { success: true };
+      // Fetch actually installed models
+      try {
+        const tagsData = await res.json() as { models?: Array<{ name: string }> };
+        const installedModels = (tagsData.models ?? []).map(m => m.name);
+        if (installedModels.length === 0) {
+          return {
+            success: false,
+            error: 'Ollama is running but has no models installed. Run: ollama pull llama3.2 or ollama pull qwen2.5:7b',
+          };
+        }
+        return { success: true, models: installedModels };
+      } catch {
+        return { success: true };
+      }
     }
 
     if (providerId === 'google') {
@@ -322,15 +335,25 @@ export function registerSetupRoutes(
       });
     }
 
-    // Save the key to the provider
+    // Save the key to the provider — include discovered models so they're persisted
     const saveId = providerId === 'custom' && customName
       ? customName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
       : providerId;
+
+    // Build ModelConfig[] from discovered model names (simple format for runtime-discovered models)
+    const discoveredModelConfigs = test.models?.map((m) => ({
+      id: m, name: m, provider: saveId,
+      contextWindow: 128000, maxOutput: 8192,
+      costPerMInput: 0, costPerMOutput: 0, capabilities: ['text'] as string[],
+    }));
+
     const updated = providerRepo.upsert({
       id: saveId,
       name: customName || undefined,
       apiKey: providerId !== 'ollama' ? apiKey : undefined,
       baseUrl,
+      // Persist discovered models so agent-runner can resolve them
+      ...(discoveredModelConfigs ? { models: discoveredModelConfigs } : {}),
     });
 
     // Use models from test if available (discovered during API test)

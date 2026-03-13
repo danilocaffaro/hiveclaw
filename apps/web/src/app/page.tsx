@@ -244,6 +244,21 @@ export default function HomePage() {
     }
   }, [isMobile, setMobileSidebarOpen, setMobileRightPanelOpen]);
 
+  // ── Loading gate — prevent FOUC (flash of main app before wizard) ─────────
+  if (!setupChecked) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100dvh', background: 'var(--bg, #0D1117)', color: 'var(--text-muted, #8b949e)',
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>⚡</div>
+          <div style={{ fontSize: 13, fontWeight: 500 }}>Loading…</div>
+        </div>
+      </div>
+    );
+  }
+
   // ── Landing page gate ──────────────────────────────────────────────────────
   if (showLanding) {
     return (
