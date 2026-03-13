@@ -526,12 +526,23 @@ function backgroundMemoryExtract(
         for (const line of userMessage.split(/[.\n]+/).filter(l => l.trim().length > 8)) {
           const lo = line.toLowerCase().trim();
 
-          // Preferences
-          if (/(?:i prefer|i like|i always|i never|i want|favorite|please always|please never|don't like|i hate|i love)\b/i.test(lo)) {
+          // Preferences — split positive vs negative (anti-preferences)
+          // Negative patterns: "I never", "I don't like", "I hate", "please never", "I dislike"
+          // These are stored as type 'correction' (aversion) rather than 'preference' so the
+          // agent treats them as constraints to avoid, not things to repeat.
+          if (/(?:i prefer|i like|i always|i never|i want|favorite|please always|please never|don't like|i hate|i love|i dislike)\b/i.test(lo)) {
+            const isNegated = /(?:i never|don't like|i hate|please never|i dislike|i don't want|never want|avoid|i can't stand)\b/i.test(lo);
             const key = `pref_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
-            repo.set(agentId, key, line.trim().slice(0, 300), 'preference', 0.9, undefined, {
-              source: 'auto_extract', tags: ['from_user'],
-            });
+            if (isNegated) {
+              // Store as correction/aversion — prefix value so LLM context is unambiguous
+              repo.set(agentId, key, `[AVOID] ${line.trim().slice(0, 295)}`, 'correction', 0.95, undefined, {
+                source: 'auto_extract', tags: ['from_user', 'anti_preference'],
+              });
+            } else {
+              repo.set(agentId, key, line.trim().slice(0, 300), 'preference', 0.9, undefined, {
+                source: 'auto_extract', tags: ['from_user'],
+              });
+            }
             extractedCount.preferences++;
           }
 

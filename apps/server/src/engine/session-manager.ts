@@ -549,8 +549,10 @@ export class SessionManager {
         if (/(?:decid|decision|agreed|will use|chosen|approach|opted|confirmed)\b/.test(lo)) {
           decisions.add(trimmed);
         }
-        // Preferences
-        if (/(?:prefer|like|want|always|never|favorite|dislike)\b/.test(lo) && msg.role === 'user') {
+        // Preferences — only positive signals; negations go to corrections (anti_preference)
+        // Negative words (never, dislike, hate, don't like) are handled separately below
+        if (/(?:prefer|like|want|always|favorite)\b/.test(lo) && msg.role === 'user' &&
+            !/(?:never|dislike|don't like|hate|avoid|can't stand)\b/.test(lo)) {
           preferences.add(trimmed);
         }
         // Named entities (proper nouns after common patterns)
