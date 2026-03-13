@@ -110,7 +110,12 @@ export function registerProviderRoutes(app: FastifyInstance, repo: ProviderRepos
   app.get('/config/providers', async (_req, reply) => {
     try {
       const providers = repo.list();
-      return reply.send({ data: providers });
+      // Strip API keys from list — return "configured" boolean instead
+      const safe = providers.map(({ apiKey, ...rest }) => ({
+        ...rest,
+        configured: !!apiKey && apiKey !== '' && !apiKey.startsWith('...'),
+      }));
+      return reply.send({ data: safe });
     } catch (err) {
       app.log.error(err);
       return reply.status(500).send({
@@ -317,7 +322,11 @@ export function registerProviderRoutes(app: FastifyInstance, repo: ProviderRepos
   app.get('/providers', async (_req, reply) => {
     try {
       const providers = repo.list();
-      return reply.send({ data: providers });
+      const safe = providers.map(({ apiKey, ...rest }) => ({
+        ...rest,
+        configured: !!apiKey && apiKey !== '' && !apiKey.startsWith('...'),
+      }));
+      return reply.send({ data: safe });
     } catch (err) {
       return reply.status(500).send({ error: { code: 'INTERNAL_ERROR', message: (err as Error).message } });
     }
