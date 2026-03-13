@@ -4,6 +4,10 @@
  * Catches two patterns:
  * 1. Tool call loops: agent calls same tool with same input N times
  * 2. Response loops: agent generates nearly identical text N times
+ *
+ * Decay: records older than DECAY_WINDOW_MS are pruned on each check,
+ * preventing false positives in long-lived sessions where the same
+ * legitimate tool call may recur hours apart.
  */
 
 // ─── Configuration ──────────────────────────────────────────────────────────────
@@ -12,17 +16,20 @@ const MAX_IDENTICAL_TOOL_CALLS = 3;   // same tool + same input
 const MAX_SIMILAR_RESPONSES = 3;       // similarity > 0.85
 const SIMILARITY_THRESHOLD = 0.85;     // Jaccard similarity
 const WINDOW_SIZE = 8;                 // only check last N items
+const DECAY_WINDOW_MS = 5 * 60 * 1000; // 5 minutes — records older than this are pruned
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
 interface ToolCallRecord {
   name: string;
   inputHash: string;
+  timestamp: number;
 }
 
 interface ResponseRecord {
   text: string;
   tokens: Set<string>;  // for Jaccard similarity
+  timestamp: number;
 }
 
 export interface LoopDetectionResult {
@@ -36,13 +43,23 @@ export interface LoopDetectionResult {
 export class LoopDetector {
   private toolHistory: ToolCallRecord[] = [];
   private responseHistory: ResponseRecord[] = [];
+  private _nowFn: () => number = Date.now;  // injectable for testing
+
+  /**
+   * Override the clock source (for deterministic tests).
+   */
+  setNowFn(fn: () => number): void {
+    this._nowFn = fn;
+  }
 
   /**
    * Record a tool call. Returns loop detection result.
    */
   recordToolCall(name: string, input: Record<string, unknown>): LoopDetectionResult {
+    this.decayToolHistory();
+
     const inputHash = this.hashInput(input);
-    this.toolHistory.push({ name, inputHash });
+    this.toolHistory.push({ name, inputHash, timestamp: this._nowFn() });
 
     // Keep window bounded
     if (this.toolHistory.length > WINDOW_SIZE * 2) {
@@ -70,11 +87,13 @@ export class LoopDetector {
    * Record an assistant response. Returns loop detection result.
    */
   recordResponse(text: string): LoopDetectionResult {
+    this.decayResponseHistory();
+
     const trimmed = text.trim();
     if (trimmed.length < 20) return { loopDetected: false };  // too short to matter
 
     const tokens = this.tokenize(trimmed);
-    this.responseHistory.push({ text: trimmed, tokens });
+    this.responseHistory.push({ text: trimmed, tokens, timestamp: this._nowFn() });
 
     // Keep window bounded
     if (this.responseHistory.length > WINDOW_SIZE * 2) {
@@ -108,6 +127,26 @@ export class LoopDetector {
   reset(): void {
     this.toolHistory = [];
     this.responseHistory = [];
+  }
+
+  // ── Decay ────────────────────────────────────────────────────────────────────
+
+  /**
+   * Remove tool call records older than DECAY_WINDOW_MS.
+   * Called automatically before each recordToolCall().
+   */
+  private decayToolHistory(): void {
+    const cutoff = this._nowFn() - DECAY_WINDOW_MS;
+    this.toolHistory = this.toolHistory.filter((r) => r.timestamp >= cutoff);
+  }
+
+  /**
+   * Remove response records older than DECAY_WINDOW_MS.
+   * Called automatically before each recordResponse().
+   */
+  private decayResponseHistory(): void {
+    const cutoff = this._nowFn() - DECAY_WINDOW_MS;
+    this.responseHistory = this.responseHistory.filter((r) => r.timestamp >= cutoff);
   }
 
   // ── Private helpers ──────────────────────────────────────────────────────────

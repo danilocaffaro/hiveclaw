@@ -248,6 +248,7 @@ describe('Error handling', () => {
     const events = await collectEvents(runAgent(sessionId, 'Hello', makeAgentConfig()));
     const error = events.find(e => e.event === 'error');
     expect(error).toBeDefined();
+    expect((error!.data as { code: string }).code).toBe('STREAM_ERROR');
   });
 
   it('handles empty provider stream without hanging', async () => {
@@ -332,9 +333,9 @@ describe('Usage tracking', () => {
     const events = await collectEvents(runAgent(sessionId, 'Hi', makeAgentConfig()));
     const finish = events.find(e => e.event === 'message.finish');
     expect(finish).toBeDefined();
-    const data = finish?.data as Record<string, unknown>;
-    if (data?.usage) {
-      expect((data.usage as { inputTokens: number }).inputTokens).toBe(42);
-    }
+    const data = finish!.data as Record<string, unknown>;
+    expect(data.tokens_in).toBe(42);
+    expect(data.tokens_out).toBe(10);
+    expect(typeof data.cost).toBe('number');
   });
 });
