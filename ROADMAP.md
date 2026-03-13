@@ -50,8 +50,9 @@
 | **3.6** | **Visual Memory L6** — describe-then-store para imagens | Memória de longo prazo visual | ~3h | — |
 | **3.7** | **Topic-based segmentation** — clustering de conversas por tema via embeddings | Melhor retrieval, UX de "pastas" de contexto | ~3h | — |
 | **3.8** | **Doctor API** — `/api/doctor` endpoint: DB integrity (FKs, orphans), provider connectivity test, agent health (sem provider válido), disk/memory usage, schema version check. Inspirado no `openclaw doctor`. Opcional: `POST /api/doctor/fix` pra auto-correção | Self-healing, monitoring, onboarding confidence | ~4h | — |
+| **3.9** | **Multi-user access + Public Agent Interface** — 3 camadas: **(a)** Share Link v2: link público bonito com branding do agente (avatar, nome, cor), chat polido, sem login; **(b)** Invited Users: auth por magic link/token, acesso a agentes específicos, histórico persistente, rate limit por user; **(c)** Squad Guest: humano externo entra em squad chat via invite link, participa como membro com role "guest". UI: landing page por agente, inbox do convidado, admin panel pra owner gerenciar acessos/limites | Transforma SuperClaw de tool pessoal em plataforma. Qualquer pessoa usa via link sem instalar nada | ~12h | — |
 
-**Estimativa Tier 3: ~28h (4-5 sprints)**
+**Estimativa Tier 3: ~40h (5-6 sprints)**
 
 ---
 
