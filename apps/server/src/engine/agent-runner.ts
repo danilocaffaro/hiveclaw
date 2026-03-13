@@ -169,14 +169,25 @@ export async function* runAgent(
   const { tools: enabledTools, byName: toolsByName } = getToolsForAgent(agentConfig.tools);
   const toolDefs = toolsToLLMDefinitions(enabledTools);
 
-  // ── 2.8 Inject runtime context (model, provider, capabilities) ──────────────
+  // ── 2.8 Inject runtime context (model, provider, capabilities, config) ───────
   const runtimeModel = agentConfig.modelId || 'unknown';
   const runtimeProvider = agentConfig.providerId || 'unknown';
   const toolNames = enabledTools.map(t => t.definition.name);
-  const capabilitiesLine = toolNames.length > 0
-    ? `\nCapabilities: You have tools available including: ${toolNames.join(', ')}. Use them proactively when they help answer the user's request.`
+  const runtimeParts = [
+    `agent=${agentConfig.id}`,
+    `name=${agentConfig.name}`,
+    `model=${runtimeModel}`,
+    `provider=${runtimeProvider}`,
+    `temperature=${agentConfig.temperature ?? 0.7}`,
+    `tools=${toolNames.length}`,
+    `date=${new Date().toISOString().split('T')[0]}`,
+    `platform=SuperClaw Pure`,
+  ];
+  const runtimeLine = `Runtime: ${runtimeParts.join(' | ')}`;
+  const toolsList = toolNames.length > 0
+    ? `\nAvailable tools: ${toolNames.join(', ')}. Use them proactively — you have real access to web, files, code execution, memory, and more. Never claim you lack capabilities that your tools provide.`
     : '';
-  const runtimeContext = `\n\n[Runtime Info]\nModel: ${runtimeModel}\nProvider: ${runtimeProvider}\nDate: ${new Date().toISOString().split('T')[0]}${capabilitiesLine}`;
+  const runtimeContext = `\n\n## Runtime\n${runtimeLine}${toolsList}`;
   systemPrompt = systemPrompt + runtimeContext;
 
   // ── 3. Build messages array ─────────────────────────────────────────────────
