@@ -49,8 +49,9 @@
 | **3.5** | **Presentations API + reveal.js** — agente cria slides | Feature de wow factor | ~4h | — |
 | **3.6** | **Visual Memory L6** — describe-then-store para imagens | Memória de longo prazo visual | ~3h | — |
 | **3.7** | **Topic-based segmentation** — clustering de conversas por tema via embeddings | Melhor retrieval, UX de "pastas" de contexto | ~3h | — |
+| **3.8** | **Doctor API** — `/api/doctor` endpoint: DB integrity (FKs, orphans), provider connectivity test, agent health (sem provider válido), disk/memory usage, schema version check. Inspirado no `openclaw doctor`. Opcional: `POST /api/doctor/fix` pra auto-correção | Self-healing, monitoring, onboarding confidence | ~4h | — |
 
-**Estimativa Tier 3: ~24h (3-4 sprints)**
+**Estimativa Tier 3: ~28h (4-5 sprints)**
 
 ---
 
@@ -68,12 +69,12 @@
 
 | Sprint | Itens | Status |
 |--------|-------|--------|
-| **Sprint 69** | 1.1, 1.2, 1.3 | 🔲 Planned |
-| **Sprint 70** | 1.4, 1.5, 1.6 | 🔲 Planned |
-| **Sprint 71** | 2.1, 2.2, 2.3 | 🔲 Planned |
+| **Sprint 69** | 1.1, 1.2, 1.3 | ✅ Done |
+| **Sprint 70** | 1.4, 1.5, 1.6 | ✅ Done |
+| **Sprint 71** | 2.1, 2.2, 2.3 | ✅ Done |
 | **Sprint 72** | 2.4, 2.5, 2.6 | 🔲 Planned |
-| **Sprint 73** | 2.7, 2.8, 2.9 (Squad Intelligence) | 🔲 Planned |
-| **Sprint 74+** | Tier 3 | 🔲 Backlog |
+| **Sprint 73** | 2.7, 2.8, 2.9 (Squad Intelligence) | 🔄 In Progress |
+| **Sprint 74+** | Tier 3 (incl. 3.8 Doctor API) | 🔲 Backlog |
 
 ---
 
