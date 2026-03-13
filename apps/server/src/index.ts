@@ -8,6 +8,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
+import rateLimit from '@fastify/rate-limit';
 import { readFileSync, existsSync } from 'fs';
 import { join, extname } from 'path';
 import {
@@ -184,33 +185,28 @@ async function main() {
   await app.register(cors, { origin: corsOrigins });
   await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024 } });
 
-  // ─── Rate limiter ─────────────────────────────────────────────────────
-  const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-  const RATE_LIMIT = 600;
-  const RATE_WINDOW = 60_000;
-
-  app.addHook('onRequest', async (req, reply) => {
-    const key = req.ip;
-    const now = Date.now();
-    let entry = rateLimitMap.get(key);
-    if (!entry || now > entry.resetAt) {
-      entry = { count: 0, resetAt: now + RATE_WINDOW };
-      rateLimitMap.set(key, entry);
-    }
-    entry.count++;
-    reply.header('X-RateLimit-Limit', RATE_LIMIT);
-    reply.header('X-RateLimit-Remaining', Math.max(0, RATE_LIMIT - entry.count));
-    if (entry.count > RATE_LIMIT) {
-      reply.status(429).send({ error: { code: 'RATE_LIMITED', message: 'Too many requests' } });
-    }
+  // ─── Rate Limiting ────────────────────────────────────────────────────
+  // Global: 200 req/min per IP (replaces the old manual Map-based limiter)
+  // Sensitive endpoints (chat/message/squad-run): 30 req/min
+  // Webhook callbacks (external agents): 500 req/min (high-throughput inbound)
+  await app.register(rateLimit, {
+    global: true,
+    max: 200,
+    timeWindow: '1 minute',
+    keyGenerator: (req) => req.ip,
+    errorResponseBuilder: (_req, context) => ({
+      error: {
+        code: 'RATE_LIMITED',
+        message: `Too many requests. Limit: ${context.max} per ${context.after}. Try again later.`,
+      },
+    }),
+    addHeaders: {
+      'x-ratelimit-limit': true,
+      'x-ratelimit-remaining': true,
+      'x-ratelimit-reset': true,
+      'retry-after': true,
+    },
   });
-
-  setInterval(() => {
-    const now = Date.now();
-    for (const [key, val] of rateLimitMap) {
-      if (now > val.resetAt) rateLimitMap.delete(key);
-    }
-  }, 5 * 60_000);
 
   // ─── Security Headers ───────────────────────────────────────────────────
   app.addHook('onSend', async (_req, reply) => {

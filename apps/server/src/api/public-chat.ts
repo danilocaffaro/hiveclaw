@@ -231,8 +231,10 @@ export function registerPublicChatRoutes(app: FastifyInstance): void {
   });
 
   // POST /public/chat/:token/message — send a message (streaming SSE)
+  // Stricter limit: public endpoint, no auth required
   app.post<{ Params: { token: string }; Body: { content: string; guestId?: string } }>(
     '/public/chat/:token/message',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const link = repo.findByToken(req.params.token);
       if (!link)

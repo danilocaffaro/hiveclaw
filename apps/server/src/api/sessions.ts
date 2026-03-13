@@ -264,7 +264,9 @@ export function registerSessionRoutes(app: FastifyInstance) {
   app.post<{
     Params: { id: string };
     Body: { content: string; agent_id?: string };
-  }>('/sessions/:id/message', async (req, reply) => {
+  }>('/sessions/:id/message', {
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
     const { id } = req.params;
     const { content, agent_id } = req.body ?? {};
 

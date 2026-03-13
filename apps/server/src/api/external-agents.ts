@@ -120,6 +120,7 @@ export function registerExternalAgentRoutes(app: FastifyInstance, db: Database.D
 
   app.post<{ Params: { id: string }; Body: { requestId: string; text: string; actions?: unknown[] } }>(
     '/external-agents/:id/callback',
+    { config: { rateLimit: { max: 500, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const agent = repo.getById(req.params.id);
       if (!agent) return reply.status(404).send({ error: 'External agent not found' });
