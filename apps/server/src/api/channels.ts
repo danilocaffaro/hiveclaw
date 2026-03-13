@@ -175,16 +175,35 @@ async function sendTelegram(config: Extract<ChannelTypeConfig, { type: 'telegram
   if (!chatId) throw new Error('Telegram: to (chat_id) required');
 
   const url = `https://api.telegram.org/bot${config.botToken}/sendMessage`;
-  const res = await fetch(url, {
+
+  // Try with Markdown first, fallback to plain text if Telegram rejects formatting
+  const payload = {
+    chat_id: chatId,
+    text: msg.text,
+    parse_mode: 'Markdown',
+    ...(msg.replyToId ? { reply_to_message_id: msg.replyToId } : {}),
+  };
+
+  let res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text: msg.text,
-      parse_mode: 'Markdown',
-      ...(msg.replyToId ? { reply_to_message_id: msg.replyToId } : {}),
-    }),
+    body: JSON.stringify(payload),
   });
+
+  // If Markdown fails (e.g. tables, unclosed tags), retry without parse_mode
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '');
+    logger.warn('[Telegram] Markdown send failed (%d), retrying as plain text: %s', res.status, errBody.slice(0, 200));
+
+    const plainPayload = { ...payload, parse_mode: undefined };
+    delete (plainPayload as Record<string, unknown>).parse_mode;
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(plainPayload),
+    });
+  }
+
   if (!res.ok) {
     const err = await res.text().catch(() => '');
     throw new Error(`Telegram API error ${res.status}: ${err.slice(0, 200)}`);
