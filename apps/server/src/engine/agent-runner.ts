@@ -112,7 +112,7 @@ import { estimateTokenCost } from '../config/pricing.js';
 
 // ─── Core agentic loop ────────────────────────────────────────────────────────
 
-const MAX_TOOL_ITERATIONS = 10;
+const MAX_TOOL_ITERATIONS = 40;
 
 export async function* runAgent(
   sessionId: string,
