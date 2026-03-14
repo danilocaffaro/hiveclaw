@@ -33,6 +33,7 @@ export interface MessageInfo {
   role: string; // 'user' | 'assistant' | 'system' | 'tool'
   content: string;
   agent_id: string;
+  sender_type: 'human' | 'agent' | 'external_agent';
   tool_name: string;
   tool_input: string;
   tool_result: string;
@@ -55,6 +56,7 @@ export type AddMessageOpts = {
   role: string;
   content: string;
   agent_id?: string;
+  sender_type?: 'human' | 'agent' | 'external_agent';
   tool_name?: string;
   tool_input?: string;
   tool_result?: string;
@@ -157,6 +159,7 @@ function rowToMessageInfo(row: MessageRow): MessageInfo {
     role: row.role,
     content: contentToString(row.content),
     agent_id: row.agent_id ?? '',
+    sender_type: (row as MessageRow & { sender_type?: string }).sender_type as MessageInfo['sender_type'] ?? 'human',
     tool_name: row.tool_name ?? '',
     tool_input: row.tool_input ?? '',
     tool_result: row.tool_result ?? '',
@@ -270,13 +273,14 @@ export class SessionManager {
 
     this.db.prepare(`
       INSERT INTO messages
-        (id, session_id, role, agent_id, content, tokens_input, tokens_output, cost, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, session_id, role, agent_id, sender_type, content, tokens_input, tokens_output, cost, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       sessionId,
       msg.role,
       msg.agent_id ?? '',
+      msg.sender_type ?? 'human',
       contentJson,
       msg.tokens_in ?? 0,
       msg.tokens_out ?? 0,
@@ -293,6 +297,7 @@ export class SessionManager {
       role: msg.role,
       content: msg.content,
       agent_id: msg.agent_id ?? '',
+      sender_type: msg.sender_type ?? 'human',
       tool_name: msg.tool_name ?? '',
       tool_input: msg.tool_input ?? '',
       tool_result: msg.tool_result ?? '',

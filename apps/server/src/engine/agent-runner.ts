@@ -460,6 +460,7 @@ export async function* runAgent(
       role: 'assistant',
       content: fullAssistantText,
       agent_id: agentConfig.id,
+      sender_type: 'agent',
       tokens_in: totalTokensIn,
       tokens_out: totalTokensOut,
       cost,

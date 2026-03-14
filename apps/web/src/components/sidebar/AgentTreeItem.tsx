@@ -110,6 +110,19 @@ export function AgentTreeItem({
             }}
           >
             {agent.name}
+            {agent.isExternal && (
+              <span style={{
+                fontSize: 9,
+                fontWeight: 600,
+                background: 'rgba(168,85,247,0.15)',
+                color: '#A855F7',
+                borderRadius: 3,
+                padding: '1px 4px',
+                marginLeft: 4,
+                verticalAlign: 'middle',
+                letterSpacing: '0.3px',
+              }}>EXT</span>
+            )}
           </div>
           <div
             style={{
@@ -121,7 +134,7 @@ export function AgentTreeItem({
               marginTop: 1,
             }}
           >
-            {agent.role || agent.type}
+            {agent.isExternal ? `${agent.tier ?? 'external'} agent` : (agent.role || agent.type)}
           </div>
         </div>
       </div>

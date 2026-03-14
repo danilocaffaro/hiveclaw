@@ -88,6 +88,15 @@ function buildTier1Message(ctx: SquadMessageContext): string {
   let msg = `You are participating in a group chat called "${ctx.squadName}".\n\n`;
   msg += `Members:\n  ${memberList}\n\n`;
 
+  // S5: Recent session history (last 10 messages) for full context
+  if (ctx.recentHistory && ctx.recentHistory.length > 0) {
+    msg += `--- Recent session history ---\n`;
+    for (const h of ctx.recentHistory) {
+      msg += `[${h.role}] ${h.name}: ${h.content.slice(0, 500)}\n`;
+    }
+    msg += `--- End history ---\n\n`;
+  }
+
   // Previous responses (ECHO-FREE context)
   if (ctx.previousResponses.length > 0) {
     msg += `--- Conversation so far ---\n`;
@@ -140,7 +149,7 @@ function buildTier2Message(ctx: SquadMessageContext): string {
 
 // ─── Webhook Dispatcher ────────────────────────────────────────────────────────
 
-const WEBHOOK_TIMEOUT_MS = 30_000;
+const WEBHOOK_TIMEOUT_MS = 120_000; // S6: extended from 30s for complex agent tasks
 
 /**
  * Send a message to an external agent via webhook and wait for response.

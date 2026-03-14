@@ -17,7 +17,7 @@ export function SquadFormModal({ onClose, onSaved }: SquadFormModalProps) {
   const [name, setName] = useState('');
   const [emoji, setEmoji] = useState('👥');
   const [description, setDescription] = useState('');
-  const [routingStrategy, setRoutingStrategy] = useState<'auto' | 'round-robin' | 'manual'>('auto');
+  const [routingStrategy, setRoutingStrategy] = useState<'sequential' | 'debate' | 'specialist' | 'round-robin'>('sequential');
   const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -143,12 +143,13 @@ export function SquadFormModal({ onClose, onSaved }: SquadFormModalProps) {
           <label style={labelStyle}>Routing Strategy</label>
           <select
             value={routingStrategy}
-            onChange={(e) => setRoutingStrategy(e.target.value as 'auto' | 'round-robin' | 'manual')}
+            onChange={(e) => setRoutingStrategy(e.target.value as 'sequential' | 'debate' | 'specialist' | 'round-robin')}
             style={{ ...inputStyle, cursor: 'pointer' }}
           >
-            <option value="auto">Auto</option>
-            <option value="round-robin">Round Robin</option>
-            <option value="manual">Manual</option>
+            <option value="sequential">Sequential — agents respond in order, @mentions work</option>
+            <option value="debate">Debate — all agents argue, highest confidence wins</option>
+            <option value="specialist">Specialist — coordinator picks the best agent per question</option>
+            <option value="round-robin">Round Robin — rotate agents one at a time</option>
           </select>
         </div>
 

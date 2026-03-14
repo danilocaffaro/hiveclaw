@@ -223,6 +223,16 @@ async function* runExternalAgent(
     data: { text: `\n\n**${agent.emoji ?? '🤖'} ${agent.name}** _(external, ${extAgent.tier})_\n\n`, agentId: agent.id, isHeader: true },
   };
 
+  // S5: Populate recentHistory from session messages
+  const sm = getSessionManager();
+  const recentMessages = sm.getMessages(sessionId, { limit: 10 }).map(m => ({
+    role: m.role,
+    name: m.agent_id
+      ? (config.agents.find(a => a.id === m.agent_id)?.name ?? 'Agent')
+      : 'User',
+    content: m.content,
+  }));
+
   const ctx: SquadMessageContext = {
     squadId: config.id,
     squadName: config.name,
@@ -242,6 +252,7 @@ async function* runExternalAgent(
     turnNumber,
     totalTurns: config.agents.length,
     wasMentioned: true,
+    recentHistory: recentMessages,
   };
 
   const baseUrl = process.env.SUPERCLAW_PUBLIC_URL ?? 'http://localhost:4070';
@@ -252,13 +263,13 @@ async function* runExternalAgent(
     data: { text: response, agentId: agent.id, agentName: agent.name, agentEmoji: agent.emoji },
   };
 
-  // Persist external agent response as assistant message (prevents blue-bubble bug)
+  // Persist external agent response as assistant message with correct sender_type
   try {
-    const sm = getSessionManager();
     sm.addMessage(sessionId, {
       role: 'assistant',
       content: response,
       agent_id: agent.id,
+      sender_type: 'external_agent',
     });
   } catch (err) {
     logger.error('[SquadRunner] Failed to persist external agent message: %s', (err as Error).message);
@@ -326,6 +337,14 @@ export async function* runSquad(
     content: JSON.stringify({ event: 'squad.end' }),
     metadata: { sessionId, squadId: config.id, priority: 1, timestamp: Date.now() },
   });
+
+  // S4+S5: Touch session for memory consolidation (squad sessions were never consolidated before)
+  try {
+    const { touchSession } = await import('./session-consolidator.js');
+    touchSession(config.id, sessionId);
+  } catch {
+    // Non-fatal — consolidator may not be available
+  }
 }
 
 // ─── Routing Strategy: Round-Robin ───────────────────────────────────────────

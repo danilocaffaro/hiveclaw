@@ -8,7 +8,7 @@ export interface Squad {
   description: string;
   agentIds: string[];
   sprintConfig: Record<string, unknown>;
-  routingStrategy: 'auto' | 'round-robin' | 'manual';
+  routingStrategy: 'sequential' | 'debate' | 'specialist' | 'round-robin';
   debateEnabled: boolean;
   createdAt: string;
   updatedAt: string;
@@ -19,7 +19,7 @@ export interface SquadCreateInput {
   emoji?: string;
   description?: string;
   agentIds: string[];
-  routingStrategy?: 'auto' | 'round-robin' | 'manual';
+  routingStrategy?: 'sequential' | 'debate' | 'specialist' | 'round-robin';
   debateEnabled?: boolean;
 }
 

@@ -18,6 +18,8 @@ export interface Agent {
   createdAt: string;
   updatedAt: string;
   source?: 'superclaw';
+  isExternal?: boolean;
+  tier?: string;
 }
 
 export interface AgentCreateInput {
@@ -87,7 +89,38 @@ export const useAgentStore = create<AgentStore>((set) => ({
         createdAt: (a.createdAt ?? a.created_at ?? new Date().toISOString()) as string,
         updatedAt: (a.updatedAt ?? a.updated_at ?? new Date().toISOString()) as string,
         source: 'superclaw' as const,
+        isExternal: false,
       })) as Agent[];
+
+      // S8: Fetch external agents and merge
+      try {
+        const extResp = await apiFetch<{ data: Array<Record<string, unknown>> } | Array<Record<string, unknown>>>('/external-agents');
+        const rawExtAgents = Array.isArray(extResp) ? extResp : (extResp as { data: Array<Record<string, unknown>> }).data ?? [];
+        const extAgents = rawExtAgents.map((a) => ({
+          id: (a.id ?? '') as string,
+          name: (a.name ?? 'External Agent') as string,
+          emoji: (a.emoji ?? '🌐') as string,
+          role: (a.role ?? 'external') as string,
+          type: 'specialist' as const,
+          systemPrompt: '',
+          skills: [] as string[],
+          modelPreference: '',
+          providerPreference: '__external__',
+          temperature: 0.7,
+          maxTokens: 4096,
+          status: ((a.status as string) === 'active' ? 'active' : 'offline') as Agent['status'],
+          color: (a.color ?? '#A855F7') as string,
+          createdAt: (a.createdAt ?? a.created_at ?? new Date().toISOString()) as string,
+          updatedAt: (a.updatedAt ?? a.updated_at ?? new Date().toISOString()) as string,
+          source: 'superclaw' as const,
+          isExternal: true,
+          tier: (a.tier ?? 'lightweight') as string,
+        })) as Agent[];
+        agents.push(...extAgents);
+      } catch {
+        // Non-fatal — external agents endpoint may not exist
+      }
+
       set({ agents });
     } catch (e) {
       console.error('fetchAgents error:', e);

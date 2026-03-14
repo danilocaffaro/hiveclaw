@@ -20,6 +20,7 @@ import { SessionUsageRepository } from '../db/session-usage.js';
 import { handoffSession } from '../engine/session-handoff.js';
 import type { Agent } from '@superclaw/shared';
 import { ExternalAgentRepository } from '../db/external-agents.js';
+import { SquadMemberRepository } from '../db/squad-members.js';
 
 // ─── In-memory pub/sub for multi-listener SSE ──────────────────────────────────
 //
@@ -310,10 +311,18 @@ export function registerSessionRoutes(app: FastifyInstance) {
     if (sessionRow.squad_id) {
       const squadRow = squadRepo.getById(sessionRow.squad_id);
       if (squadRow) {
-        // Resolve agents — check both local and external agent tables
+        // S3: Resolve agents from squad_members (with position), fallback to agent_ids JSON
         const extAgentRepo = new ExternalAgentRepository(db);
+        const smRepo = new SquadMemberRepository(db);
+        const members = smRepo.listBySquad(squadRow.id);
+        // Use squad_members if populated (has position), else fallback to JSON
+        const agentIdList = members.length > 0
+          ? members
+              .sort((a, b) => ((a as unknown as { position?: number }).position ?? 0) - ((b as unknown as { position?: number }).position ?? 0))
+              .map(m => m.agentId)
+          : (squadRow.agentIds ?? []) as string[];
         const squadAgents: AgentConfig[] = [];
-        for (const aid of (squadRow.agentIds ?? []) as string[]) {
+        for (const aid of agentIdList) {
           // Try local agent first
           const localAgent = agentRepo.getById(aid);
           if (localAgent) {

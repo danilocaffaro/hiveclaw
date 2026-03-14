@@ -1,11 +1,14 @@
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 
+export type SenderType = 'human' | 'agent' | 'external_agent';
+
 export interface MessageRow {
   id: string;
   session_id: string;
   role: string;
   agent_id: string;
+  sender_type: SenderType;
   content: string; // JSON stringified array of content blocks
   tokens_input: number;
   tokens_output: number;
@@ -20,14 +23,15 @@ export class MessageRepository {
     session_id: string;
     role: string;
     agent_id?: string;
+    sender_type?: SenderType;
     content: string;
   }): MessageRow {
     const id = randomUUID();
     this.db
       .prepare(
-        `INSERT INTO messages (id, session_id, role, agent_id, content) VALUES (?, ?, ?, ?, ?)`
+        `INSERT INTO messages (id, session_id, role, agent_id, sender_type, content) VALUES (?, ?, ?, ?, ?, ?)`
       )
-      .run(id, msg.session_id, msg.role, msg.agent_id ?? '', msg.content);
+      .run(id, msg.session_id, msg.role, msg.agent_id ?? '', msg.sender_type ?? 'human', msg.content);
     return this.getById(id)!;
   }
 

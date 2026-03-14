@@ -540,6 +540,43 @@ export function initDatabase(): Database.Database {
     try { db.exec("ALTER TABLE agent_memory ADD COLUMN valid_until DATETIME"); } catch { /* */ }
   }
 
+  // ── S1: Add sender_type column to messages (Sprint 76-S) ──────────────────
+  const msgCols = (db.prepare("PRAGMA table_info(messages)").all() as Array<{ name: string }>)
+    .map((c) => c.name);
+  if (!msgCols.includes('sender_type')) {
+    db.exec("ALTER TABLE messages ADD COLUMN sender_type TEXT DEFAULT 'human'");
+    // S2: Backfill existing assistant messages — anything with agent_id is from an agent
+    db.exec(`
+      UPDATE messages SET sender_type = 'agent'
+      WHERE role = 'assistant' AND agent_id != '' AND agent_id IS NOT NULL
+    `);
+  }
+
+  // ── S3: Add position column to squad_members (Sprint 76-S) ─────────────────
+  const smCols = (db.prepare("PRAGMA table_info(squad_members)").all() as Array<{ name: string }>)
+    .map((c) => c.name);
+  if (!smCols.includes('position')) {
+    db.exec("ALTER TABLE squad_members ADD COLUMN position INTEGER DEFAULT 0");
+  }
+
+  // ── S3b: Sync squad_members from squads.agent_ids JSON (one-time migration) ──
+  try {
+    const squads = db.prepare("SELECT id, agent_ids FROM squads").all() as Array<{ id: string; agent_ids: string }>;
+    for (const sq of squads) {
+      const agentIds: string[] = JSON.parse(sq.agent_ids || '[]');
+      for (let i = 0; i < agentIds.length; i++) {
+        db.prepare(`
+          INSERT OR IGNORE INTO squad_members (squad_id, agent_id, role, added_by, added_at)
+          VALUES (?, ?, ?, 'migration', datetime('now'))
+        `).run(sq.id, agentIds[i], i === 0 ? 'owner' : 'member');
+        // Set position for ordering
+        db.prepare(`
+          UPDATE squad_members SET position = ? WHERE squad_id = ? AND agent_id = ?
+        `).run(i, sq.id, agentIds[i]);
+      }
+    }
+  } catch { /* non-fatal — may already be synced */ }
+
   // 8. Migrate: backfill FTS5 from existing messages (one-time)
   try {
     const ftsCount = (db.prepare("SELECT COUNT(*) as cnt FROM messages_fts").get() as { cnt: number }).cnt;

@@ -143,14 +143,18 @@ export function MessageBubble({ msg }: { msg: Message }) {
     /^\[System Message\]/.test(textForDetection)
   );
 
-  // Detect agent messages that arrived as role:user (e.g. via sessions_send from Alice as PO)
-  // Pattern: starts with agent emoji + text, contains PO consolidation markers, or is squad context
-  const isAgentMasqueradingAsUser = isUser && (
+  // S9: Use sender_type for reliable identity detection (replaces regex hack)
+  const senderType = msg.sender_type ?? (isUser ? 'human' : 'agent');
+  const isFromAgent = senderType === 'agent' || senderType === 'external_agent';
+  const isFromExternalAgent = senderType === 'external_agent';
+
+  // Legacy fallback: detect agent messages that arrived as role:user before sender_type migration
+  const isAgentMasqueradingAsUser = !msg.sender_type && isUser && (
     /^(Excelente input|Consolidando como PO|Como PO,|🐕|🦊|🦾|🔭|🦄|\*\*DECISÃO)/.test(textForDetection) ||
     /^Previous agent's analysis:/.test(textForDetection)
   );
   // Treat these as assistant bubbles
-  const effectiveIsUser = isUser && !isAgentMasqueradingAsUser;
+  const effectiveIsUser = isUser && !isFromAgent && !isAgentMasqueradingAsUser;
 
   if (isSystem || isSystemNotification) return null;
   if (isTool) return <ToolCallBlock msg={msg} />;
@@ -217,8 +221,10 @@ export function MessageBubble({ msg }: { msg: Message }) {
             borderRadius: effectiveIsUser ? '16px 16px 4px 16px' : '4px 16px 16px 16px',
             background: effectiveIsUser
               ? 'linear-gradient(135deg, #2563eb, #1d4ed8)'
-              : 'var(--card-bg)',
-            border: effectiveIsUser ? 'none' : '1px solid var(--border)',
+              : isFromExternalAgent
+                ? 'linear-gradient(135deg, rgba(168,85,247,0.08), rgba(168,85,247,0.04))'
+                : 'var(--card-bg)',
+            border: effectiveIsUser ? 'none' : isFromExternalAgent ? '1px solid rgba(168,85,247,0.3)' : '1px solid var(--border)',
             fontSize: 14, lineHeight: 1.55, color: effectiveIsUser ? '#fff' : 'var(--text)',
             wordBreak: 'break-word',
           }}>

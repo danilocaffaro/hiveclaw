@@ -24,6 +24,7 @@ export interface Message {
   agentId?: string;
   agentName?: string;
   agentEmoji?: string;
+  sender_type?: 'human' | 'agent' | 'external_agent';
   tool_name?: string;
   tool_input?: string;
   tool_result?: string;
