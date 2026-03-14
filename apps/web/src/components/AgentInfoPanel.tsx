@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRSPStore, selectActiveAgentId, selectActiveSquadId } from '@/stores/rsp-store';
 import { useAgentStore } from '@/stores/agent-store';
 import { useSquadStore } from '@/stores/squad-store';
+import { useSessionStore } from '@/stores/session-store';
 
 interface AgentInfoPanelProps {
   open: boolean;
@@ -14,11 +15,17 @@ interface AgentInfoPanelProps {
  * K-5: Slide-in config panel showing agent/squad info when header is clicked.
  */
 export default function AgentInfoPanel({ open, onClose }: AgentInfoPanelProps) {
-  const agentId = useRSPStore(selectActiveAgentId);
+  const rspAgentId = useRSPStore(selectActiveAgentId);
   const squadId = useRSPStore(selectActiveSquadId);
   const agents = useAgentStore((s) => s.agents);
   const squads = useSquadStore((s) => s.squads);
+  const sessions = useSessionStore((s) => s.sessions);
+  const activeSessionId = useSessionStore((s) => s.activeSessionId);
   const [visible, setVisible] = useState(false);
+
+  // Fallback: if RSP store has no agent, use the active session's agent_id
+  const sessionAgentId = activeSessionId ? sessions.find((s) => s.id === activeSessionId)?.agent_id : null;
+  const agentId = rspAgentId ?? sessionAgentId ?? null;
 
   const agent = agentId ? agents.find((a) => a.id === agentId) : null;
   const squad = squadId ? squads.find((s) => s.id === squadId) : null;
