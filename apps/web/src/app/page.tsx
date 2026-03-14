@@ -17,6 +17,7 @@ import { useSessionStore } from '@/stores/session-store';
 import { useAgentStore } from '@/stores/agent-store';
 import { useSquadStore } from '@/stores/squad-store';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { useGlobalSSE } from '@/hooks/useGlobalSSE';
 import { PWAProvider } from '@/components/PWAProvider';
 
 // ─── ThemeSync ─────────────────────────────────────────────────────────────────
@@ -118,6 +119,9 @@ export default function HomePage() {
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
+
+  // K-3: Global SSE for unread badges
+  useGlobalSSE();
 
   if (publicToken) return <PublicChat token={publicToken} />;
 

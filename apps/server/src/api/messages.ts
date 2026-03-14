@@ -187,4 +187,78 @@ export function registerMessageRoutes(app: FastifyInstance, db: Database) {
 
     return reply.send({ data: pins });
   });
+
+  // ── K-1: Reactions ──────────────────────────────────────────────────────────
+
+  // POST /messages/:id/reactions — toggle a reaction emoji
+  app.post<{
+    Params: { id: string };
+    Body: { emoji: string; user_id?: string };
+  }>('/messages/:id/reactions', async (req, reply) => {
+    const { id } = req.params;
+    const { emoji, user_id } = req.body ?? {};
+
+    if (!emoji || typeof emoji !== 'string') {
+      return reply.status(400).send({ error: 'emoji required' });
+    }
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS message_reactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message_id TEXT NOT NULL,
+        emoji TEXT NOT NULL,
+        user_id TEXT NOT NULL DEFAULT 'user',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+        UNIQUE(message_id, emoji, user_id)
+      )
+    `);
+
+    const msg = db.prepare('SELECT id FROM messages WHERE id = ?').get(id) as { id: string } | undefined;
+    if (!msg) return reply.status(404).send({ error: 'Message not found' });
+
+    const uid = user_id ?? 'user';
+    const existing = db.prepare(
+      'SELECT id FROM message_reactions WHERE message_id = ? AND emoji = ? AND user_id = ?'
+    ).get(id, emoji, uid) as { id: number } | undefined;
+
+    if (existing) {
+      db.prepare('DELETE FROM message_reactions WHERE id = ?').run(existing.id);
+      const remaining = db.prepare(
+        'SELECT emoji, COUNT(*) as count FROM message_reactions WHERE message_id = ? GROUP BY emoji'
+      ).all(id);
+      return reply.send({ data: { message_id: id, action: 'removed', emoji, reactions: remaining } });
+    } else {
+      db.prepare(
+        'INSERT INTO message_reactions (message_id, emoji, user_id) VALUES (?, ?, ?)'
+      ).run(id, emoji, uid);
+      const all = db.prepare(
+        'SELECT emoji, COUNT(*) as count FROM message_reactions WHERE message_id = ? GROUP BY emoji'
+      ).all(id);
+      return reply.send({ data: { message_id: id, action: 'added', emoji, reactions: all } });
+    }
+  });
+
+  // GET /messages/:id/reactions — list reactions for a message
+  app.get<{ Params: { id: string } }>('/messages/:id/reactions', async (req, reply) => {
+    const { id } = req.params;
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS message_reactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message_id TEXT NOT NULL,
+        emoji TEXT NOT NULL,
+        user_id TEXT NOT NULL DEFAULT 'user',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+        UNIQUE(message_id, emoji, user_id)
+      )
+    `);
+
+    const reactions = db.prepare(
+      'SELECT emoji, COUNT(*) as count FROM message_reactions WHERE message_id = ? GROUP BY emoji'
+    ).all(id);
+
+    return reply.send({ data: reactions });
+  });
 }

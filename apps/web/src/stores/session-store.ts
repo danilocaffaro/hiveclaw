@@ -16,6 +16,11 @@ export interface Session {
   last_message?: string;
 }
 
+export interface MessageReaction {
+  emoji: string;
+  count: number;
+}
+
 export interface Message {
   id: string;
   session_id: string;
@@ -33,6 +38,8 @@ export interface Message {
   tokens_out?: number;
   cost?: number;
   created_at: string;
+  reactions?: MessageReaction[];
+  replyTo?: string;
 }
 
 interface SessionStore {

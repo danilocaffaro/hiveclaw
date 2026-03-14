@@ -14,6 +14,7 @@ import { MessageBubble, LoadingSkeleton } from './chat/MessageBubble';
 import { TypingIndicator } from './chat/TypingIndicator';
 import { ChatHeader } from './chat/ChatHeader';
 import { SquadChatHeader } from './chat/ChatHeader';
+import AgentInfoPanel from './AgentInfoPanel';
 import { ToolChipsBar } from './chat/ToolChipsBar';
 import { WelcomeScreen, SquadWelcomeScreen } from './chat/WelcomeScreen';
 import { InputBar, type Attachment } from './chat/InputBar';
@@ -45,6 +46,7 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
   // F2/F3: Context menu state
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; msg: Message } | null>(null);
   const [reactionBar, setReactionBar] = useState<{ x: number; y: number; msgId: string } | null>(null);
+  const [agentInfoOpen, setAgentInfoOpen] = useState(false);
   // F11: Search overlay
   const [searchOpen, setSearchOpen] = useState(false);
 
@@ -232,11 +234,12 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
     setReactionBar({ x: e.clientX, y: e.clientY, msgId: msg.id });
   }, []);
 
-  // F2: Handle reaction (for now, just log — Sprint C will persist to DB)
-  const handleReaction = useCallback((_emoji: string, _msgId: string) => {
-    // TODO: POST /api/messages/:id/reactions { emoji }
-    // For now, reactions are visual-only (no persistence)
-  }, []);
+    // K-1: Handle reaction — persist to backend + update store
+  const toggleReaction = useMessageStore((s) => s.toggleReaction);
+  const handleReaction = useCallback((emoji: string, msgId: string) => {
+    if (!activeSessionId) return;
+    void toggleReaction(activeSessionId, msgId, emoji);
+  }, [activeSessionId, toggleReaction]);
 
   // F11: Cmd+K to toggle search
   useEffect(() => {
@@ -278,7 +281,7 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
       background: 'var(--bg)', overflow: 'hidden', flex: 1,
     }}>
       {/* Chat Header — hidden when MobileApp provides its own */}
-      {!hideHeader && <ChatHeader />}
+      {!hideHeader && <ChatHeader onAgentInfoClick={() => setAgentInfoOpen(true)} />}
 
       {/* Messages / Welcome */}
       {showDefaultWelcome ? (
@@ -377,6 +380,8 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
         onNavigate={handleSearchNavigate}
         activeSessionId={activeSessionId ?? undefined}
       />
+      {/* K-5: Agent info slide-in panel */}
+      <AgentInfoPanel open={agentInfoOpen} onClose={() => setAgentInfoOpen(false)} />
     </main>
   );
 }

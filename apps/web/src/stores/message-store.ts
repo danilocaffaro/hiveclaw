@@ -12,9 +12,9 @@
 // ============================================================
 
 import { create } from 'zustand';
-import type { Message } from './session-store';
+import type { Message, MessageReaction } from './session-store';
 
-export type { Message };
+export type { Message, MessageReaction };
 
 interface MessageStore {
   // Core state
@@ -35,6 +35,9 @@ interface MessageStore {
   // Unread badge management
   incrementUnread: (sessionId: string) => void;
   clearUnread: (sessionId: string) => void;
+
+  // Reactions
+  toggleReaction: (sessionId: string, messageId: string, emoji: string) => Promise<void>;
 }
 
 export const useMessageStore = create<MessageStore>((set, get) => ({
@@ -125,5 +128,29 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
       next.delete(sessionId);
       return { unreadCounts: next };
     });
+  },
+
+  // ── Reactions ──────────────────────────────────────────────────────────────
+
+  toggleReaction: async (sessionId, messageId, emoji) => {
+    try {
+      const res = await fetch(`/api/messages/${messageId}/reactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emoji }),
+      });
+      if (!res.ok) return;
+      const { data } = await res.json() as { data: { reactions: MessageReaction[] } };
+      set((s) => {
+        const next = new Map(s.messages);
+        const msgs = [...(next.get(sessionId) ?? [])];
+        const idx = msgs.findIndex((m) => m.id === messageId);
+        if (idx >= 0) {
+          msgs[idx] = { ...msgs[idx], reactions: data.reactions };
+          next.set(sessionId, msgs);
+        }
+        return { messages: next };
+      });
+    } catch { /* network error — ignore */ }
   },
 }));

@@ -384,6 +384,26 @@ export function MessageBubble({ msg }: { msg: Message }) {
             )}
           </div>
         )}
+
+        {/* K-1: Reaction badges */}
+        {msg.reactions && msg.reactions.length > 0 && (
+          <div style={{
+            display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap',
+          }}>
+            {msg.reactions.map((r) => (
+              <span key={r.emoji} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 3,
+                padding: '2px 6px', borderRadius: 10,
+                background: 'var(--surface-hover)',
+                border: '1px solid var(--border)',
+                fontSize: 12, cursor: 'default',
+              }}>
+                <span>{r.emoji}</span>
+                {r.count > 1 && <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{r.count}</span>}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

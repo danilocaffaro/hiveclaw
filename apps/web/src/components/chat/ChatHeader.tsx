@@ -125,7 +125,7 @@ export function SquadChatHeader({ squad, agents }: { squad: Squad; agents: Agent
 
 // ─── Chat Header ────────────────────────────────────────────────────────────────
 
-export function ChatHeader() {
+export function ChatHeader({ onAgentInfoClick }: { onAgentInfoClick?: () => void }) {
   const { activeSessionId, activeSquadId, isStreaming, sessions } = useSessionStore();
   const { toggleRightPanel, toggleSettings, setMobileSidebarOpen, setMobileRightPanelOpen, interfaceMode } = useUIStore();
   const squads = useSquadStore((s) => s.squads);
@@ -202,16 +202,23 @@ export function ChatHeader() {
             ☰
           </button>
         )}
-        {/* Agent avatar */}
-        <div style={{
-          width: 34, height: 34, borderRadius: 10,
-          background: 'var(--coral-subtle)',
-          border: '1px solid rgba(255,107,107,0.3)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 16,
-        }}>
-          {agentEmoji}
-        </div>
+        {/* Agent avatar — K-5: clickable to open info panel */}
+        <div
+          onClick={onAgentInfoClick}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            cursor: onAgentInfoClick ? 'pointer' : 'default',
+          }}
+        >
+          <div style={{
+            width: 34, height: 34, borderRadius: 10,
+            background: 'var(--coral-subtle)',
+            border: '1px solid rgba(255,107,107,0.3)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 16,
+          }}>
+            {agentEmoji}
+          </div>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)' }}>{agentName}</span>
@@ -228,6 +235,7 @@ export function ChatHeader() {
               {agentDescription}
             </div>
           )}
+        </div>
         </div>
       </div>
 
