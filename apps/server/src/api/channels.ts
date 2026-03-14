@@ -20,7 +20,7 @@ import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { logger } from '../lib/logger.js';
 import { broadcastSSE } from './sse.js';
-import { handleChannelInbound } from '../engine/channel-responder.js';
+import { getEngineService } from '../engine/engine-service.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 
@@ -451,7 +451,7 @@ export function registerChannelRoutes(app: FastifyInstance, db: Database.Databas
       const parsedRef = parsed;
       setImmediate(async () => {
         try {
-          const response = await handleChannelInbound({
+          const response = await getEngineService().channels.handleInbound({
             channelId: channelRef.id,
             agentId: channelRef.agentId,
             fromId: parsedRef.fromId,

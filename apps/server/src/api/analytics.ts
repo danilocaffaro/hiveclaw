@@ -11,7 +11,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
-import { getCircuitBreaker } from '../engine/circuit-breaker.js';
+import { getEngineService } from '../engine/engine-service.js';
 
 interface UsageRow {
   provider: string;
@@ -136,7 +136,7 @@ export function registerAnalyticsRoutes(app: FastifyInstance, db: Database.Datab
     try {
       const uptimeMs = Date.now() - startTime;
       const mem = process.memoryUsage();
-      const breaker = getCircuitBreaker();
+      const breaker = getEngineService().circuits.getBreaker();
       const circuits = breaker.listAll();
       const openCircuits = circuits.filter((c) => c.state === 'open').length;
 

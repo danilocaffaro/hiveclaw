@@ -1,8 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { DataAnalysisTool } from '../engine/tools/data-analysis.js';
-import { formatToolResult } from '../engine/tools/types.js';
-
-const tool = new DataAnalysisTool();
+import { getEngineService } from '../engine/engine-service.js';
 
 interface AnalyzeBody {
   action: string;
@@ -25,7 +22,7 @@ export function registerDataRoutes(app: FastifyInstance): void {
         .send({ error: { code: 'VALIDATION', message: 'action is required' } });
     }
 
-    const output = await tool.execute({
+    const output = await getEngineService().data.tool.execute({
       action: body.action,
       filePath: body.filePath,
       query: body.query,

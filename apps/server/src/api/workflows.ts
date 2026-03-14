@@ -4,15 +4,13 @@
 
 import type { FastifyInstance } from 'fastify';
 import type { WorkflowRepository } from '../db/workflow-repository.js';
-import type { WorkflowEngine } from '../engine/workflow-engine.js';
-import type { MessageBus } from '../engine/message-bus.js';
+import { getEngineService, type MessageBus } from '../engine/engine-service.js';
 
 // ─── Route Registration ───────────────────────────────────────────────────────
 
 export function registerWorkflowRoutes(
   app: FastifyInstance,
   repo: WorkflowRepository,
-  engine: WorkflowEngine,
 ): void {
   // ── Templates ─────────────────────────────────────────────────────────────
 
@@ -82,7 +80,7 @@ export function registerWorkflowRoutes(
     const template = repo.getTemplate(req.params.id);
     if (!template) return reply.status(404).send({ error: 'Workflow not found' });
     const body = (req.body as { params?: Record<string, string> } | null) ?? {};
-    const run = await engine.startRun(req.params.id, body.params);
+    const run = await getEngineService().workflows.getEngine().startRun(req.params.id, body.params);
     return reply.status(201).send({ data: run });
   });
 
@@ -107,7 +105,7 @@ export function registerWorkflowRoutes(
     if (run.status !== 'running' && run.status !== 'pending') {
       return reply.status(400).send({ error: 'Run is not active' });
     }
-    engine.cancelRun(req.params.id);
+    getEngineService().workflows.getEngine().cancelRun(req.params.id);
     return reply.send({ data: { cancelled: true } });
   });
 
@@ -151,7 +149,7 @@ export function registerWorkflowRoutes(
     // Subscribe to the global 'message' bus topic and filter for this run.
     // The WorkflowEngine publishes messages to `workflow.run.{runId}` topic.
     // We also listen on global 'message' to catch any workflow-related events.
-    const bus: MessageBus = engine.bus;
+    const bus: MessageBus = getEngineService().workflows.getBus();
     const runTopic = `workflow.run.${run.id}`;
 
     const unsub = bus.subscribe(runTopic, (msg: unknown) => {

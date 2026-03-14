@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify';
-import { getMCPClient, type MCPServerConfig } from '../engine/mcp-client.js';
+import type { MCPServerConfig } from '../engine/engine-service.js';
+import { getEngineService } from '../engine/engine-service.js';
 
 export function registerMCPRoutes(app: FastifyInstance): void {
   // GET /mcp/servers — list connected servers + tools
   app.get('/mcp/servers', async (_req, reply) => {
-    const client = getMCPClient();
+    const client = getEngineService().mcp.getClient();
     return reply.send({
       data: {
         connected: client.getConnectedServers(),
@@ -21,7 +22,7 @@ export function registerMCPRoutes(app: FastifyInstance): void {
         .status(400)
         .send({ error: { code: 'VALIDATION', message: 'id and transport required' } });
     }
-    const client = getMCPClient();
+    const client = getEngineService().mcp.getClient();
     try {
       await client.connect({ ...config, enabled: true });
       return reply.send({
@@ -46,7 +47,7 @@ export function registerMCPRoutes(app: FastifyInstance): void {
         .status(400)
         .send({ error: { code: 'VALIDATION', message: 'serverId required' } });
     }
-    const client = getMCPClient();
+    const client = getEngineService().mcp.getClient();
     await client.disconnect(serverId);
     return reply.send({ data: { status: 'disconnected', serverId } });
   });
@@ -61,7 +62,7 @@ export function registerMCPRoutes(app: FastifyInstance): void {
           .status(400)
           .send({ error: { code: 'VALIDATION', message: 'serverId and tool required' } });
       }
-      const client = getMCPClient();
+      const client = getEngineService().mcp.getClient();
       try {
         const result = await client.callTool(serverId, tool, args || {});
         return reply.send({ data: { result } });

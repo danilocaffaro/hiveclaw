@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { MarketplaceRepository } from '../db/marketplace.js';
-import { CURATED_SKILLS, searchSkills, getSkillsByCategory, getCategoryStats, type SkillCategory } from '../engine/skill-hub.js';
+import type { SkillCategory } from '../engine/engine-service.js';
+import { getEngineService } from '../engine/engine-service.js';
 import type Database from 'better-sqlite3';
 
 export function registerMarketplaceRoutes(app: FastifyInstance, db: Database.Database): void {
@@ -97,11 +98,12 @@ export function registerMarketplaceRoutes(app: FastifyInstance, db: Database.Dat
   app.get<{
     Querystring: { category?: string; search?: string; badge?: string };
   }>('/marketplace/curated', async (req) => {
+    const { skills: skillHub } = getEngineService();
     let skills = req.query.search
-      ? searchSkills(req.query.search)
+      ? skillHub.searchSkills(req.query.search)
       : req.query.category
-        ? getSkillsByCategory(req.query.category as SkillCategory)
-        : CURATED_SKILLS;
+        ? skillHub.getSkillsByCategory(req.query.category as SkillCategory)
+        : skillHub.CURATED_SKILLS;
 
     if (req.query.badge) {
       skills = skills.filter(s => s.badge === req.query.badge);
@@ -111,14 +113,14 @@ export function registerMarketplaceRoutes(app: FastifyInstance, db: Database.Dat
       data: {
         skills,
         total: skills.length,
-        categories: getCategoryStats(),
+        categories: skillHub.getCategoryStats(),
       },
     };
   });
 
   // GET /marketplace/curated/:slug — single curated skill with full SKILL.md content
   app.get<{ Params: { slug: string } }>('/marketplace/curated/:slug', async (req, reply) => {
-    const skill = CURATED_SKILLS.find(s => s.slug === req.params.slug);
+    const skill = getEngineService().skills.CURATED_SKILLS.find(s => s.slug === req.params.slug);
     if (!skill) return reply.status(404).send({ error: { code: 'NOT_FOUND' } });
     return { data: skill };
   });
@@ -128,7 +130,7 @@ export function registerMarketplaceRoutes(app: FastifyInstance, db: Database.Dat
     Params: { slug: string };
     Body: { agentId?: string };
   }>('/marketplace/curated/:slug/install', async (req, reply) => {
-    const skill = CURATED_SKILLS.find(s => s.slug === req.params.slug);
+    const skill = getEngineService().skills.CURATED_SKILLS.find(s => s.slug === req.params.slug);
     if (!skill) return reply.status(404).send({ error: { code: 'NOT_FOUND' } });
 
     // Mark as installed in marketplace DB (for tracking)

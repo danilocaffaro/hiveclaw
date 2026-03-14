@@ -7,17 +7,13 @@
 
 import { EventEmitter } from 'events';
 import type { FastifyInstance } from 'fastify';
-import { getSessionManager } from '../engine/session-manager.js';
-import { runAgent, serializeSSE } from '../engine/agent-runner.js';
-import type { AgentConfig, SSEEvent } from '../engine/agent-runner.js';
-import { runSquad } from '../engine/squad-runner.js';
-import type { SquadConfig } from '../engine/squad-runner.js';
+import { getEngineService } from '../engine/engine-service.js';
+import type { AgentConfig, SSEEvent, SquadConfig } from '../engine/engine-service.js';
 import { AgentRepository } from '../db/agents.js';
 import { SquadRepository } from '../db/squads.js';
 import { ProviderRepository } from '../db/providers.js';
 import { initDatabase } from '../db/index.js';
 import { SessionUsageRepository } from '../db/session-usage.js';
-import { handoffSession } from '../engine/session-handoff.js';
 import type { Agent } from '@hiveclaw/shared';
 import { ExternalAgentRepository } from '../db/external-agents.js';
 import { SquadMemberRepository } from '../db/squad-members.js';
@@ -78,7 +74,7 @@ function agentRowToConfig(agent: Agent): AgentConfig {
 // ─── Route registration ────────────────────────────────────────────────────────
 
 export function registerSessionRoutes(app: FastifyInstance) {
-  const sm = getSessionManager();
+  const sm = getEngineService().sessions.getManager();
   const db = initDatabase();
   const agentRepo = new AgentRepository(db);
   const squadRepo = new SquadRepository(db);
@@ -246,7 +242,7 @@ export function registerSessionRoutes(app: FastifyInstance) {
       });
     }
 
-    const result = handoffSession({
+    const result = getEngineService().sessions.handoff({
       sessionId: req.params.id,
       fromAgentId,
       toAgentId,
@@ -405,13 +401,13 @@ export function registerSessionRoutes(app: FastifyInstance) {
         });
 
         const emit = (event: SSEEvent) => {
-          const wire = serializeSSE(event);
+          const wire = getEngineService().sessions.serializeSSE(event);
           reply.raw.write(wire);
           sessionEvents.emit(`session:${id}`, event);
         };
 
         try {
-          for await (const event of runSquad(id, content.trim(), squadConfig, { sender })) {
+          for await (const event of getEngineService().sessions.runSquad(id, content.trim(), squadConfig, { sender })) {
             emit(event);
           }
         } catch (err) {
@@ -434,14 +430,14 @@ export function registerSessionRoutes(app: FastifyInstance) {
 
     // Emit helper — writes named SSE event to this response AND pub/sub
     const emit = (event: SSEEvent) => {
-      const wire = serializeSSE(event);
+      const wire = getEngineService().sessions.serializeSSE(event);
       reply.raw.write(wire);
       // Broadcast to /events subscribers
       sessionEvents.emit(`session:${id}`, event);
     };
 
     try {
-      for await (const event of runAgent(id, content.trim(), agentConfig, { sender })) {
+      for await (const event of getEngineService().sessions.runAgent(id, content.trim(), agentConfig, { sender })) {
         emit(event);
       }
     } catch (err) {
@@ -474,7 +470,7 @@ export function registerSessionRoutes(app: FastifyInstance) {
     reply.raw.write(`:ok\n\n`);
 
     const listener = (event: SSEEvent) => {
-      reply.raw.write(serializeSSE(event));
+      reply.raw.write(getEngineService().sessions.serializeSSE(event));
     };
 
     sessionEvents.on(`session:${id}`, listener);

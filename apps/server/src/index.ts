@@ -67,6 +67,7 @@ import { registerMessageRoutes } from './api/messages.js';
 import { WorkflowRepository } from './db/workflow-repository.js';
 import { WorkflowEngine, seedBuiltinWorkflows } from './engine/workflow-engine.js';
 import { getMessageBus } from './engine/message-bus.js';
+import { getEngineService } from './engine/engine-service.js';
 import { logger } from './lib/logger.js';
 
 import { DEFAULT_PORT, DEFAULT_HOST, DEV_CORS_ORIGINS } from './config/defaults.js';
@@ -98,6 +99,9 @@ async function main() {
   const bus = getMessageBus();
   const workflowEngine = new WorkflowEngine(workflowRepo, bus);
   seedBuiltinWorkflows(workflowRepo);
+
+  // Register workflow engine on facade (completes 3-block decoupling)
+  getEngineService().workflows.setEngine(workflowEngine);
 
   // Seed defaults on first run
   providers.seedDefaults();
@@ -407,7 +411,7 @@ async function main() {
   registerConsoleRoutes(app);
   registerCredentialRoutes(app, credentialRepo);
   registerPreviewRoutes(app);
-  registerWorkflowRoutes(app, workflowRepo, workflowEngine);
+  registerWorkflowRoutes(app, workflowRepo);
   registerSetupRoutes(app, providers);
   registerPublicChatRoutes(app);
   registerBacklogRoutes(app);
