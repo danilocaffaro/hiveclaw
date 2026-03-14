@@ -9,6 +9,7 @@ export interface SquadMember {
   squadId: string;
   agentId: string;
   role: 'owner' | 'admin' | 'member';
+  position: number;
   addedBy: string;
   addedAt: string;
 }
@@ -24,7 +25,7 @@ export interface SquadEvent {
 }
 
 interface MemberRow {
-  squad_id: string; agent_id: string; role: string; added_by: string; added_at: string;
+  squad_id: string; agent_id: string; role: string; added_by: string; added_at: string; position: number;
 }
 
 interface EventRow {
@@ -38,7 +39,7 @@ export class SquadMemberRepository {
   /** List all members of a squad */
   listBySquad(squadId: string): SquadMember[] {
     const rows = this.db.prepare(
-      'SELECT * FROM squad_members WHERE squad_id = ? ORDER BY added_at ASC'
+      'SELECT * FROM squad_members WHERE squad_id = ? ORDER BY position ASC, added_at ASC'
     ).all(squadId) as MemberRow[];
     return rows.map(this.toMember);
   }
@@ -164,6 +165,7 @@ export class SquadMemberRepository {
       squadId: row.squad_id,
       agentId: row.agent_id,
       role: row.role as SquadMember['role'],
+      position: row.position ?? 0,
       addedBy: row.added_by,
       addedAt: row.added_at,
     };

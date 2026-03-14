@@ -315,11 +315,9 @@ export function registerSessionRoutes(app: FastifyInstance) {
         const extAgentRepo = new ExternalAgentRepository(db);
         const smRepo = new SquadMemberRepository(db);
         const members = smRepo.listBySquad(squadRow.id);
-        // Use squad_members if populated (has position), else fallback to JSON
+        // Use squad_members if populated (already ordered by position), else fallback to JSON
         const agentIdList = members.length > 0
-          ? members
-              .sort((a, b) => ((a as unknown as { position?: number }).position ?? 0) - ((b as unknown as { position?: number }).position ?? 0))
-              .map(m => m.agentId)
+          ? members.map(m => m.agentId)
           : (squadRow.agentIds ?? []) as string[];
         const squadAgents: AgentConfig[] = [];
         for (const aid of agentIdList) {

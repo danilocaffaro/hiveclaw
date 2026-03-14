@@ -48,9 +48,7 @@ export function registerSquadRoutes(app: FastifyInstance, squads: SquadRepositor
     const expanded = list.map((squad) => {
       const memberRows = members?.listBySquad(squad.id) ?? [];
       const agentIds = memberRows.length > 0
-        ? memberRows
-            .sort((a, b) => ((a as unknown as { position?: number }).position ?? 0) - ((b as unknown as { position?: number }).position ?? 0))
-            .map((m) => m.agentId)
+        ? memberRows.map((m) => m.agentId)
         : squad.agentIds;
       const agents = agentIds
         .map((id) => {
