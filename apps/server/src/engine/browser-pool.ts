@@ -114,7 +114,7 @@ export class BrowserPool {
         this.pages.set(session.id, page);
 
         if (url) {
-          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+          await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 });
           session.url = page.url();
           session.title = await page.title();
         }
@@ -144,7 +144,10 @@ export class BrowserPool {
   }
 
   private async playwrightNavigate(page: PwPage, url: string): Promise<PageContent> {
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 });
+
+    // Extra wait for SPA hydration (React, Next.js etc.)
+    await page.waitForTimeout(2_000);
 
     const title = await page.title();
     const html = await page.content();
@@ -226,7 +229,7 @@ export class BrowserPool {
     const page = this.pages.get(sessionId);
     if (page && this.engine === 'playwright') {
       await page.click(selector, { timeout: 10_000 });
-      await page.waitForLoadState('domcontentloaded', { timeout: 10_000 }).catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 
       const title = await page.title();
       const text = await page.evaluate(() => document.body?.innerText?.slice(0, 10_000) ?? '');
