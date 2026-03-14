@@ -15,6 +15,7 @@ import { TypingIndicator } from './chat/TypingIndicator';
 import { ChatHeader } from './chat/ChatHeader';
 import { SquadChatHeader } from './chat/ChatHeader';
 import AgentInfoPanel from './AgentInfoPanel';
+import PinBanner from './chat/PinBanner';
 import { ToolChipsBar } from './chat/ToolChipsBar';
 import { WelcomeScreen, SquadWelcomeScreen } from './chat/WelcomeScreen';
 import { InputBar, type Attachment } from './chat/InputBar';
@@ -217,6 +218,7 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
   const handlePin = useCallback(async (msgId: string) => {
     try {
       await fetch(`/api/messages/${msgId}/pin`, { method: 'POST' });
+      window.dispatchEvent(new Event('hiveclaw:pin-changed'));
     } catch { /* ignore */ }
   }, []);
 
@@ -282,6 +284,9 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
     }}>
       {/* Chat Header — hidden when MobileApp provides its own */}
       {!hideHeader && <ChatHeader onAgentInfoClick={() => setAgentInfoOpen(true)} />}
+
+      {/* N-2: Pin banner */}
+      <PinBanner sessionId={activeSessionId} />
 
       {/* Messages / Welcome */}
       {showDefaultWelcome ? (

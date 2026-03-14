@@ -7,6 +7,7 @@ import { useAgentStore } from '@/stores/agent-store';
 import { useSquadStore } from '@/stores/squad-store';
 import type { Agent } from '@/stores/agent-store';
 import ModelSelector from '@/components/ModelSelector';
+import StarredMessagesPanel from '@/components/StarredMessagesPanel';
 
 import { SectionHeader } from './SectionHeader';
 import { ConversationItem } from './ConversationItem';
@@ -87,6 +88,7 @@ export default function Sidebar() {
 
   // L-9: External agent invite modal
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [starredOpen, setStarredOpen] = useState(false);
 
   const openCreateAgent = () => {
     setEditingAgent(null);
@@ -361,6 +363,24 @@ export default function Sidebar() {
             </div>
           )}
 
+          {/* N-3: Starred messages quick access */}
+          {!sidebarCollapsed && (
+            <button
+              onClick={() => setStarredOpen(true)}
+              style={{
+                width: '100%', padding: '6px 0', margin: '4px 0 0',
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 8,
+                fontSize: 12, color: 'var(--text-muted)',
+                borderRadius: 'var(--radius-md)',
+              }}
+              onMouseOver={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-hover)'; }}
+              onMouseOut={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+            >
+              <span style={{ fontSize: 14, marginLeft: 4 }}>⭐</span> Saved Messages
+            </button>
+          )}
+
           {/* Label: CHATS */}
           {!sidebarCollapsed && (
             <div style={{
@@ -468,6 +488,7 @@ export default function Sidebar() {
         />
       )}
       <InviteExternalModal open={inviteModalOpen} onClose={() => setInviteModalOpen(false)} />
+      {starredOpen && <StarredMessagesPanel onClose={() => setStarredOpen(false)} />}
     </>
   );
 }
