@@ -83,7 +83,7 @@
 
 **Objetivo:** Sprint inteiro dedicado a QA end-to-end. Zero implementação. Só teste.
 
-### Roteiros de Teste
+### Roteiros de Teste (11 roteiros)
 
 #### RT-01: Onboarding (usuário virgem)
 1. Abrir SuperClaw pela primeira vez (limpar cookies)
@@ -199,10 +199,47 @@
 6. API key mascarada em responses?
 7. **Expectativa:** Nenhum vetor de ataque funciona
 
+#### RT-11: Right Sidebar (5 tabs)
+1. **Abrir/fechar** right sidebar (atalho ou botão no header)
+2. **Code tab:**
+   - File tree renderiza? Expandir pastas funciona?
+   - Clicar em arquivo → syntax highlight correto?
+   - Status bar mostra nome do arquivo, linguagem, encoding?
+3. **Preview tab:**
+   - Iframe carrega conteúdo?
+   - Device switcher (Desktop/Tablet/Mobile) funciona?
+   - Device chrome (moldura) renderiza corretamente pra tablet e mobile?
+   - Refresh button funciona?
+   - URL bar atualiza com a URL do preview?
+4. **Browser tab:**
+   - Input de URL funciona? Digitar URL + Enter navega?
+   - Screenshot do site carrega?
+   - Tabs múltiplas: criar nova tab, trocar entre tabs, fechar tab
+   - Botões Back/Forward/Refresh funcionam?
+   - Loading indicator aparece durante navegação?
+5. **Tasks tab (Sprint/Backlog):**
+   - Kanban board carrega (TODO/DOING/REVIEW/DONE)?
+   - Criar task: botão "+", digitar título → task aparece na coluna correta?
+   - Drag & drop entre colunas funciona?
+   - Prioridade visual (cores por criticidade) aparece?
+   - Task count por coluna está correto?
+6. **Automations tab (Flows):**
+   - Templates de workflow listam?
+   - Categorias (Development, Content, Research, Operations) filtram?
+   - Iniciar workflow: steps aparecem com status (pending/running/done/failed)?
+   - Cancelar run funciona?
+   - Progress bar reflete steps concluídos?
+7. **Responsividade mobile:**
+   - Right sidebar abre como overlay em mobile (MobileRightPanel)?
+   - Botão "✕" fecha o overlay?
+   - Todas 5 tabs acessíveis no mobile?
+8. **Persistência:** Fechar e reabrir sidebar → mesma tab ativa? Mesma task criada persiste?
+9. **Expectativa:** Todas 5 tabs carregam com conteúdo funcional. Interações (criar task, navegar, preview) funcionam. Nenhuma tab fica vazia/loading eterno
+
 ### Execução do Sprint 78
 
-- **Hawk** executa RT-01 a RT-10 via `agent-browser` (screenshots obrigatórios)
-- **Alice** executa RT-01 a RT-05 via browser tool (perspectiva de PO/humano)
+- **Hawk** executa RT-01 a RT-11 via `agent-browser` (screenshots obrigatórios)
+- **Alice** executa RT-01 a RT-05 + RT-11 via browser tool (perspectiva de PO/humano)
 - **Clark** executa RT-07 a RT-10 via curl + `agent-browser` (perspectiva técnica)
 - Cada roteiro produz: PASS ✅ / FAIL ❌ + evidência + screenshot
 - Score final = (roteiros PASS / total) × 100
@@ -227,5 +264,5 @@ Após Sprint 78 PASS:
 | 75 | C1-C4 (4 criticals) | 🔲 Next |
 | 76 | M1,M7-M11,M13 (7 majors) | 🔲 Planned |
 | 77 | M2,M3,M5+M6,N7,N9 (messenger UX) | 🔲 Planned |
-| 78 | QA Full — 10 roteiros end-to-end | 🔲 Planned |
+| 78 | QA Full — 11 roteiros end-to-end | 🔲 Planned |
 | 79+ | Backlog restante | 🔲 Backlog |
