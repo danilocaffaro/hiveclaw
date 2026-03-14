@@ -2,12 +2,15 @@ import type { FastifyInstance } from 'fastify';
 import { statSync } from 'fs';
 import { resolve } from 'path';
 import { homedir } from 'os';
+import type Database from 'better-sqlite3';
 
 // In-memory store for interface mode (used for multi-device sync)
 let currentInterfaceMode: 'lite' | 'pro' = 'lite';
 
 // B076: Integrations config persisted to SQLite settings table
 import { getDb } from '../db/schema.js';
+import { getAuthUser } from './auth.js';
+import { UserRepository } from '../db/users.js';
 
 function loadIntegrations(): Record<string, unknown> {
   try {
@@ -26,7 +29,8 @@ function saveIntegrations(config: Record<string, unknown>): void {
 
 let integrationsConfig: Record<string, unknown> = loadIntegrations();
 
-export function registerConfigRoutes(app: FastifyInstance) {
+export function registerConfigRoutes(app: FastifyInstance, db?: Database.Database) {
+  const users = db ? new UserRepository(db) : null;
   // Get app config (native — no bridge needed)
   app.get('/config', async () => {
     return { data: { engine: 'native', version: '0.1.0' } };
@@ -114,8 +118,18 @@ export function registerConfigRoutes(app: FastifyInstance) {
     }
   });
 
-  // GET /api/config/database/export — download DB file
-  app.get('/api/config/database/export', async (_req, reply) => {
+  // GET /api/config/database/export — download DB file (requires EXPLICIT API key — no owner fallback)
+  app.get('/api/config/database/export', async (req, reply) => {
+    // SEC: This endpoint exposes the FULL SQLite DB (tokens, keys, sessions).
+    // Must require explicit X-API-Key header — owner fallback is NOT sufficient.
+    const apiKey = req.headers['x-api-key'] as string | undefined;
+    if (!apiKey || !users) {
+      return reply.status(401).send({ error: 'Unauthorized — API key required for database export' });
+    }
+    const user = users.getByApiKey(apiKey);
+    if (!user || (user.role !== 'owner' && user.role !== 'admin')) {
+      return reply.status(403).send({ error: 'Forbidden — owner or admin role required' });
+    }
     try {
       const dbPath = resolve(homedir(), '.superclaw', 'superclaw.db');
       const { createReadStream } = await import('fs');

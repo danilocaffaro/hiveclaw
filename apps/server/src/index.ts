@@ -378,7 +378,7 @@ async function main() {
   registerSessionRoutes(app);
   registerAgentRoutes(app, agents, agentMemoryRepo);
   registerSquadRoutes(app, squads, squadMembers);
-  registerConfigRoutes(app);
+  registerConfigRoutes(app, db);
   registerProviderRoutes(app, providers);
   registerSSERoutes(app);
   app.register(memoryRoutes);
