@@ -133,8 +133,8 @@ export function MarkdownRenderer({ content }: { content: string }) {
         h2: ({ children }) => <h2 style={{ fontSize: 17, fontWeight: 700, margin: '10px 0 6px', color: 'var(--text)' }}>{children as ReactNode}</h2>,
         h3: ({ children }) => <h3 style={{ fontSize: 15, fontWeight: 600, margin: '8px 0 4px', color: 'var(--text)' }}>{children as ReactNode}</h3>,
         table: ({ children }) => (
-          <div style={{ overflowX: 'auto', margin: '8px 0' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>{children as ReactNode}</table>
+          <div style={{ overflowX: 'auto', margin: '8px 0', maxWidth: '100%' }}>
+            <table style={{ minWidth: 300, borderCollapse: 'collapse', fontSize: 13 }}>{children as ReactNode}</table>
           </div>
         ),
         th: ({ children }) => (

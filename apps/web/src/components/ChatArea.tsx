@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useMemo, useCallback, useState } from 'react';
+import React, { useEffect, useRef, useMemo, useCallback, useState } from 'react';
 import { useSessionStore, type Message } from '@/stores/session-store';
 import { useMessageStore } from '@/stores/message-store';
 import { useUIStore } from '@/stores/ui-store';
@@ -17,6 +17,9 @@ import { SquadChatHeader } from './chat/ChatHeader';
 import { ToolChipsBar } from './chat/ToolChipsBar';
 import { WelcomeScreen, SquadWelcomeScreen } from './chat/WelcomeScreen';
 import { InputBar, type Attachment } from './chat/InputBar';
+import { DateSeparator, shouldShowDateSeparator } from './chat/DateSeparator';
+import { ScrollFAB } from './chat/ScrollFAB';
+import { MessageContextMenu, QuickReactionBar, ReplyPreview } from './chat/MessageActions';
 
 // ─── Main ChatArea ──────────────────────────────────────────────────────────────
 
@@ -34,6 +37,13 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
   const isMobile = useIsMobile();
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
+  // F5: Track new messages while scrolled up
+  const [fabUnreadCount, setFabUnreadCount] = useState(0);
+  // F1: Reply state
+  const [replyTo, setReplyTo] = useState<{ id: string; senderName: string; senderEmoji: string; content: string } | null>(null);
+  // F2/F3: Context menu state
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; msg: Message } | null>(null);
+  const [reactionBar, setReactionBar] = useState<{ x: number; y: number; msgId: string } | null>(null);
 
   // ── Global SSE connection (Blueprint Sprint A) ──────────────────────────────
   // When NEXT_PUBLIC_ENABLE_MESSAGE_BUS=true, opens a persistent EventSource to
@@ -88,7 +98,11 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
 
   // When new messages arrive → scroll only if auto-scroll is enabled (user hasn't scrolled up)
   useEffect(() => {
-    if (!autoScroll) return;
+    if (!autoScroll) {
+      // F5: Count new messages while user is scrolled up
+      setFabUnreadCount((c) => c + 1);
+      return;
+    }
     const el = scrollContainerRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, autoScroll]);
@@ -98,8 +112,18 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
     const el = scrollContainerRef.current;
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    setAutoScroll(distanceFromBottom < 80);
+    const isAtBottom = distanceFromBottom < 80;
+    setAutoScroll(isAtBottom);
+    if (isAtBottom) setFabUnreadCount(0);
   };
+
+  // F5: Scroll to bottom handler
+  const scrollToBottom = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    setAutoScroll(true);
+    setFabUnreadCount(0);
+  }, []);
 
   const handleSend = async (content: string, attachments?: Attachment[]) => {
     // Haptic feedback on mobile
@@ -141,8 +165,38 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
     }
 
     if (!messageText) return;
-    await sendMessage(sessionId, messageText);
+    // F1: Prepend reply context if replying
+    const finalText = replyTo
+      ? `> **${replyTo.senderName}**: ${replyTo.content.slice(0, 80)}\n\n${messageText}`
+      : messageText;
+    setReplyTo(null);
+    await sendMessage(sessionId, finalText);
   };
+
+  // F3: Copy message text handler
+  const handleCopy = useCallback((content: string) => {
+    void navigator.clipboard.writeText(content);
+  }, []);
+
+  // F1: Reply handler
+  const handleReply = useCallback((msg: Message) => {
+    const name = msg.role === 'user' ? 'You' : (msg.agentName ?? 'Assistant');
+    const emoji = msg.role === 'user' ? '👤' : (msg.agentEmoji ?? '🤖');
+    setReplyTo({ id: msg.id, senderName: name, senderEmoji: emoji, content: msg.content ?? '' });
+  }, []);
+
+  // F1/F2/F3: Context menu handler (right-click or long-press)
+  const handleMessageContextMenu = useCallback((e: React.MouseEvent, msg: Message) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, msg });
+    setReactionBar({ x: e.clientX, y: e.clientY, msgId: msg.id });
+  }, []);
+
+  // F2: Handle reaction (for now, just log — Sprint C will persist to DB)
+  const handleReaction = useCallback((_emoji: string, _msgId: string) => {
+    // TODO: POST /api/messages/:id/reactions { emoji }
+    // For now, reactions are visual-only (no persistence)
+  }, []);
 
   // Determine what to show
   const hasNoMessages = messages.length === 0;
@@ -174,20 +228,65 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '12px 12px' : '16px 24px' }}
+          style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '12px 12px' : '16px 24px', position: 'relative' }}
         >
-          {messages.map((msg) => (
-            <MessageBubble key={msg.id} msg={msg} />
+          {messages.map((msg, i) => (
+            <React.Fragment key={msg.id}>
+              {/* F6: Date separator when date changes */}
+              {shouldShowDateSeparator(messages[i - 1]?.created_at, msg.created_at) && msg.created_at && (
+                <DateSeparator dateStr={msg.created_at} />
+              )}
+              {/* F1/F2/F3: Right-click context menu on messages */}
+              <div onContextMenu={(e) => handleMessageContextMenu(e, msg)}>
+                <MessageBubble key={msg.id} msg={msg} />
+              </div>
+            </React.Fragment>
           ))}
           {isStreaming && messages.length > 0 && messages[messages.length - 1].role !== 'assistant' && (
             <TypingIndicator />
           )}
           <div ref={messagesEndRef} />
+
+          {/* F5: Scroll-to-bottom FAB */}
+          <ScrollFAB visible={!autoScroll} unreadCount={fabUnreadCount} onClick={scrollToBottom} />
         </div>
       )}
 
       {/* Tool Chips Bar — Pro mode only, hidden on mobile */}
       {/* ToolChips bar disabled until real data available (B030) */}
+
+      {/* F2: Quick reaction bar (floating above context menu) */}
+      {reactionBar && (
+        <QuickReactionBar
+          x={reactionBar.x}
+          y={reactionBar.y}
+          onReact={(emoji) => handleReaction(emoji, reactionBar.msgId)}
+          onClose={() => setReactionBar(null)}
+        />
+      )}
+
+      {/* F1/F3: Context menu (Copy, Reply, React) */}
+      {contextMenu && (
+        <MessageContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => { setContextMenu(null); setReactionBar(null); }}
+          actions={[
+            { icon: '💬', label: 'Reply', onClick: () => handleReply(contextMenu.msg) },
+            { icon: '📋', label: 'Copy', onClick: () => handleCopy(contextMenu.msg.content ?? '') },
+          ]}
+        />
+      )}
+
+      {/* F1: Reply preview above input */}
+      {replyTo && (
+        <ReplyPreview
+          senderName={replyTo.senderName}
+          senderEmoji={replyTo.senderEmoji}
+          content={replyTo.content}
+          onCancel={() => setReplyTo(null)}
+        />
+      )}
 
       {/* Queue indicator */}
       {queuedCount > 0 && (
