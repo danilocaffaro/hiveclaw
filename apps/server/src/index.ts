@@ -64,6 +64,8 @@ import { registerExternalAgentRoutes } from './api/external-agents.js';
 import { registerSearchRoutes } from './api/search.js';
 import { registerOGPreviewRoutes } from './api/og-preview.js';
 import { registerMessageRoutes } from './api/messages.js';
+import { registerSkillScoutRoutes } from './api/skill-scout.js';
+import { startSkillScoutCron } from './engine/skill-scout-cron.js';
 import { WorkflowRepository } from './db/workflow-repository.js';
 import { WorkflowEngine, seedBuiltinWorkflows } from './engine/workflow-engine.js';
 import { getMessageBus } from './engine/message-bus.js';
@@ -424,6 +426,7 @@ async function main() {
   registerOGPreviewRoutes(app);
   registerMessageRoutes(app, db);
   registerN8nRoutes(app);
+  registerSkillScoutRoutes(app, db);
 
   // ─── Start ────────────────────────────────────────────────────────────
   try {
@@ -435,6 +438,9 @@ async function main() {
     console.log(`  → Providers: ${enabledProviders.length > 0 ? enabledProviders.map(p => p.name).join(', ') : 'None (run Setup Wizard)'}`);
     console.log(`  → Agents: ${agents.list().length}`);
     console.log('');
+
+    // Start weekly skill discovery cron (Sprint 78)
+    startSkillScoutCron(db);
   } catch (err) {
     app.log.error(err);
     process.exit(1);

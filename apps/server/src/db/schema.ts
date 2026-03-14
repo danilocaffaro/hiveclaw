@@ -533,6 +533,29 @@ export function initDatabase(): Database.Database {
     db.exec("CREATE INDEX IF NOT EXISTS idx_compaction_log_session ON compaction_log(session_id)");
   } catch { /* may exist */ }
 
+  // recommended_skills — Sprint 78: weekly skill discovery via Gemini
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS recommended_skills (
+      id TEXT PRIMARY KEY,
+      slug TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      why TEXT DEFAULT '',
+      category TEXT DEFAULT 'general',
+      tags TEXT DEFAULT '[]',
+      sources TEXT DEFAULT '[]',
+      status TEXT DEFAULT 'discovering',
+      error TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      activated INTEGER DEFAULT 0,
+      activated_at TEXT
+    )
+  `);
+  try {
+    db.exec("CREATE INDEX IF NOT EXISTS idx_recommended_skills_status ON recommended_skills(status)");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_recommended_skills_activated ON recommended_skills(activated)");
+  } catch { /* may exist */ }
+
   // 7. Migrate agent_memory: add event_at, valid_until columns if missing (existing DBs)
   const amCols = (db.prepare("PRAGMA table_info(agent_memory)").all() as Array<{ name: string }>).map(c => c.name);
   if (!amCols.includes('event_at')) {

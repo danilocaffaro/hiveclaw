@@ -9,9 +9,7 @@ import type { Agent } from '@/stores/agent-store';
 import ModelSelector from '@/components/ModelSelector';
 
 import { SectionHeader } from './SectionHeader';
-import { SessionItem } from './SessionItem';
-import type { SessionUsage } from './SessionItem';
-import { AgentTreeItem } from './AgentTreeItem';
+import { ConversationItem } from './ConversationItem';
 import { SquadItem } from './SquadItem';
 import { CollapsedIconBar } from './CollapsedIconBar';
 import { ModeToggle } from './ModeToggle';
@@ -50,53 +48,33 @@ export default function Sidebar() {
     }));
   }, [agents]);
 
-  // ── Session grouping ─────────────────────────────────────────────────────
-  const { sessionsByAgent } = useMemo(() => {
-    const byAgent = new Map<string, typeof sessions>();
+  // ── Session grouping: find latest session per agent, sorted by recency ──
+  const conversationList = useMemo(() => {
+    // Map: agentId → most recent session
+    const latestByAgent = new Map<string, (typeof sessions)[0]>();
     for (const s of sessions) {
-      const key = s.agent_id || '__orphan__';
-      const list = byAgent.get(key) || [];
-      list.push(s);
-      byAgent.set(key, list);
+      const key = s.agent_id;
+      if (!key) continue;
+      const existing = latestByAgent.get(key);
+      if (!existing || new Date(s.updated_at) > new Date(existing.updated_at)) {
+        latestByAgent.set(key, s);
+      }
     }
-    return { sessionsByAgent: byAgent };
-  }, [sessions, agents]);
 
-  // ── Task 7: Usage fetch — stable dep key (session IDs hash) ─────────────
-  const [usageMap, setUsageMap] = useState<Record<string, SessionUsage>>({});
-  const sessionIdsKey = useMemo(
-    () => sessions.slice(0, 10).map((s) => s.id).join(','),
-    [sessions]
-  );
+    // Build list of { agent, session } tuples, sorted by last activity
+    const list = displayAgents.map((agent) => ({
+      agent,
+      session: latestByAgent.get(agent.id) ?? null,
+    }));
 
-  useEffect(() => {
-    if (!sessionIdsKey) return;
-    const visible = sessions.slice(0, 10);
-    let cancelled = false;
+    list.sort((a, b) => {
+      const tA = a.session ? new Date(a.session.updated_at).getTime() : 0;
+      const tB = b.session ? new Date(b.session.updated_at).getTime() : 0;
+      return tB - tA; // most recent first
+    });
 
-    void Promise.allSettled(
-      visible.map((s) =>
-        fetch(`${API_BASE}/sessions/${encodeURIComponent(s.id)}/usage`)
-          .then((r) => {
-            // Skip if endpoint doesn't exist
-            if (!r.ok) return null;
-            return r.json() as Promise<{ data?: { totalTokens?: number; totalCost?: number } }>;
-          })
-          .then((d) => {
-            if (cancelled || !d?.data) return;
-            const usage: SessionUsage = {
-              tokens: d.data.totalTokens ?? 0,
-              cost: d.data.totalCost ?? 0,
-            };
-            if (usage.tokens > 0) {
-              setUsageMap((prev) => ({ ...prev, [s.id]: usage }));
-            }
-          })
-          .catch(() => {})
-      )
-    );
-    return () => { cancelled = true; };
-  }, [sessionIdsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    return list;
+  }, [sessions, displayAgents]);
 
   // Agent form modal state
   const [agentModalOpen, setAgentModalOpen] = useState(false);
@@ -119,12 +97,6 @@ export default function Sidebar() {
     setAgentModalOpen(false);
     setEditingAgent(null);
   };
-
-  // Track which agent trees are expanded (default: all expanded)
-  const [expandedAgents, setExpandedAgents] = useState<Record<string, boolean>>({});
-  const isAgentExpanded = (id: string) => expandedAgents[id] !== false; // default open
-  const toggleAgentExpand = (id: string) =>
-    setExpandedAgents((prev) => ({ ...prev, [id]: !isAgentExpanded(id) }));
 
   return (
     <>
@@ -356,22 +328,16 @@ export default function Sidebar() {
               </div>
             ) : (
               <>
-                {/* ── DM Chats: Every agent is a contact ── */}
-                {!chatsCollapsed && displayAgents.map((agent) => {
-                  const agentSessions = sessionsByAgent.get(agent.id) ?? [];
-                  return (
-                    <AgentTreeItem
-                      key={agent.id}
-                      agent={agent}
-                      sessions={agentSessions}
-                      expanded={isAgentExpanded(agent.id)}
-                      onToggle={() => toggleAgentExpand(agent.id)}
-                      onEdit={openEditAgent}
-                      activeSessionId={activeSessionId ?? ''}
-                      usageMap={usageMap}
-                    />
-                  );
-                })}
+                {/* ── DM Chats: Conversations sorted by last activity ── */}
+                {!chatsCollapsed && conversationList.map(({ agent, session }) => (
+                  <ConversationItem
+                    key={agent.id}
+                    agent={agent}
+                    session={session}
+                    isActive={session?.id === activeSessionId}
+                    onEdit={openEditAgent}
+                  />
+                ))}
               </>
             )}
 
