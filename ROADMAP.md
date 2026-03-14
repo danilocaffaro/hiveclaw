@@ -52,8 +52,9 @@
 | **3.6** | **Visual Memory L6** — describe-then-store para imagens | Memória de longo prazo visual | ~3h | — |
 | **3.7** | **Topic-based segmentation** — clustering de conversas por tema via embeddings | Melhor retrieval, UX de "pastas" de contexto | ~3h | — |
 | **3.8** | **Doctor API** — `/api/doctor` endpoint: DB integrity (FKs, orphans), provider connectivity test, agent health (sem provider válido), disk/memory usage, schema version check. Inspirado no `openclaw doctor`. Opcional: `POST /api/doctor/fix` pra auto-correção | Self-healing, monitoring, onboarding confidence | ~4h | — |
+| **3.9** | **Starter Kit + Skill Intelligence** — 3 camadas: **(a)** Starter Package: todo novo agente nasce com pacote base de skills essenciais (web search, browser, file ops, memory, calendar, email, code execution, data analysis) pré-instaladas e ativas. Marketplace é para skills EXTRAS, não para o básico; **(b)** Auto-Discovery: rotina periódica (cron/background) que pesquisa comunidades especializadas (ClawHub, PicoClaw registry, GitHub trending, HuggingFace, Reddit r/agents) por skills novas/populares, analisa utilidade, rankeia por adoção/reviews; **(c)** Reverse Engineering Pipeline: ao identificar skill útil de outra plataforma, faz análise funcional (não copia código), entende o que faz, e cria versão nativa SuperClaw (clean-room rewrite) com testes, docs e verificação. Skills criadas assim recebem badge "🔄 Inspired by [source]" | Experiência out-of-box vs configuração manual. Ninguém quer montar agente skill por skill. Diferencial competitivo: ecossistema auto-evolutivo | ~16h | — |
 
-**Estimativa Tier 3: ~28h (4-5 sprints)**
+**Estimativa Tier 3: ~44h (6-8 sprints)**
 
 ---
 
@@ -75,8 +76,10 @@
 | **Sprint 70** | 1.4, 1.5, 1.6 | ✅ Done |
 | **Sprint 71** | 2.1, 2.2, 2.3 | ✅ Done |
 | **Sprint 72** | 2.4, 2.5, 2.6 | 🔲 Planned |
-| **Sprint 73** | 2.7, 2.8, 2.9 (Squad Intelligence) | 🔄 In Progress |
-| **Sprint 74+** | Tier 3 (incl. 3.8 Doctor API) | 🔲 Backlog |
+| **Sprint 73** | 2.7, 2.8, 2.9 (Squad Intelligence) | ✅ Done |
+| **Sprint 74** | Structural fixes (launchd, watchdog, playwright, anti-fabrication) | ✅ Done |
+| **Sprint 75+** | 2.4, 2.5, 2.6 + QA fixes | 🔲 Planned |
+| **Sprint 76+** | Tier 3 (incl. 3.8 Doctor, 3.9 Starter Kit) | 🔲 Backlog |
 
 ---
 
