@@ -194,6 +194,11 @@ async function main() {
     max: 200,
     timeWindow: '1 minute',
     keyGenerator: (req) => req.ip,
+    allowList: (req) => {
+      // Exempt localhost / loopback — internal agent browser navigation
+      const ip = req.ip;
+      return ip === '127.0.0.1' || ip === '::1' || ip === 'localhost';
+    },
     errorResponseBuilder: (_req, context) => ({
       error: {
         code: 'RATE_LIMITED',
