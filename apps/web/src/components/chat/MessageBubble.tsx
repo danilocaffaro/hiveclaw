@@ -225,7 +225,7 @@ export function MessageBubble({ msg }: { msg: Message }) {
           <div style={{
             width: 28, height: 28, borderRadius: 8,
             background: 'var(--coral-subtle)',
-            border: '1px solid rgba(255,107,107,0.3)',
+            border: 'none',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 13, flexShrink: 0, alignSelf: 'flex-end',
           }}>
@@ -247,8 +247,8 @@ export function MessageBubble({ msg }: { msg: Message }) {
               ? 'linear-gradient(135deg, #2563eb, #1d4ed8)'
               : isFromExternalAgent
                 ? 'linear-gradient(135deg, rgba(168,85,247,0.08), rgba(168,85,247,0.04))'
-                : 'var(--card-bg)',
-            border: effectiveIsUser ? 'none' : isFromExternalAgent ? '1px solid rgba(168,85,247,0.3)' : '1px solid var(--border)',
+                : 'var(--coral-subtle)',
+            border: effectiveIsUser ? 'none' : isFromExternalAgent ? '1px solid rgba(168,85,247,0.3)' : '1px solid color-mix(in srgb, var(--coral) 20%, transparent)',
             fontSize: 14, lineHeight: 1.55, color: effectiveIsUser ? '#fff' : 'var(--text)',
             wordBreak: 'break-word',
           }}>
@@ -292,7 +292,7 @@ export function MessageBubble({ msg }: { msg: Message }) {
       <div style={{
         width: 32, height: 32, borderRadius: 10,
         background: effectiveIsUser ? 'var(--blue-subtle)' : 'var(--coral-subtle)',
-        border: `1px solid ${effectiveIsUser ? 'rgba(88,166,255,0.3)' : 'rgba(255,107,107,0.3)'}`,
+        border: `1px solid ${effectiveIsUser ? 'rgba(88,166,255,0.3)' : 'color-mix(in srgb, var(--coral) 30%, transparent)'}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 14, flexShrink: 0
       }}>
