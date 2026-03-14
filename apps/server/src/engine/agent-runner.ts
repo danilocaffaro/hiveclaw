@@ -122,7 +122,7 @@ export async function* runAgent(
   sessionId: string,
   userMessage: string,
   agentConfig: AgentConfig,
-  opts?: { skipPersistUserMessage?: boolean },
+  opts?: { skipPersistUserMessage?: boolean; sender?: { id?: string; name?: string; emoji?: string; type?: string } },
 ): AsyncGenerator<SSEEvent> {
   const sessionManager = getSessionManager();
   const router = getProviderRouter();
@@ -142,7 +142,19 @@ export async function* runAgent(
   // ── 2. Save user message (skip when called from squad runner — context injector is internal) ──
   if (!opts?.skipPersistUserMessage) {
     try {
-      sessionManager.addMessage(sessionId, { role: 'user', content: userMessage });
+      sessionManager.addMessage(sessionId, {
+        role: 'user',
+        content: userMessage,
+        // Sprint C: propagate sender identity to DB
+        ...(opts?.sender?.type === 'agent' ? {
+          sender_type: 'agent' as const,
+          agent_name: opts.sender.name ?? '',
+          agent_emoji: opts.sender.emoji ?? '',
+          agent_id: opts.sender.id ?? '',
+        } : {
+          sender_type: 'human' as const,
+        }),
+      });
     } catch (err) {
       yield {
         event: 'error',

@@ -285,6 +285,7 @@ export async function* runSquad(
   sessionId: string,
   message: string,
   config: SquadConfig,
+  opts?: { sender?: { id?: string; name?: string; emoji?: string; type?: string } },
 ): AsyncGenerator<SSEEvent> {
   // Guard: need at least one agent
   if (!config.agents || config.agents.length === 0) {
@@ -304,7 +305,17 @@ export async function* runSquad(
   // Save the user's original message ONCE (squad agents use skipPersistUserMessage)
   const sm = getSessionManager();
   try {
-    sm.addMessage(sessionId, { role: 'user', content: message, sender_type: 'human' });
+    sm.addMessage(sessionId, {
+      role: 'user',
+      content: message,
+      // Sprint C: propagate sender identity
+      sender_type: (opts?.sender?.type as 'human' | 'agent') ?? 'human',
+      ...(opts?.sender?.type === 'agent' ? {
+        agent_name: opts.sender.name ?? '',
+        agent_emoji: opts.sender.emoji ?? '',
+        agent_id: opts.sender.id ?? '',
+      } : {}),
+    });
   } catch (err) {
     logger.error('[SquadRunner] Failed to persist user message: %s', (err as Error).message);
   }

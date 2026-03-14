@@ -273,12 +273,22 @@ export function registerSessionRoutes(app: FastifyInstance) {
   // GET /sessions/:id/events connections also receive the stream.
   app.post<{
     Params: { id: string };
-    Body: { content: string; agent_id?: string };
+    Body: { content: string; agent_id?: string; sender?: { id?: string; name?: string; emoji?: string; type?: string } };
   }>('/sessions/:id/message', {
     config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (req, reply) => {
     const { id } = req.params;
-    const { content, agent_id } = req.body ?? {};
+    const { content, agent_id, sender: senderBody } = req.body ?? {};
+
+    // Sprint C: Resolve sender identity
+    // If sender field provided (e.g., from external agent or identified client), use it.
+    // Otherwise default to human sender.
+    const sender = {
+      id: senderBody?.id ?? 'user',
+      name: senderBody?.name ?? '',
+      emoji: senderBody?.emoji ?? '',
+      type: senderBody?.type ?? 'human',
+    };
 
     if (!content || typeof content !== 'string' || content.trim() === '') {
       return reply.status(400).send({
@@ -401,7 +411,7 @@ export function registerSessionRoutes(app: FastifyInstance) {
         };
 
         try {
-          for await (const event of runSquad(id, content.trim(), squadConfig)) {
+          for await (const event of runSquad(id, content.trim(), squadConfig, { sender })) {
             emit(event);
           }
         } catch (err) {
@@ -431,7 +441,7 @@ export function registerSessionRoutes(app: FastifyInstance) {
     };
 
     try {
-      for await (const event of runAgent(id, content.trim(), agentConfig)) {
+      for await (const event of runAgent(id, content.trim(), agentConfig, { sender })) {
         emit(event);
       }
     } catch (err) {
