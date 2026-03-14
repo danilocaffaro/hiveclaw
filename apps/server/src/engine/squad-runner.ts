@@ -392,7 +392,7 @@ async function* runRoundRobin(
     if (turnMgr.canSpeak(agent.id)) {
       turnMgr.recordTurn(agent.id);
     }
-    yield* worker.processUserMessage(sessionId, message);
+    yield* worker.processUserMessage(sessionId, message, { skipPersistUserMessage: true });
     return;
   }
 
@@ -495,7 +495,7 @@ async function* runSpecialist(
   const worker = tryGetWorker(picked);
   if (worker) {
     turnMgr.recordTurn(picked.id);
-    yield* worker.processUserMessage(sessionId, message);
+    yield* worker.processUserMessage(sessionId, message, { skipPersistUserMessage: true });
     return;
   }
 
@@ -545,7 +545,7 @@ async function* runDebate(
         `${message}\n\nProvide your position on this. Be concise and direct. ` +
         `End your response with exactly "Confidence: X%" where X is a number from 0 to 100.`;
 
-      for await (const event of worker.processUserMessage(sessionId, debatePrompt)) {
+      for await (const event of worker.processUserMessage(sessionId, debatePrompt, { skipPersistUserMessage: true })) {
         if (event.event === 'message.delta') {
           const d = event.data as Record<string, unknown>;
           if (typeof d.text === 'string') {
@@ -657,7 +657,7 @@ async function* runDebate(
       data: { sessionId, phase: 'resolution', resolvedBy: highestConf.agentId },
     };
 
-    for await (const event of resolverWorker.processUserMessage(sessionId, resolutionPrompt)) {
+    for await (const event of resolverWorker.processUserMessage(sessionId, resolutionPrompt, { skipPersistUserMessage: true })) {
       if (event.event === 'message.delta' || event.event === 'message.finish') {
         yield event;
       }
@@ -834,7 +834,7 @@ async function* runSequential(
         }
       }
     } else if (worker && turnMgr.canSpeak(agent.id)) {
-      for await (const event of worker.processUserMessage(sessionId, prompt)) {
+      for await (const event of worker.processUserMessage(sessionId, prompt, { skipPersistUserMessage: true })) {
         yield event;
         if (event.event === 'message.delta') {
           const d = event.data as Record<string, unknown>;

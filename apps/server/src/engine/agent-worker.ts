@@ -121,11 +121,11 @@ export class AgentWorker extends EventEmitter {
    * Process a user message through the agent's LLM loop.
    * Yields SSE events as the agent thinks, uses tools, and responds.
    */
-  async *processUserMessage(sessionId: string, content: string): AsyncGenerator<SSEEvent> {
+  async *processUserMessage(sessionId: string, content: string, opts?: { skipPersistUserMessage?: boolean }): AsyncGenerator<SSEEvent> {
     this.setState('thinking');
     this._totalMessages++;
     try {
-      for await (const event of runAgent(sessionId, content, this.config)) {
+      for await (const event of runAgent(sessionId, content, this.config, opts)) {
         if (event.event === 'tool.start') this.setState('tool_use');
         if (event.event === 'message.delta') this.setState('responding');
         if (event.event === 'message.finish') {
