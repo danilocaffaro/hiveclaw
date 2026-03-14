@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useSessionStore } from '@/stores/session-store';
 import { useUIStore } from '@/stores/ui-store';
+import { useRSPStore } from '@/stores/rsp-store';
 import type { Squad } from '@/stores/squad-store';
 import type { Agent } from '@/stores/agent-store';
 
@@ -16,6 +17,8 @@ export function SquadItem({ squad, agents }: SquadItemProps) {
   const [hovered, setHovered] = useState(false);
 
   const handleClick = () => {
+    const firstMember = agentIds[0] ?? null;
+    useRSPStore.getState().enterSquad(squad.id, firstMember ?? undefined);
     void createSquadSession(squad.id, `Squad: ${squad.name}`);
     if (window.innerWidth < 768) {
       useUIStore.getState().setMobileSidebarOpen(false);

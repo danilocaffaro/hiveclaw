@@ -9,6 +9,8 @@ const TABS: { id: RightPanelTab; label: string; icon: string }[] = [
   { id: 'browser', label: 'Browser',     icon: '◈' },
   { id: 'sprint',  label: 'Tasks',       icon: '◆' },
   { id: 'flows',   label: 'Automations', icon: '◇' },
+  { id: 'console', label: 'Console',     icon: '⊞' },
+  { id: 'memory',  label: 'Memory',      icon: '◎' },
 ];
 
 function PanelTabs() {

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useRSPStore, selectActiveAgentId, selectIsSquadMode } from '@/stores/rsp-store';
 
 // ─── B056: Tasks Panel (unified — uses /api/backlog) ─────────────────────────
 
@@ -44,6 +45,10 @@ function SprintPanel() {
   const [newTitle, setNewTitle] = useState('');
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<keyof Columns | null>(null);
+
+  // RSP context: filter tasks by active agent in squad mode
+  const rspAgentId = useRSPStore(selectActiveAgentId);
+  const isSquad = useRSPStore(selectIsSquadMode);
 
   const load = useCallback(async () => {
     try {
@@ -128,7 +133,11 @@ function SprintPanel() {
       <div style={{ flex: 1, overflowX: 'auto', overflowY: 'hidden' }}>
         <div style={{ display: 'flex', gap: 8, padding: '8px 10px', height: '100%', minWidth: 'max-content' }}>
           {COLS.map(col => {
-            const tasks = columns[col.id];
+            const allTasks = columns[col.id];
+            // L-4: In squad mode, filter tasks by active agent
+            const tasks = (isSquad && rspAgentId)
+              ? allTasks.filter(t => t.assigned_agent_id === rspAgentId || !t.assigned_agent_id)
+              : allTasks;
             const isOver = dragOver === col.id;
             return (
               <div

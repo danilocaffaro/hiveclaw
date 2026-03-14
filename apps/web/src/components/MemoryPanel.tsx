@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRSPStore, selectActiveAgentId } from '@/stores/rsp-store';
 
 const API = '';
 
@@ -47,6 +48,14 @@ export default function MemoryPanel() {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [loading, setLoading] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+
+  // L-5: Auto-select agent from RSP context
+  const rspAgentId = useRSPStore(selectActiveAgentId);
+  useEffect(() => {
+    if (rspAgentId && rspAgentId !== selectedAgentId) {
+      setSelectedAgentId(rspAgentId);
+    }
+  }, [rspAgentId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
   const [newType, setNewType] = useState<MemType>('short_term');

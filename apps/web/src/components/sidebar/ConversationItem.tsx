@@ -5,6 +5,7 @@ import { useSessionStore } from '@/stores/session-store';
 import { useAgentStore } from '@/stores/agent-store';
 import { useUIStore } from '@/stores/ui-store';
 import { useMessageStore } from '@/stores/message-store';
+import { useRSPStore } from '@/stores/rsp-store';
 import type { Agent } from '@/stores/agent-store';
 import type { Session } from '@/stores/session-store';
 import { StatusDot } from './StatusDot';
@@ -53,6 +54,7 @@ export function ConversationItem({ agent, session, isActive, onEdit }: Conversat
 
   const handleClick = () => {
     setActiveAgent(agent.id);
+    useRSPStore.getState().enterDM(agent.id);
     if (session) {
       setActiveSession(session.id);
       clearUnread(session.id);

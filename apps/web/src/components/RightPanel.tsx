@@ -2,7 +2,10 @@
 
 import { useUIStore } from '@/stores/ui-store';
 import { useFileStore } from '@/stores/file-store';
+import { useAgentStore } from '@/stores/agent-store';
+import { useRSPStore, selectActiveAgentId } from '@/stores/rsp-store';
 import { PanelTabs, CodePanel, PreviewPanel, BrowserPanel, SprintPanel, FlowsPanel, ConsolePanel } from './right-panel';
+import AgentTabBar from './right-panel/AgentTabBar';
 import MemoryPanel from './MemoryPanel';
 
 const FILE_LANGUAGE_LABELS: Record<string, string> = {
@@ -30,6 +33,10 @@ interface RightPanelProps {
 export default function RightPanel({ mobileOverlay = false }: RightPanelProps) {
   const { rightPanelTab, rightPanelCollapsed, setMobileRightPanelOpen } = useUIStore();
   const { selectedFile: fileSelectedPath, fileLanguage } = useFileStore();
+  const rspAgentId = useRSPStore(selectActiveAgentId);
+  const agents = useAgentStore((s) => s.agents);
+  const activeAgent = rspAgentId ? agents.find((a) => a.id === rspAgentId) : null;
+  const isExternal = activeAgent?.isExternal ?? false;
 
   const statusFileName = fileSelectedPath
     ? (fileSelectedPath.split('/').pop() ?? fileSelectedPath)
@@ -81,13 +88,35 @@ export default function RightPanel({ mobileOverlay = false }: RightPanelProps) {
         </div>
       )}
 
+      <AgentTabBar />
       <PanelTabs />
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-        {rightPanelTab === 'code'    && <CodePanel />}
-        {rightPanelTab === 'preview' && <PreviewPanel />}
-        {rightPanelTab === 'browser' && <BrowserPanel />}
-        {rightPanelTab === 'sprint'  && <SprintPanel />}
-        {rightPanelTab === 'flows'   && <FlowsPanel />}
+        {isExternal ? (
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'center', height: '100%', gap: 12, padding: 24,
+            color: 'var(--text-muted)', textAlign: 'center',
+          }}>
+            <span style={{ fontSize: 32 }}>🌐</span>
+            <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)' }}>
+              {activeAgent?.emoji ?? '🤖'} {activeAgent?.name ?? 'External Agent'}
+            </div>
+            <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+              Workspace managed externally.<br />
+              Code, files, and tasks live on the agent&apos;s own infrastructure.
+            </div>
+          </div>
+        ) : (
+          <>
+            {rightPanelTab === 'code'    && <CodePanel />}
+            {rightPanelTab === 'preview' && <PreviewPanel />}
+            {rightPanelTab === 'browser' && <BrowserPanel />}
+            {rightPanelTab === 'sprint'  && <SprintPanel />}
+            {rightPanelTab === 'flows'   && <FlowsPanel />}
+            {rightPanelTab === 'console' && <ConsolePanel />}
+            {rightPanelTab === 'memory'  && <MemoryPanel />}
+          </>
+        )}
       </div>
       <div style={{
         padding: '4px 12px',
