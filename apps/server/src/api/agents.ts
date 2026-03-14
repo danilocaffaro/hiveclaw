@@ -3,6 +3,7 @@ import type { AgentRepository } from '../db/agents.js';
 import type { AgentCreateInput } from '@hiveclaw/shared';
 import { getWorkerPool } from '../engine/agent-worker-pool.js';
 import { AgentMemoryRepository, type MemoryType } from '../db/agent-memory.js';
+import { DEFAULT_SKILLS } from '../engine/skill-hub.js';
 
 // ── Agent Templates ──────────────────────────────────────────────────────────
 
@@ -179,7 +180,7 @@ export function registerAgentRoutes(app: FastifyInstance, agents: AgentRepositor
         role: template.role,
         color: template.color,
         systemPrompt: template.systemPrompt,
-        skills: [...template.skills],
+        skills: [...new Set([...template.skills, ...DEFAULT_SKILLS])],
         providerPreference: '', // uses default provider configured in setup
         modelPreference: '', // uses default model from provider
       });

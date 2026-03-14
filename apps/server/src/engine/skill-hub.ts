@@ -1,7 +1,7 @@
 /**
- * engine/skill-hub.ts — Curated Skill Hub (Batch 7.5)
+ * engine/skill-hub.ts — Curated Skill Hub (Batch 8.0)
  *
- * HiveClaw ships a curated library of 18 audited skills, organized into categories.
+ * HiveClaw ships a curated library of 24 audited skills, organized into categories.
  * Each skill has:
  *   - Clean-room rewrite (no copy-paste from community repos)
  *   - Security audit score
@@ -11,6 +11,16 @@
  *
  * Skills are stored in DB and installed to ~/.hiveclaw/skills/ on demand.
  * Community skills (ClawHub/PicoClaw) can be imported but are NOT pre-installed.
+ *
+ * Sprint 77 additions (Clark 🐙):
+ *   - macos-control    — Full macOS control (mouse, keyboard, window, calibration)
+ *   - self-learning    — Auto skill discovery & creation when gaps detected
+ *   - ui-qa            — Frontend/UI quality assurance with Playwright
+ *   - voice-tts-stt    — TTS (Gemini) + STT (whisper.cpp) voice I/O
+ *   - image-analysis   — Vision LLM image/screenshot/diagram analysis
+ *   - agent-messaging  — Authenticated agent-to-agent messaging (HMAC-SHA256)
+ *
+ * DEFAULT_SKILLS: skills auto-assigned to every new agent (starter pack).
  */
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
@@ -24,7 +34,10 @@ export type SkillCategory =
   | 'data'
   | 'automation'
   | 'creative'
-  | 'utilities';
+  | 'utilities'
+  | 'system'
+  | 'qa'
+  | 'ai-ops';
 
 export type SkillBadge = 'verified' | 'community' | 'experimental';
 
@@ -42,6 +55,7 @@ export interface CuratedSkill {
   content: string;         // The SKILL.md content (clean-room rewrite)
   examples: string[];
   installed?: boolean;
+  skillPath?: string;      // Local path to skill scripts (e.g. ~/.hiveclaw/workspace/skills/macos-control)
 }
 
 // ─── Curated Skill Library (18 skills) ─────────────────────────────────────────
@@ -763,6 +777,274 @@ Always:
 - Note Unicode/multiline flag requirements
 `,
   },
+
+  // ── SYSTEM / MACOS CONTROL ────────────────────────────────────────────────────
+
+  {
+    slug: 'macos-control',
+    name: 'macOS Control',
+    description: 'Full macOS control: mouse, keyboard, window management, screenshots, UI discovery, calibration. Requires cliclick via Homebrew.',
+    category: 'system',
+    badge: 'verified',
+    version: '2.0.0',
+    author: 'Clark 🐙 (rewritten from Zara macos-native-control, 12 vulns fixed)',
+    securityScore: 9.2,
+    usageCount: 0,
+    tags: ['macos', 'mouse', 'keyboard', 'window', 'screenshot', 'ui', 'automation', 'calibration'],
+    examples: ['Click on the Save button', 'Take a screenshot', 'Move window to left half', 'Type this text'],
+    skillPath: '~/.hiveclaw/workspace/skills/macos-control',
+    content: `---
+name: macos-control
+description: "Full macOS control via keyboard, mouse, window management, screenshots, and UI discovery."
+---
+
+# macOS Control
+
+Full desktop automation for macOS agents.
+
+## Scripts
+- \`look.sh\` — Take screenshot, list windows, get screen info
+- \`act.sh\` — Click, double-click, right-click, move mouse, drag
+- \`keys.sh\` — Type text, press keys, keyboard shortcuts
+- \`scroll.sh\` — Scroll up/down/left/right by amount
+- \`window.sh\` — Resize, move, minimize, maximize, focus windows
+- \`discover.sh\` — Find UI elements, get accessibility tree
+- \`system.sh\` — Volume, brightness, notifications, open apps
+- \`clipboard.sh\` — Read/write clipboard
+- \`calibrate.sh\` — Auto-calibrate mouse coordinates
+
+## Security
+- All coordinates validated (max 8000px)
+- App names whitelisted (alphanumeric only)
+- URLs restricted to http/https
+- Text input capped at 1000 chars
+- No shell injection possible
+`,
+  },
+
+  // ── AI-OPS ────────────────────────────────────────────────────────────────────
+
+  {
+    slug: 'self-learning',
+    name: 'Self Learning',
+    description: 'Auto-discovery and creation of new skills when gaps are detected. Searches workspace, web, audits for security, rewrites hardened versions.',
+    category: 'ai-ops',
+    badge: 'verified',
+    version: '2.0.0',
+    author: 'Clark 🐙',
+    securityScore: 9.5,
+    usageCount: 0,
+    tags: ['self-learning', 'meta', 'skills', 'auto-improve', 'gap-detection', 'ai-ops'],
+    examples: ['I need a skill to do X', 'Find a skill for Y', 'Create a new skill for Z'],
+    skillPath: '~/.hiveclaw/workspace/skills/self-learning',
+    content: `---
+name: self-learning
+description: "Auto-discovery and creation of new skills when agent gaps are detected."
+---
+
+# Self Learning
+
+When you encounter a limitation or capability gap, run this 5-step process:
+
+## Process
+1. **Detect & Log** — \`log-gap.sh "<gap>" "<description>" <priority>\`
+2. **Search Workspace** — \`search-workspace.sh "<keyword>"\` — checks ALL hiveclaw/openclaw workspaces generically
+3. **Search Web** — Use webfetch to search GitHub, AgentSkills, npm for best-in-class implementations
+4. **Security Audit** — \`audit-skill.sh <skill_dir>\` — MANDATORY, 12 security checks
+5. **Create/Rewrite** — \`create-skill.sh\` + harden + \`persist-skill-memory.sh\`
+
+## Key principle
+Search is GENERIC — not agent-specific. Searches entire workspace ecosystem.
+Never install a skill that fails audit. Rewrite if needed.
+
+## Gap log
+Stored in \`~/.hiveclaw/workspace/skills/self-learning/.learnings/GAPS.md\`
+`,
+  },
+
+  // ── QA ────────────────────────────────────────────────────────────────────────
+
+  {
+    slug: 'ui-qa',
+    name: 'UI QA',
+    description: 'Frontend and UI quality assurance with Playwright: visual regression, accessibility, performance, cross-browser testing.',
+    category: 'qa',
+    badge: 'verified',
+    version: '2.0.0',
+    author: 'Clark 🐙',
+    securityScore: 9.3,
+    usageCount: 0,
+    tags: ['qa', 'testing', 'playwright', 'ui', 'frontend', 'accessibility', 'visual-regression', 'performance'],
+    examples: ['Test the login flow', 'Check accessibility of this page', 'Visual regression test', 'Performance audit'],
+    skillPath: '~/.hiveclaw/workspace/skills/ui-qa',
+    content: `---
+name: ui-qa
+description: "Frontend/UI QA with Playwright: visual, accessibility, performance, cross-browser."
+---
+
+# UI QA Skill
+
+Comprehensive frontend quality assurance.
+
+## Scripts
+- \`snapshot.sh <url>\` — Full page screenshot + visual diff
+- \`accessibility.sh <url>\` — WCAG 2.1 compliance check (axe-core)
+- \`performance.sh <url>\` — Core Web Vitals (LCP, CLS, FID, TTFB)
+- \`flow-test.sh <url> <script>\` — Run Playwright test script
+- \`cross-browser.sh <url>\` — Test on Chromium, Firefox, WebKit
+- \`mobile.sh <url>\` — Mobile viewport simulation (iPhone, Android)
+- \`report.sh\` — Aggregate HTML report of all QA results
+
+## Modes
+- **smoke** — Quick sanity check (load, no JS errors, basic interactions)
+- **full** — All checks (visual + a11y + perf + cross-browser)
+- **ci** — Headless, JSON output, exit code for CI/CD pipelines
+`,
+  },
+
+  // ── COMMUNICATION (voice + agent messaging) ───────────────────────────────────
+
+  {
+    slug: 'voice-tts-stt',
+    name: 'Voice TTS/STT',
+    description: 'Bidirectional voice I/O: Text-to-Speech via Gemini TTS (pt-BR/EN, free) with macOS fallback, Speech-to-Text via whisper.cpp (local, offline, private).',
+    category: 'communication',
+    badge: 'verified',
+    version: '2.0.0',
+    author: 'Clark 🐙 (from gemini-tts + whisper-local, OpenClaw workspace)',
+    securityScore: 9.5,
+    usageCount: 0,
+    tags: ['voice', 'tts', 'stt', 'speech', 'whisper', 'gemini', 'audio', 'pt-BR', 'offline'],
+    examples: ['Say this out loud', 'Transcribe this audio file', 'Convert text to speech', 'Voice note to text'],
+    skillPath: '~/.hiveclaw/workspace/skills/voice-tts-stt',
+    content: `---
+name: voice-tts-stt
+description: "TTS via Gemini + STT via whisper.cpp. Offline fallback via macOS say."
+---
+
+# Voice TTS/STT
+
+## TTS (Text → Audio)
+\`\`\`bash
+./scripts/tts.sh "Olá mundo"              # Gemini TTS (online)
+./scripts/tts.sh "Hello" --voice Charon   # Specific voice
+./scripts/tts.sh "Text" --offline         # macOS say (offline)
+./scripts/tts.sh "Text" --out audio.mp3   # Save to file
+\`\`\`
+
+## STT (Audio → Text)
+\`\`\`bash
+./scripts/stt.sh audio.ogg               # Transcribe (auto-detect language)
+./scripts/stt.sh audio.mp3 --language pt # Force Portuguese
+./scripts/stt.sh audio.m4a --model small # Higher accuracy
+./scripts/stt.sh audio.wav --json        # JSON output
+\`\`\`
+
+## Fallback chain
+TTS: Gemini API → macOS say
+STT: whisper.cpp (local) — no fallback, private by design
+`,
+  },
+
+  {
+    slug: 'image-analysis',
+    name: 'Image Analysis',
+    description: 'Analyze images, screenshots, diagrams, and UI using vision LLMs (Claude, GPT-4V, Gemini). Supports OCR, UI QA, diagram interpretation.',
+    category: 'utilities',
+    badge: 'verified',
+    version: '2.0.0',
+    author: 'Clark 🐙',
+    securityScore: 9.5,
+    usageCount: 0,
+    tags: ['image', 'vision', 'ocr', 'screenshot', 'ui', 'diagram', 'claude', 'gpt4v', 'gemini'],
+    examples: ['What is in this image?', 'Extract text from screenshot', 'Analyze this UI', 'Interpret this diagram'],
+    skillPath: '~/.hiveclaw/workspace/skills/image-analysis',
+    content: `---
+name: image-analysis
+description: "Vision LLM analysis: describe, OCR, UI QA, diagram interpretation."
+---
+
+# Image Analysis
+
+\`\`\`bash
+./scripts/analyze.sh screenshot.png              # Describe image
+./scripts/analyze.sh image.jpg --mode ocr        # Extract text
+./scripts/analyze.sh ui.png --mode ui-qa         # UI quality check
+./scripts/analyze.sh diagram.png --mode diagram  # Interpret diagram
+./scripts/analyze.sh img.jpg --prompt "Find all buttons"  # Custom prompt
+./scripts/analyze.sh https://example.com/img.png # From URL
+\`\`\`
+
+## Provider auto-detection (priority order)
+1. Anthropic (Claude) — best for detailed analysis
+2. OpenAI (GPT-4o) — strong alternative
+3. Gemini 1.5 Pro — free fallback
+`,
+  },
+
+  {
+    slug: 'agent-messaging',
+    name: 'Agent Messaging',
+    description: 'Authenticated agent-to-agent messaging with HMAC-SHA256 signatures. Prevents impersonation in squad communications.',
+    category: 'communication',
+    badge: 'verified',
+    version: '1.0.0',
+    author: 'Clark 🐙',
+    securityScore: 9.0,
+    usageCount: 0,
+    tags: ['agent', 'messaging', 'auth', 'squad', 'hmac', 'a2a', 'cross-agent', 'security'],
+    examples: ['Send message to Alice', 'Broadcast to squad', 'Verified agent communication'],
+    skillPath: '~/.hiveclaw/workspace/skills/agent-messaging',
+    content: `---
+name: agent-messaging
+description: "HMAC-SHA256 authenticated agent-to-agent messaging."
+---
+
+# Agent Messaging
+
+Solves the agent impersonation gap in squad communications.
+
+\`\`\`bash
+# Send authenticated message
+./scripts/send.sh \\
+  --from "<your-agent-id>" \\
+  --to "<target-agent-id>" \\
+  --session "<session-id>" \\
+  --message "Analysis complete: score 6.9/10"
+
+# Broadcast to squad
+./scripts/broadcast.sh \\
+  --squad "<squad-id>" \\
+  --from "<your-agent-id>" \\
+  --message "Report ready for review"
+\`\`\`
+
+## Security
+- HMAC-SHA256 signature on every message
+- Timestamp replay protection (±5min window)
+- UUID validation on all IDs
+- Secret via env var only (HIVECLAW_AGENT_SECRET)
+`,
+  },
+
+];
+
+// ─── Default Skills (Starter Pack) ──────────────────────────────────────────────
+//
+// These skills are automatically assigned to every new agent created in HiveClaw.
+// They form the baseline capability set — agents can add more from CURATED_SKILLS.
+//
+export const DEFAULT_SKILLS: string[] = [
+  'self-learning',    // Auto-expand capabilities when gaps detected
+  'macos-control',    // Desktop automation (macOS)
+  'ui-qa',            // Frontend QA and visual testing
+  'voice-tts-stt',    // Voice I/O (TTS + STT)
+  'image-analysis',   // Vision LLM for images/screenshots
+  'agent-messaging',  // Authenticated agent-to-agent comms
+  'web-researcher',   // Web search and research
+  'code-review',      // Code quality and security review
+  'debug-assistant',  // Systematic debugging
+  'task-extractor',   // Extract action items from conversations
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
