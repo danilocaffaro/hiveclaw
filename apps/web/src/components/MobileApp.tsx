@@ -258,13 +258,50 @@ function ConversationsList() {
 
       {/* Contact list */}
       <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        {/* Squads section */}
+
+        {/* Agents / DM contacts — always first (matches desktop "CHATS" above "SQUADS") */}
+        {contacts.length > 0 && (
+          <div style={{
+            padding: '12px 16px 8px',
+            fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
+            color: 'var(--text-muted)', letterSpacing: '0.5px',
+          }}>
+            Chats
+          </div>
+        )}
+        {contacts.length === 0 ? (
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'center', height: '100%', gap: 16, padding: 32,
+            color: 'var(--text-secondary)',
+          }}>
+            <div style={{ fontSize: 64 }}>✨</div>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>
+              Welcome to HiveClaw
+            </h2>
+            <p style={{ fontSize: 15, textAlign: 'center', margin: 0, lineHeight: 1.5 }}>
+              Your personal AI assistant. Loading agents...
+            </p>
+          </div>
+        ) : (
+          contacts.map((entry) => (
+            <ContactItem
+              key={entry.agentId}
+              entry={entry}
+              onTap={() => handleTap(entry)}
+            />
+          ))
+        )}
+
+        {/* Squads section — below chats, matches desktop hierarchy */}
         {squads.length > 0 && (
           <>
             <div style={{
               padding: '12px 16px 8px',
               fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
               color: 'var(--text-muted)', letterSpacing: '0.5px',
+              borderTop: contacts.length > 0 ? '1px solid var(--border)' : 'none',
+              marginTop: contacts.length > 0 ? 4 : 0,
             }}>
               Squads
             </div>
@@ -305,38 +342,7 @@ function ConversationsList() {
                 </div>
               );
             })}
-            <div style={{
-              padding: '12px 16px 8px',
-              fontSize: 12, fontWeight: 700, textTransform: 'uppercase',
-              color: 'var(--text-muted)', letterSpacing: '0.5px',
-            }}>
-              Agents
-            </div>
           </>
-        )}
-
-        {contacts.length === 0 ? (
-          <div style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center',
-            justifyContent: 'center', height: '100%', gap: 16, padding: 32,
-            color: 'var(--text-secondary)',
-          }}>
-            <div style={{ fontSize: 64 }}>✨</div>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>
-              Welcome to HiveClaw
-            </h2>
-            <p style={{ fontSize: 15, textAlign: 'center', margin: 0, lineHeight: 1.5 }}>
-              Your personal AI assistant. Loading agents...
-            </p>
-          </div>
-        ) : (
-          contacts.map((entry) => (
-            <ContactItem
-              key={entry.agentId}
-              entry={entry}
-              onTap={() => handleTap(entry)}
-            />
-          ))
         )}
       </div>
     </div>
