@@ -20,6 +20,7 @@ import { InputBar, type Attachment } from './chat/InputBar';
 import { DateSeparator, shouldShowDateSeparator } from './chat/DateSeparator';
 import { ScrollFAB } from './chat/ScrollFAB';
 import { MessageContextMenu, QuickReactionBar, ReplyPreview } from './chat/MessageActions';
+import { SearchOverlay } from './chat/SearchOverlay';
 
 // ─── Main ChatArea ──────────────────────────────────────────────────────────────
 
@@ -44,6 +45,8 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
   // F2/F3: Context menu state
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; msg: Message } | null>(null);
   const [reactionBar, setReactionBar] = useState<{ x: number; y: number; msgId: string } | null>(null);
+  // F11: Search overlay
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // ── Global SSE connection (Blueprint Sprint A) ──────────────────────────────
   // When NEXT_PUBLIC_ENABLE_MESSAGE_BUS=true, opens a persistent EventSource to
@@ -198,6 +201,24 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
     // For now, reactions are visual-only (no persistence)
   }, []);
 
+  // F11: Cmd+K to toggle search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  // F11: Navigate to search result
+  const handleSearchNavigate = useCallback((_sessionId: string, _messageId: string) => {
+    // TODO: Switch to session + scroll to message
+    // For now, just close search
+  }, []);
+
   // Determine what to show
   const hasNoMessages = messages.length === 0;
   const isSquadSession = !!activeSquadId;
@@ -300,6 +321,14 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
 
       {/* Input Bar (Liquid Glass) */}
       <InputBar onSend={handleSend} />
+
+      {/* F11: Search overlay (Cmd+K) */}
+      <SearchOverlay
+        isOpen={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onNavigate={handleSearchNavigate}
+        activeSessionId={activeSessionId ?? undefined}
+      />
     </main>
   );
 }

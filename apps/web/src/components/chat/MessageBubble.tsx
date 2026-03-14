@@ -2,6 +2,7 @@
 
 import React, { useState, type ReactNode } from 'react';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { LinkPreviews } from './LinkPreview';
 import type { Message } from '@/stores/session-store';
 import { useSessionStore } from '@/stores/session-store';
 import { DebateCard, WorkflowCard, SprintProgressCard } from '../SpecialCards';
@@ -261,9 +262,13 @@ export function MessageBubble({ msg }: { msg: Message }) {
             )}
           </div>
 
-          {/* Time */}
-          <span style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, padding: '0 2px' }}>
+          {/* F10: Link previews */}
+          {!effectiveIsUser && <LinkPreviews content={displayContent} />}
+
+          {/* Time + delivery status */}
+          <span style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, padding: '0 2px', display: 'flex', alignItems: 'center', gap: 3 }}>
             {formatTime(msg.created_at)}
+            {effectiveIsUser && <span style={{ color: 'var(--blue, #58a6ff)', fontSize: 11 }}>✓</span>}
           </span>
         </div>
       </div>
@@ -348,6 +353,9 @@ export function MessageBubble({ msg }: { msg: Message }) {
             </>
           )}
         </div>
+
+        {/* F10: Link previews (desktop) */}
+        {!effectiveIsUser && <LinkPreviews content={displayContent} />}
 
         {/* Token info */}
         {((msg.tokens_in ?? 0) > 0 || (msg.tokens_out ?? 0) > 0) && (
