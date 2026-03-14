@@ -56,7 +56,7 @@ export interface SquadCreateInput {
   emoji?: string;
   description?: string;
   agentIds: string[];
-  routingStrategy?: 'auto' | 'round-robin' | 'manual';
+  routingStrategy?: 'auto' | 'round-robin' | 'manual' | 'sequential' | 'specialist' | 'debate';
   debateEnabled?: boolean;
 }
 
