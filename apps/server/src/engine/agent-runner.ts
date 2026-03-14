@@ -120,6 +120,7 @@ export async function* runAgent(
   sessionId: string,
   userMessage: string,
   agentConfig: AgentConfig,
+  opts?: { skipPersistUserMessage?: boolean },
 ): AsyncGenerator<SSEEvent> {
   const sessionManager = getSessionManager();
   const router = getProviderRouter();
@@ -136,15 +137,17 @@ export async function* runAgent(
     return;
   }
 
-  // ── 2. Save user message ────────────────────────────────────────────────────
-  try {
-    sessionManager.addMessage(sessionId, { role: 'user', content: userMessage });
-  } catch (err) {
-    yield {
-      event: 'error',
-      data: { message: `Failed to persist user message: ${(err as Error).message}`, code: 'DB_ERROR' },
-    };
-    return;
+  // ── 2. Save user message (skip when called from squad runner — context injector is internal) ──
+  if (!opts?.skipPersistUserMessage) {
+    try {
+      sessionManager.addMessage(sessionId, { role: 'user', content: userMessage });
+    } catch (err) {
+      yield {
+        event: 'error',
+        data: { message: `Failed to persist user message: ${(err as Error).message}`, code: 'DB_ERROR' },
+      };
+      return;
+    }
   }
 
   // ── 2.5 Smart context compaction ────────────────────────────────────────────

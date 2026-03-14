@@ -300,6 +300,14 @@ export async function* runSquad(
     data: { sessionId, squadId: config.id, mode: config.routingStrategy },
   };
 
+  // Save the user's original message ONCE (squad agents use skipPersistUserMessage)
+  const sm = getSessionManager();
+  try {
+    sm.addMessage(sessionId, { role: 'user', content: message, sender_type: 'human' });
+  } catch (err) {
+    logger.error('[SquadRunner] Failed to persist user message: %s', (err as Error).message);
+  }
+
   // Publish squad start to message bus
   const bus = getMessageBus();
   bus.publish({
@@ -392,7 +400,7 @@ async function* runRoundRobin(
   if (isExternalAgent(agent)) {
     yield* runExternalAgent(sessionId, message, agent, config);
   } else {
-    yield* runAgent(sessionId, message, agent);
+    yield* runAgent(sessionId, message, agent, { skipPersistUserMessage: true });
   }
 }
 
@@ -492,7 +500,7 @@ async function* runSpecialist(
   }
 
   // Fallback: direct runAgent()
-  yield* runAgent(sessionId, message, picked);
+  yield* runAgent(sessionId, message, picked, { skipPersistUserMessage: true });
 }
 
 // ─── Routing Strategy: Debate ─────────────────────────────────────────────────
@@ -834,7 +842,7 @@ async function* runSequential(
       }
       turnMgr.recordTurn(agent.id);
     } else {
-      for await (const event of runAgent(sessionId, prompt, agent)) {
+      for await (const event of runAgent(sessionId, prompt, agent, { skipPersistUserMessage: true })) {
         yield event;
         if (event.event === 'message.delta') {
           const d = event.data as Record<string, unknown>;

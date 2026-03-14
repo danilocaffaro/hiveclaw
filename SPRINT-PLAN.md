@@ -261,8 +261,19 @@ Após Sprint 78 PASS:
 
 | Sprint | Items | Status |
 |--------|-------|--------|
-| 75 | C1-C4 (4 criticals) | 🔲 Next |
-| 76 | M1,M7-M11,M13 (7 majors) | 🔲 Planned |
+| 75 | C1-C4 (4 criticals) | ✅ DONE (commits 719b85d → d38bbd0) |
+| 76-S | S1-S10 (squad architecture) | ✅ DONE (commit 9d719b1) |
+| 76 | M1,M7-M11,M13 (7 majors) + squad ordering | ✅ DONE (commits 45ee912 → cad9d9a) |
 | 77 | M2,M3,M5+M6,N7,N9 (messenger UX) | 🔲 Planned |
 | 78 | QA Full — 11 roteiros end-to-end | 🔲 Planned |
 | 79+ | Backlog restante | 🔲 Backlog |
+
+---
+
+## 🐛 Backlog — Bugs Descobertos
+
+| # | Bug | Severidade | Origem |
+|---|-----|-----------|--------|
+| B-NEW-1 | **Model selector mostra só ollama** — github-copilot (20 models) não aparece no dropdown. API retorna tudo correto. Provável: stale SW cache ou localStorage com formato antigo. Precisa force-refresh automático ou normalização do selectedModel | 🟡 Major | Sprint 76 QA |
+| B-NEW-2 | **Clark DM messages aparecem no squad chat** — user reporta que mensagens do DM do Clark (@clark_dacbot Telegram) aparecem no squad. DB está correto (sessions separados). Investigar: frontend misturando sessions? Sidebar confusa? Telegram channel session leaking? | 🟡 Major | User report |
+| B-NEW-3 | **Hawk response cortado por timeout** — em squad sequential, se Clark+Alice demoram, o Hawk pode não completar dentro do curl timeout. Precisa: async delivery ou stream keepalive | 🟠 Medium | Squad test |
