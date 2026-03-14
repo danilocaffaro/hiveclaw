@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useSessionStore } from '@/stores/session-store';
 import { useAgentStore } from '@/stores/agent-store';
 import { useUIStore } from '@/stores/ui-store';
+import { useMessageStore } from '@/stores/message-store';
 import type { Session } from '@/stores/session-store';
 import { ContextMenu } from './menus/ContextMenu';
 
@@ -42,6 +43,7 @@ export function SessionItem({ session, isActive, usage }: SessionItemProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(session.title ?? '');
+  const unreadCount = useMessageStore((s) => s.getUnreadCount(session.id));
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -50,6 +52,7 @@ export function SessionItem({ session, isActive, usage }: SessionItemProps) {
 
   const handleClick = () => {
     setActiveSession(session.id);
+    useMessageStore.getState().clearUnread(session.id);
     if (window.innerWidth < 768) {
       useUIStore.getState().setMobileSidebarOpen(false);
     }
@@ -159,6 +162,26 @@ export function SessionItem({ session, isActive, usage }: SessionItemProps) {
             >
               {relativeTime(session.updated_at)}
             </span>
+            {!isActive && unreadCount > 0 && (
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: '#fff',
+                  background: 'var(--coral, #F97066)',
+                  borderRadius: 10,
+                  minWidth: 18,
+                  height: 18,
+                  lineHeight: '18px',
+                  textAlign: 'center',
+                  padding: '0 5px',
+                  marginLeft: 6,
+                  flexShrink: 0,
+                }}
+              >
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
           </div>
           {usage && usage.tokens > 0 && (
             <span style={{

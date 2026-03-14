@@ -5,6 +5,7 @@ import { useSessionStore, type Session } from '@/stores/session-store';
 import { useUIStore } from '@/stores/ui-store';
 import { useAgentStore } from '@/stores/agent-store';
 import { useSquadStore, type Squad } from '@/stores/squad-store';
+import { useMessageStore } from '@/stores/message-store';
 import ChatArea from './ChatArea';
 import MobileRightPanel from './MobileRightPanel';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -112,6 +113,7 @@ function ContactItem({
   entry: ContactEntry;
   onTap: () => void;
 }) {
+  const unreadCount = useMessageStore((s) => entry.sessionId ? s.getUnreadCount(entry.sessionId) : 0);
   return (
     <div
       role="button"
@@ -143,13 +145,35 @@ function ContactItem({
             {entry.name}
           </span>
           {entry.time && (
-            <span style={{ fontSize: 12, color: 'var(--text-secondary)', flexShrink: 0 }}>
+            <span style={{ fontSize: 12, color: unreadCount > 0 ? 'var(--coral, #F97066)' : 'var(--text-secondary)', flexShrink: 0, fontWeight: unreadCount > 0 ? 600 : 400 }}>
               {entry.time}
             </span>
           )}
         </div>
-        <div style={{ fontSize: 14, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
-          {entry.preview || (entry.sessionId ? 'Tap to continue' : 'Tap to start chatting')}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
+          <div style={{ fontSize: 14, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+            {entry.preview || (entry.sessionId ? 'Tap to continue' : 'Tap to start chatting')}
+          </div>
+          {unreadCount > 0 && (
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: '#fff',
+                background: 'var(--coral, #F97066)',
+                borderRadius: 12,
+                minWidth: 20,
+                height: 20,
+                lineHeight: '20px',
+                textAlign: 'center',
+                padding: '0 6px',
+                marginLeft: 8,
+                flexShrink: 0,
+              }}
+            >
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
         </div>
       </div>
     </div>
