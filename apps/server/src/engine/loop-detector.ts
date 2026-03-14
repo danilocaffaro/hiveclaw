@@ -12,7 +12,7 @@
 
 // ─── Configuration ──────────────────────────────────────────────────────────────
 
-const MAX_IDENTICAL_TOOL_CALLS = 3;   // same tool + same input
+const MAX_IDENTICAL_TOOL_CALLS = 5;   // same tool + same input (raised from 3 — prevents false positives for QA/research agents doing repeated checks)
 const MAX_SIMILAR_RESPONSES = 3;       // similarity > 0.85
 const SIMILARITY_THRESHOLD = 0.85;     // Jaccard similarity
 const WINDOW_SIZE = 8;                 // only check last N items

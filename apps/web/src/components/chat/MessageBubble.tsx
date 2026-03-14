@@ -173,15 +173,32 @@ export function MessageBubble({ msg }: { msg: Message }) {
     } catch { /* keep raw */ }
   }
   const content = rawContent;
+  // B-ECHO fix: strip protocol metadata that leaks into chat content
+  // Removes lines like "ECHO-FREE", "[CLAIMED]", "ACK", "isHeader markers"
+  const stripProtocolMeta = (text: string): string => {
+    return text
+      .split('\n')
+      .filter(line => {
+        const t = line.trim();
+        // Filter out pure protocol markers
+        if (/^(ECHO[-\s]?FREE|ACK\.?|BUILD ON|ROLE[-\s]?GATE)[.:!]?\s*$/i.test(t)) return false;
+        if (/^\[CLAIM(ED)?\]/.test(t)) return false;
+        if (/^\[Squad Group Context\]/.test(t)) return false;
+        if (/^Previous agent'?s? analysis:/.test(t)) return false;
+        return true;
+      })
+      .join('\n')
+      .trim();
+  };
   // Always render full message (no truncation). Collapse only long code blocks.
-  const displayContent = content;
+  const displayContent = effectiveIsUser ? content : stripProtocolMeta(content);
 
   // Multi-agent attribution — prefer msg fields, then resolved agent from store
   const rawName = msg.agentName ?? resolvedAgent?.name ?? '';
   const agentId = msg.agentId ?? resolvedAgent?.id ?? '';
   // M13: If agentId exists but no name resolved yet, show truncated id as fallback (not "🤖 Assistant")
   const agentName = cleanAgentName(agentId, rawName) || (agentId ? `Agent ${agentId.slice(0, 8)}` : '');
-  const agentEmoji = msg.agentEmoji ?? resolvedAgent?.emoji ?? '🤖';
+  const agentEmoji = msg.agentEmoji ?? resolvedAgent?.emoji ?? (isFromExternalAgent ? '🤝' : '🤖');
   // M13: hasAgentAttribution is true whenever there's any agent signal (id, name, or resolved)
   const hasAgentAttribution = !effectiveIsUser && Boolean(msg.agentId || msg.agentName || resolvedAgent);
 
@@ -286,13 +303,7 @@ export function MessageBubble({ msg }: { msg: Message }) {
             <>
               <span style={{ fontSize: 14 }}>{agentEmoji}</span>
               <span style={{ fontWeight: 600, color: 'var(--text)', fontSize: 14 }}>{agentName}</span>
-              {msg.agentId && (
-                <span style={{
-                  padding: '0 6px', borderRadius: 'var(--radius-sm)',
-                  background: 'var(--surface-hover)', color: 'var(--text-muted)',
-                  fontSize: 10, fontWeight: 500,
-                }}>{msg.agentId}</span>
-              )}
+              {/* B-UUID fix: agentId hidden from UI — stored as data attr for devtools only */}
             </>
           ) : (
             <>
@@ -319,6 +330,10 @@ export function MessageBubble({ msg }: { msg: Message }) {
           background: effectiveIsUser ? 'linear-gradient(135deg, var(--coral), var(--coral-hover))' : 'transparent',
           fontSize: 14, lineHeight: 1.6, color: 'var(--text)',
           wordBreak: 'break-word',
+          // B2 fix: ensure user bubble text is selectable
+          userSelect: 'text',
+          WebkitUserSelect: 'text',
+          cursor: effectiveIsUser ? 'text' : undefined,
         }}>
           {effectiveIsUser ? (
             hasFileRefs ? (

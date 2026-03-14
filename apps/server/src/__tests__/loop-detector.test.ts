@@ -13,12 +13,22 @@ describe('LoopDetector', () => {
     expect(result.loopDetected).toBe(false);
   });
 
-  it('should detect tool call loop after 3 identical calls', () => {
+  it('should detect tool call loop after 5 identical calls', () => {
+    detector.recordToolCall('bash', { command: 'ls' });
+    detector.recordToolCall('bash', { command: 'ls' });
     detector.recordToolCall('bash', { command: 'ls' });
     detector.recordToolCall('bash', { command: 'ls' });
     const result = detector.recordToolCall('bash', { command: 'ls' });
     expect(result.loopDetected).toBe(true);
     expect(result.type).toBe('tool_call');
+  });
+
+  it('should NOT detect loop after only 4 identical calls (threshold is 5)', () => {
+    detector.recordToolCall('bash', { command: 'ls' });
+    detector.recordToolCall('bash', { command: 'ls' });
+    detector.recordToolCall('bash', { command: 'ls' });
+    const result = detector.recordToolCall('bash', { command: 'ls' });
+    expect(result.loopDetected).toBe(false);
   });
 
   it('should NOT detect loop for same tool with different input', () => {
@@ -54,11 +64,13 @@ describe('LoopDetector', () => {
     detector.recordToolCall('bash', { cmd: 'x' });
     detector.recordToolCall('bash', { cmd: 'x' });
     detector.reset();
-    // After reset, 3 more should trigger fresh count
+    // After reset, 5 more should trigger fresh count (threshold = 5)
+    detector.recordToolCall('bash', { cmd: 'x' });
+    detector.recordToolCall('bash', { cmd: 'x' });
     detector.recordToolCall('bash', { cmd: 'x' });
     detector.recordToolCall('bash', { cmd: 'x' });
     const result = detector.recordToolCall('bash', { cmd: 'x' });
-    expect(result.loopDetected).toBe(true); // fresh count → still triggers at 3
+    expect(result.loopDetected).toBe(true); // fresh count → triggers at 5
   });
 
   // ── Decay tests ───────────────────────────────────────────────────────────
@@ -85,7 +97,11 @@ describe('LoopDetector', () => {
       let clock = 0;
       detector.setNowFn(() => clock);
 
-      // Three calls within 1 minute
+      // Five calls within 1 minute (threshold = 5)
+      detector.recordToolCall('bash', { command: 'ls' });
+      clock += 10_000; // +10s
+      detector.recordToolCall('bash', { command: 'ls' });
+      clock += 10_000; // +10s
       detector.recordToolCall('bash', { command: 'ls' });
       clock += 10_000; // +10s
       detector.recordToolCall('bash', { command: 'ls' });
