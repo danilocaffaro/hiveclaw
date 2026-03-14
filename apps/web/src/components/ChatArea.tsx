@@ -250,7 +250,12 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  // F11: Navigate to search result
+  // F19: Star/bookmark message handler
+  const handleStar = useCallback(async (msgId: string) => {
+    try {
+      await fetch(`/api/messages/${msgId}/star`, { method: 'POST' });
+    } catch { /* ignore */ }
+  }, []);
   const handleSearchNavigate = useCallback((_sessionId: string, _messageId: string) => {
     // TODO: Switch to session + scroll to message
     // For now, just close search
@@ -336,6 +341,7 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
               { icon: '✏️', label: 'Edit', onClick: () => handleEdit(contextMenu.msg) },
             ] : []),
             { icon: '📌', label: 'Pin', onClick: () => handlePin(contextMenu.msg.id) },
+            { icon: '⭐', label: 'Star', onClick: () => handleStar(contextMenu.msg.id) },
             { icon: '🗑️', label: 'Delete', onClick: () => handleDelete(contextMenu.msg.id) },
           ]}
         />

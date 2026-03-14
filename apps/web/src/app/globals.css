@@ -20,10 +20,10 @@
   --text-secondary: #8B949E;
   --text-muted: #484F58;
 
-  /* Accent colors */
-  --coral: #FF6B6B;
-  --coral-hover: #FF5252;
-  --coral-subtle: rgba(255,107,107,0.15);
+  /* Accent colors — HiveClaw 🐝 amber/honey theme */
+  --coral: #F59E0B;
+  --coral-hover: #D97706;
+  --coral-subtle: rgba(245,158,11,0.15);
   --blue: #58A6FF;
   --blue-subtle: rgba(88,166,255,0.15);
   --purple: #BC8CFF;
@@ -88,9 +88,9 @@
   --text-muted: #8C959F;
 
   /* Accent colors — adjusted for light backgrounds (GitHub Light palette) */
-  --coral: #E5534B;
-  --coral-hover: #C93C35;
-  --coral-subtle: rgba(229,83,75,0.1);
+  --coral: #B45309;
+  --coral-hover: #92400E;
+  --coral-subtle: rgba(180,83,9,0.12);
   --blue: #0969DA;
   --blue-subtle: rgba(9,105,218,0.1);
   --purple: #8250DF;
@@ -134,9 +134,9 @@
     --text-secondary: #656D76;
     --text-muted: #8C959F;
 
-    --coral: #E5534B;
-    --coral-hover: #C93C35;
-    --coral-subtle: rgba(229,83,75,0.1);
+    --coral: #B45309;
+    --coral-hover: #92400E;
+    --coral-subtle: rgba(180,83,9,0.12);
     --blue: #0969DA;
     --blue-subtle: rgba(9,105,218,0.1);
     --purple: #8250DF;

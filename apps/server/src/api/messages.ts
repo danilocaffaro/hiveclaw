@@ -107,6 +107,59 @@ export function registerMessageRoutes(app: FastifyInstance, db: Database) {
     }
   });
 
+  // F19 — Star/bookmark message (cross-session saved messages)
+  app.post<{ Params: { id: string } }>('/messages/:id/star', async (req, reply) => {
+    const { id } = req.params;
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS starred_messages (
+        message_id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        starred_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+      )
+    `);
+
+    const msg = db.prepare('SELECT id, session_id FROM messages WHERE id = ?').get(id) as {
+      id: string; session_id: string;
+    } | undefined;
+    if (!msg) return reply.status(404).send({ error: 'Message not found' });
+
+    const existing = db.prepare('SELECT message_id FROM starred_messages WHERE message_id = ?').get(id);
+    if (existing) {
+      db.prepare('DELETE FROM starred_messages WHERE message_id = ?').run(id);
+      return reply.send({ data: { id, starred: false } });
+    } else {
+      db.prepare('INSERT INTO starred_messages (message_id, session_id) VALUES (?, ?)').run(id, msg.session_id);
+      return reply.send({ data: { id, starred: true } });
+    }
+  });
+
+  // GET /starred — list all starred messages (Saved Messages view)
+  app.get('/starred', async (_req, reply) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS starred_messages (
+        message_id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        starred_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+      )
+    `);
+
+    const rows = db.prepare(`
+      SELECT m.id, m.session_id, m.role, m.content, m.created_at,
+             m.agent_name, m.agent_emoji, s.title as session_title,
+             sm.starred_at
+      FROM starred_messages sm
+      JOIN messages m ON m.id = sm.message_id
+      LEFT JOIN sessions s ON s.id = m.session_id
+      ORDER BY sm.starred_at DESC
+      LIMIT 200
+    `).all();
+
+    return reply.send({ data: rows });
+  });
+
   // Get pinned messages for a session
   app.get<{
     Params: { sessionId: string };

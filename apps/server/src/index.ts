@@ -346,7 +346,7 @@ async function main() {
         '/n8n', '/preview', '/audit', '/integrations', '/webhooks',
         '/public', '/shared-links', '/backlog', '/routing', '/analytics',
         '/channels', '/embeddings', '/data', '/events', '/models', '/status', '/external-agents',
-        '/engine', '/search', '/preview/og', '/messages'];
+        '/engine', '/search', '/preview/og', '/messages', '/starred'];
       if (apiPrefixes.some(p => req.url.startsWith(p))) return;
 
       if (req.url.startsWith('/_next/')) {
