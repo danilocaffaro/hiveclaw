@@ -76,6 +76,11 @@ function generateId(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
+// Race condition guard: monotonically increasing counter for fetchMessages calls.
+// Each call captures the current value; if a newer call starts before it resolves,
+// the older result is discarded (user navigated to a different session).
+let fetchCounter = 0;
+
 export const useSessionStore = create<SessionStore>((set, get) => ({
   sessions: [],
   activeSessionId: null,
@@ -152,10 +157,17 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   fetchMessages: async (sessionId) => {
+    // Race condition fix: capture a fetch token so stale fetches don't overwrite newer results.
+    // If setActiveSession is called twice quickly, only the last fetch wins.
+    const fetchToken = ++fetchCounter;
     try {
       const data = await apiFetch<{ data: Message[] } | Message[]>(
         `/sessions/${encodeURIComponent(sessionId)}/messages`
       );
+      // Discard result if a newer fetch has started (user navigated away)
+      if (fetchToken !== fetchCounter) return;
+      // Also discard if the user has already switched to a different session
+      if (get().activeSessionId !== sessionId) return;
       const rawMsgs = Array.isArray(data) ? data : (data as { data: Message[] }).data ?? [];
       // M13: Map snake_case DB fields to camelCase frontend fields
       const messages = rawMsgs.map((m) => ({
@@ -197,9 +209,12 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
   createSquadSession: async (squadId, title) => {
     try {
-      // Reuse existing squad session if one exists
+      // Reuse existing squad session only if it has recent activity (last 24h).
+      // Stale sessions from days ago cause the "jumped back to old history" bug.
+      const REUSE_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
       const existing = get().sessions.find(
-        (s) => s.squad_id === squadId && s.mode === 'squad'
+        (s) => s.squad_id === squadId && s.mode === 'squad' &&
+          (Date.now() - new Date(s.updated_at ?? s.created_at).getTime()) < REUSE_WINDOW_MS
       );
       if (existing) {
         set({ activeSessionId: existing.id, activeSquadId: squadId, messages: [] });
@@ -376,6 +391,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
               agentId?: string;
               agentName?: string;
               agentEmoji?: string;
+              isHeader?: boolean;
               name?: string;
               tool?: string;
               input?: unknown;
@@ -393,9 +409,17 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             switch (eventType) {
               case 'message.delta':
               case 'chat.delta':
+                // SSE contamination guard: only write to messages if this stream
+                // still belongs to the currently active session. If the user
+                // navigated away mid-stream, discard the chunk silently.
+                if (get().activeSessionId !== sessionId) break;
+                // isHeader guard: squad-runner emits agent header deltas with isHeader:true.
+                // These are protocol metadata, not user-visible content — skip them.
+                if (parsed.isHeader) break;
                 // If agent info comes with delta, stamp it onto the last assistant message
                 if (parsed.agentId || parsed.agentName) {
                   set((s) => {
+                    if (s.activeSessionId !== sessionId) return s; // double-check inside setter
                     if (s.messages.length === 0) return s;
                     const msgs = [...s.messages];
                     const last = { ...msgs[msgs.length - 1] };
