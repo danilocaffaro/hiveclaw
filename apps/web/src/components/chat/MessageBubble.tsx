@@ -323,8 +323,9 @@ export function MessageBubble({ msg }: { msg: Message }) {
               </span>
             </>
           )}
-          <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+          <span style={{ color: 'var(--text-muted)', fontSize: 11, display: 'flex', alignItems: 'center', gap: 3 }}>
             {formatTime(msg.created_at)}
+            {effectiveIsUser && <span style={{ color: 'var(--blue, #58a6ff)', fontSize: 11 }}>✓</span>}
           </span>
         </div>
 
