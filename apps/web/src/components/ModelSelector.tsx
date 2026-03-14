@@ -88,9 +88,17 @@ export default function ModelSelector() {
         }
         if (!cancelled) {
           setModels(fetched);
-          // If selected model is not in the list, auto-select first
+          // If selected model is not in the list, auto-select a good default
           if (fetched.length > 0 && !fetched.find((m) => m.id === selectedModel)) {
-            setSelectedModel(fetched[0].id);
+            // Prefer sonnet > opus > gemini-pro > first available (avoid cheapest local)
+            const preferred = [
+              'github-copilot/claude-sonnet-4.6',
+              'github-copilot/claude-opus-4.6',
+              'anthropic/claude-sonnet-4-6-20250725',
+              'google/gemini-2.5-pro',
+            ];
+            const best = preferred.find((p) => fetched.some((m) => m.id === p));
+            setSelectedModel(best ?? fetched[0].id);
           }
           setLoading(false);
         }

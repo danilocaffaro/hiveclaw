@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useUIStore } from '@/stores/ui-store';
 import { useSessionStore } from '@/stores/session-store';
 import { useAgentStore } from '@/stores/agent-store';
@@ -27,6 +27,7 @@ export default function Sidebar() {
   const createSession = useSessionStore((s) => s.createSession);
   const agents = useAgentStore((s) => s.agents);
   const fetchAgents = useAgentStore((s) => s.fetchAgents);
+  const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
   const squads = useSquadStore((s) => s.squads);
 
   // Ensure agents are loaded
@@ -97,6 +98,22 @@ export default function Sidebar() {
     setAgentModalOpen(false);
     setEditingAgent(null);
   };
+
+  // Agent picker for New Chat
+  const [agentPickerOpen, setAgentPickerOpen] = useState(false);
+  const agentPickerRef = useRef<HTMLDivElement>(null);
+
+  // Close picker on outside click
+  useEffect(() => {
+    if (!agentPickerOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (agentPickerRef.current && !agentPickerRef.current.contains(e.target as Node)) {
+        setAgentPickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [agentPickerOpen]);
 
   return (
     <>
@@ -183,39 +200,95 @@ export default function Sidebar() {
             </button>
           </div>
 
-          {/* New Chat + Invite row */}
+          {/* New Chat (agent picker) + Create Agent row */}
           {!sidebarCollapsed && (
-            <div style={{ display: 'flex', gap: 6, margin: '3px 0' }}>
-              <button
-                onClick={() => createSession()}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  flex: 1,
-                  padding: '7px 12px',
-                  background: 'var(--surface-hover)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-md)',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: 'var(--text)',
-                  transition: 'all 150ms',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--coral)';
-                  (e.currentTarget as HTMLButtonElement).style.background = 'var(--coral-subtle)';
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)';
-                  (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-hover)';
-                }}
-              >
-                <span style={{ fontSize: 16, lineHeight: 1, color: 'var(--text-secondary)' }}>✎</span>
-                New Chat
-              </button>
+            <div style={{ display: 'flex', gap: 6, margin: '3px 0', position: 'relative' }}>
+              <div ref={agentPickerRef} style={{ flex: 1, position: 'relative' }}>
+                <button
+                  onClick={() => setAgentPickerOpen(!agentPickerOpen)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    width: '100%',
+                    padding: '7px 12px',
+                    background: 'var(--surface-hover)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-md)',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: 'var(--text)',
+                    transition: 'all 150ms',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--coral)';
+                    (e.currentTarget as HTMLButtonElement).style.background = 'var(--coral-subtle)';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)';
+                    (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-hover)';
+                  }}
+                >
+                  <span style={{ fontSize: 16, lineHeight: 1, color: 'var(--text-secondary)' }}>✎</span>
+                  New Chat
+                </button>
+
+                {/* Agent picker dropdown */}
+                {agentPickerOpen && displayAgents.length > 0 && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    marginTop: 4,
+                    background: 'var(--surface)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-md)',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+                    zIndex: 100,
+                    overflow: 'hidden',
+                    maxHeight: 220,
+                    overflowY: 'auto',
+                  }}>
+                    <div style={{ padding: '6px 10px 3px', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Choose agent
+                    </div>
+                    {displayAgents.map((agent) => (
+                      <button
+                        key={agent.id}
+                        onClick={() => {
+                          setAgentPickerOpen(false);
+                          setActiveAgent(agent.id);
+                          void createSession({ title: `Chat with ${agent.name}`, agent_id: agent.id });
+                          if (window.innerWidth < 768) useUIStore.getState().setMobileSidebarOpen(false);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          width: '100%',
+                          padding: '7px 10px',
+                          background: 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontSize: 13,
+                          color: 'var(--text)',
+                          textAlign: 'left',
+                          transition: 'background 100ms',
+                        }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-hover)'; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+                      >
+                        <span style={{ fontSize: 15 }}>{agent.emoji || '🤖'}</span>
+                        <span>{agent.name}</span>
+                        {agent.isExternal && <span style={{ fontSize: 9, color: '#A855F7', fontWeight: 600 }}>EXT</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button
                 onClick={openCreateAgent}
                 title="Create new agent"
