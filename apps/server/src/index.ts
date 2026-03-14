@@ -153,6 +153,8 @@ async function main() {
     '/api/health',
     '/api/preview/',
     '/api/agents/status/stream',
+    // NOTE: /api/engine/ is intentionally NOT here — rewriteUrl strips /api prefix
+    // so /api/engine/events/:id becomes /engine/events/:id, matching the registered route
   ];
 
   const app = Fastify({
@@ -340,7 +342,8 @@ async function main() {
         '/workflows', '/workflow-runs', '/setup', '/debug', '/console',
         '/n8n', '/preview', '/audit', '/integrations', '/webhooks',
         '/public', '/shared-links', '/backlog', '/routing', '/analytics',
-        '/channels', '/embeddings', '/data', '/events', '/models', '/status', '/external-agents'];
+        '/channels', '/embeddings', '/data', '/events', '/models', '/status', '/external-agents',
+        '/engine'];
       if (apiPrefixes.some(p => req.url.startsWith(p))) return;
 
       if (req.url.startsWith('/_next/')) {
