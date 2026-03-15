@@ -8,9 +8,10 @@ const API = '';
 
 interface MemoryEntry {
   id: string; agent_id: string; key: string; value: string;
-  type: 'short_term' | 'long_term' | 'entity' | 'preference';
+  type: MemType;
   relevance: number; created_at: string; expires_at: string | null;
   access_count?: number; source?: string; tags?: string;
+  event_at?: string | null; valid_until?: string | null;
 }
 
 interface CoreBlock {
@@ -39,27 +40,81 @@ interface SearchResult {
   created_at: string; rank?: number; snippet?: string;
 }
 
+interface MemoryEdge {
+  id: string; source_id: string; target_id: string;
+  relation: string; weight: number; created_at: string;
+}
+
+interface MemoryGraph {
+  nodes: MemoryEntry[];
+  edges: MemoryEdge[];
+}
+
+interface Episode {
+  id: string; session_id: string; agent_id: string;
+  type: string; content: string; event_at: string;
+  metadata?: string;
+}
+
+interface CompactionEntry {
+  id: string; session_id: string; summary: string;
+  extracted_facts: number; messages_compacted: number;
+  tokens_before: number; tokens_after: number;
+  working_memory_saved: number; created_at: string;
+}
+
 /* ── Constants ────────────────────────────────────────────────────────────── */
 
-type MemType = MemoryEntry['type'];
-type Layer = 'memories' | 'core' | 'working' | 'search' | 'stats';
+type MemType = 'short_term' | 'long_term' | 'entity' | 'preference' | 'fact' | 'decision' | 'goal' | 'event' | 'procedure' | 'correction';
+type Layer = 'memories' | 'core' | 'working' | 'episodes' | 'graph' | 'search' | 'stats';
 
 const TYPE_COLORS: Record<MemType, string> = {
-  short_term: 'var(--blue)', long_term: 'var(--green)',
-  entity: 'var(--purple)', preference: 'var(--yellow)',
+  short_term: 'var(--blue)',
+  long_term: 'var(--green)',
+  entity: 'var(--purple)',
+  preference: 'var(--yellow)',
+  fact: 'var(--coral)',
+  decision: '#E879F9',      // fuchsia
+  goal: '#34D399',           // emerald
+  event: '#38BDF8',          // sky
+  procedure: '#A78BFA',      // violet
+  correction: '#FB7185',     // rose
 };
+
 const TYPE_ICONS: Record<MemType, string> = {
   short_term: '⚡', long_term: '📚', entity: '👤', preference: '⭐',
+  fact: '📌', decision: '⚖️', goal: '🎯', event: '📅',
+  procedure: '📝', correction: '🔄',
 };
-const MEMORY_TYPES: MemType[] = ['short_term', 'long_term', 'entity', 'preference'];
+
+const MEMORY_TYPES: MemType[] = [
+  'short_term', 'long_term', 'entity', 'preference',
+  'fact', 'decision', 'goal', 'event', 'procedure', 'correction',
+];
 
 const LAYERS: { key: Layer; icon: string; label: string }[] = [
   { key: 'memories', icon: '🧠', label: 'Memories' },
-  { key: 'core', icon: '💎', label: 'Core Blocks' },
+  { key: 'core', icon: '💎', label: 'Core' },
   { key: 'working', icon: '📋', label: 'Working' },
+  { key: 'episodes', icon: '📖', label: 'Episodes' },
+  { key: 'graph', icon: '🕸️', label: 'Graph' },
   { key: 'search', icon: '🔍', label: 'Search' },
   { key: 'stats', icon: '📊', label: 'Stats' },
 ];
+
+const EDGE_COLORS: Record<string, string> = {
+  related_to: 'var(--text-muted)',
+  updates: 'var(--blue)',
+  contradicts: 'var(--red)',
+  supports: 'var(--green)',
+  caused_by: 'var(--yellow)',
+  part_of: 'var(--purple)',
+};
+
+const EDGE_ICONS: Record<string, string> = {
+  related_to: '↔', updates: '🔄', contradicts: '⚡',
+  supports: '✅', caused_by: '←', part_of: '⊂',
+};
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '7px 10px', background: 'var(--bg)',
@@ -105,6 +160,8 @@ export default function AgentMemoryExplorer({ agentId, agentName, agentEmoji }: 
         {layer === 'memories' && <MemoriesLayer agentId={agentId} />}
         {layer === 'core' && <CoreBlocksLayer agentId={agentId} />}
         {layer === 'working' && <WorkingMemoryLayer agentId={agentId} />}
+        {layer === 'episodes' && <EpisodesLayer agentId={agentId} />}
+        {layer === 'graph' && <GraphLayer agentId={agentId} />}
         {layer === 'search' && <SearchLayer agentId={agentId} />}
         {layer === 'stats' && <StatsLayer agentId={agentId} agentName={agentName} agentEmoji={agentEmoji} />}
       </div>
@@ -112,17 +169,20 @@ export default function AgentMemoryExplorer({ agentId, agentName, agentEmoji }: 
   );
 }
 
-/* ── Layer: Agent Memories (graph) ────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   Layer: Memories — All 10 types with contradiction + temporal indicators
+   ══════════════════════════════════════════════════════════════════════════════ */
 
 function MemoriesLayer({ agentId }: { agentId: string }) {
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [showExpired, setShowExpired] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
-  const [newType, setNewType] = useState<MemType>('long_term');
+  const [newType, setNewType] = useState<MemType>('fact');
 
   const load = useCallback(async () => {
     if (!agentId) return;
@@ -155,54 +215,107 @@ function MemoriesLayer({ agentId }: { agentId: string }) {
     load();
   };
 
+  // Filter expired if toggle is off
+  const filteredMemories = showExpired ? memories : memories.filter(m =>
+    !m.valid_until || new Date(m.valid_until) > new Date()
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {/* Search + filter */}
-      <div style={{ display: 'flex', gap: 6 }}>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         <input placeholder="Search…" value={search} onChange={e => setSearch(e.target.value)}
-          style={{ ...inputStyle, flex: 1 }} />
+          style={{ ...inputStyle, flex: 1, minWidth: 100 }} />
         <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-          style={{ ...inputStyle, width: 110, cursor: 'pointer' }}>
+          style={{ ...inputStyle, width: 120, cursor: 'pointer' }}>
           <option value="all">All types</option>
           {MEMORY_TYPES.map(t => <option key={t} value={t}>{TYPE_ICONS[t]} {t}</option>)}
         </select>
       </div>
 
+      {/* Temporal toggle */}
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer' }}>
+        <input type="checkbox" checked={showExpired} onChange={e => setShowExpired(e.target.checked)}
+          style={{ accentColor: 'var(--coral)' }} />
+        Show invalidated memories
+      </label>
+
       {/* Memory list */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 350, overflowY: 'auto' }}>
         {loading && <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 16 }}>Loading…</div>}
-        {!loading && memories.length === 0 && (
+        {!loading && filteredMemories.length === 0 && (
           <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 16 }}>
             No memories found
           </div>
         )}
-        {memories.map(m => (
-          <div key={m.id} style={{
-            background: 'var(--bg)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-sm)', padding: '8px 10px',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: TYPE_COLORS[m.type] }}>
-                {TYPE_ICONS[m.type]} {m.type}
-              </span>
-              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                  r:{m.relevance}
-                </span>
-                <button onClick={() => handleDelete(m.id)} style={{
-                  background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
-                  color: 'var(--text-muted)', padding: '0 2px',
-                }} title="Delete">✕</button>
+        {filteredMemories.map(m => {
+          const isInvalidated = m.valid_until && new Date(m.valid_until) <= new Date();
+          return (
+            <div key={m.id} style={{
+              background: 'var(--bg)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)', padding: '8px 10px',
+              opacity: isInvalidated ? 0.5 : 1,
+              borderLeft: isInvalidated ? '3px solid var(--red)' : undefined,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: TYPE_COLORS[m.type] ?? 'var(--text-muted)' }}>
+                    {TYPE_ICONS[m.type] ?? '⚪'} {m.type}
+                  </span>
+                  {isInvalidated && (
+                    <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 4, background: 'var(--red-subtle)', color: 'var(--red)', fontWeight: 600 }}>
+                      INVALIDATED
+                    </span>
+                  )}
+                  {m.source && (
+                    <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 4, background: 'var(--blue-subtle)', color: 'var(--blue)' }}>
+                      {m.source}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                    r:{m.relevance}
+                  </span>
+                  <button onClick={() => handleDelete(m.id)} style={{
+                    background: 'none', border: 'none', cursor: 'pointer', fontSize: 11,
+                    color: 'var(--text-muted)', padding: '0 2px',
+                  }} title="Delete">✕</button>
+                </div>
               </div>
+              <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', marginBottom: 2 }}>
+                {m.key}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text)', wordBreak: 'break-word' }}>
+                {m.value}
+              </div>
+              {/* Temporal metadata */}
+              {(m.event_at || m.valid_until) && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 4, fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                  {m.event_at && <span>📅 {new Date(m.event_at).toLocaleDateString()}</span>}
+                  {m.valid_until && <span>⏰ until {new Date(m.valid_until).toLocaleDateString()}</span>}
+                </div>
+              )}
+              {/* Tags */}
+              {m.tags && m.tags !== '[]' && (() => {
+                try {
+                  const tags: string[] = JSON.parse(m.tags);
+                  if (tags.length === 0) return null;
+                  return (
+                    <div style={{ display: 'flex', gap: 3, marginTop: 4, flexWrap: 'wrap' }}>
+                      {tags.map((tag, i) => (
+                        <span key={i} style={{
+                          fontSize: 9, padding: '1px 5px', borderRadius: 4,
+                          background: 'var(--purple-subtle)', color: 'var(--purple)',
+                        }}>{tag}</span>
+                      ))}
+                    </div>
+                  );
+                } catch { return null; }
+              })()}
             </div>
-            <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', marginBottom: 2 }}>
-              {m.key}
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--text)', wordBreak: 'break-word' }}>
-              {m.value}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Add new */}
@@ -217,7 +330,7 @@ function MemoriesLayer({ agentId }: { agentId: string }) {
           <input placeholder="Key" value={newKey} onChange={e => setNewKey(e.target.value)} style={inputStyle} />
           <input placeholder="Value" value={newValue} onChange={e => setNewValue(e.target.value)} style={inputStyle} />
           <select value={newType} onChange={e => setNewType(e.target.value as MemType)} style={{ ...inputStyle, cursor: 'pointer' }}>
-            {MEMORY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            {MEMORY_TYPES.map(t => <option key={t} value={t}>{TYPE_ICONS[t]} {t}</option>)}
           </select>
           <div style={{ display: 'flex', gap: 6 }}>
             <button onClick={handleAdd} disabled={!newKey.trim() || !newValue.trim()} style={{
@@ -236,22 +349,30 @@ function MemoriesLayer({ agentId }: { agentId: string }) {
   );
 }
 
-/* ── Layer: Core Memory Blocks ────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   Layer: Core Memory Blocks
+   ══════════════════════════════════════════════════════════════════════════════ */
 
 function CoreBlocksLayer({ agentId }: { agentId: string }) {
   const [blocks, setBlocks] = useState<CoreBlock[]>([]);
   const [loading, setLoading] = useState(false);
   const [editingBlock, setEditingBlock] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
+  const [newBlockName, setNewBlockName] = useState('');
+  const [showAdd, setShowAdd] = useState(false);
 
-  useEffect(() => {
+  const loadBlocks = useCallback(async () => {
     if (!agentId) return;
     setLoading(true);
-    fetch(`${API}/memory/agents/${agentId}/core`)
-      .then(r => r.json()).then(d => setBlocks(d.data ?? []))
-      .catch(() => setBlocks([]))
-      .finally(() => setLoading(false));
+    try {
+      const res = await fetch(`${API}/memory/agents/${agentId}/core`);
+      const d = await res.json();
+      setBlocks(d.data ?? []);
+    } catch { setBlocks([]); }
+    setLoading(false);
   }, [agentId]);
+
+  useEffect(() => { loadBlocks(); }, [loadBlocks]);
 
   const saveBlock = async (blockName: string) => {
     await fetch(`${API}/memory/agents/${agentId}/core/${blockName}`, {
@@ -259,10 +380,18 @@ function CoreBlocksLayer({ agentId }: { agentId: string }) {
       body: JSON.stringify({ content: editContent }),
     });
     setEditingBlock(null);
-    // Reload
-    const res = await fetch(`${API}/memory/agents/${agentId}/core`);
-    const d = await res.json();
-    setBlocks(d.data ?? []);
+    loadBlocks();
+  };
+
+  const createBlock = async () => {
+    if (!newBlockName.trim()) return;
+    await fetch(`${API}/memory/agents/${agentId}/core/${newBlockName.trim()}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: '' }),
+    });
+    setNewBlockName('');
+    setShowAdd(false);
+    loadBlocks();
   };
 
   if (loading) return <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: 16, textAlign: 'center' }}>Loading…</div>;
@@ -270,7 +399,7 @@ function CoreBlocksLayer({ agentId }: { agentId: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
-        Always-in-prompt blocks — injected into every agent request.
+        Always-in-prompt blocks — injected into every agent request. MemGPT-style.
       </div>
       {blocks.length === 0 && (
         <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 16 }}>
@@ -318,11 +447,38 @@ function CoreBlocksLayer({ agentId }: { agentId: string }) {
           )}
         </div>
       ))}
+
+      {/* Add new block */}
+      {!showAdd ? (
+        <button onClick={() => setShowAdd(true)} style={{
+          padding: '6px 10px', background: 'none', border: '1px dashed var(--border)',
+          borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 12,
+          color: 'var(--coral)', fontWeight: 500,
+        }}>+ Add Core Block</button>
+      ) : (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input placeholder="Block name (e.g. persona, human, goals)" value={newBlockName}
+            onChange={e => setNewBlockName(e.target.value)} style={{ ...inputStyle, flex: 1 }}
+            onKeyDown={e => e.key === 'Enter' && createBlock()} />
+          <button onClick={createBlock} disabled={!newBlockName.trim()} style={{
+            padding: '6px 10px', borderRadius: 'var(--radius-sm)', fontSize: 11, fontWeight: 600,
+            background: newBlockName.trim() ? 'var(--coral)' : 'var(--border)',
+            color: newBlockName.trim() ? '#000' : 'var(--text-muted)',
+            border: 'none', cursor: newBlockName.trim() ? 'pointer' : 'not-allowed',
+          }}>Create</button>
+          <button onClick={() => setShowAdd(false)} style={{
+            padding: '6px 10px', borderRadius: 'var(--radius-sm)', fontSize: 11,
+            background: 'none', color: 'var(--text-muted)', border: '1px solid var(--border)', cursor: 'pointer',
+          }}>Cancel</button>
+        </div>
+      )}
     </div>
   );
 }
 
-/* ── Layer: Working Memory ────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   Layer: Working Memory
+   ══════════════════════════════════════════════════════════════════════════════ */
 
 function WorkingMemoryLayer({ agentId }: { agentId: string }) {
   const [sessions, setSessions] = useState<{ id: string; title: string }[]>([]);
@@ -395,7 +551,254 @@ function WorkingMemoryLayer({ agentId }: { agentId: string }) {
   );
 }
 
-/* ── Layer: Full-Text Search (Archival) ───────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   Layer: Episodes — Episodic events + Compaction log
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+function EpisodesLayer({ agentId }: { agentId: string }) {
+  const [sessions, setSessions] = useState<{ id: string; title: string }[]>([]);
+  const [selectedSession, setSelectedSession] = useState('');
+  const [episodes, setEpisodes] = useState<Episode[]>([]);
+  const [compactions, setCompactions] = useState<CompactionEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [view, setView] = useState<'episodes' | 'compactions'>('episodes');
+
+  useEffect(() => {
+    fetch(`${API}/sessions?agent_id=${agentId}&limit=10`)
+      .then(r => r.json()).then(d => {
+        const list = d.data ?? [];
+        setSessions(list);
+        if (list.length > 0) setSelectedSession(list[0].id);
+      }).catch(() => {});
+  }, [agentId]);
+
+  useEffect(() => {
+    if (!selectedSession) return;
+    setLoading(true);
+    fetch(`${API}/memory/episodes/${selectedSession}`)
+      .then(r => r.json())
+      .then(d => {
+        setEpisodes(d.data?.episodes ?? []);
+        setCompactions(d.data?.compactions ?? []);
+      })
+      .catch(() => { setEpisodes([]); setCompactions([]); })
+      .finally(() => setLoading(false));
+  }, [selectedSession]);
+
+  const EPISODE_COLORS: Record<string, string> = {
+    message: 'var(--blue)', compaction: 'var(--yellow)',
+    extraction: 'var(--green)', decision: '#E879F9', event: 'var(--coral)',
+  };
+  const EPISODE_ICONS: Record<string, string> = {
+    message: '💬', compaction: '📦', extraction: '📥',
+    decision: '⚖️', event: '📅',
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+        Episodic memory — events, compactions, and knowledge extractions.
+      </div>
+
+      <select value={selectedSession} onChange={e => setSelectedSession(e.target.value)}
+        style={{ ...inputStyle, cursor: 'pointer' }}>
+        {sessions.length === 0 && <option value="">No sessions</option>}
+        {sessions.map(s => <option key={s.id} value={s.id}>{s.title || s.id.slice(0, 8)}</option>)}
+      </select>
+
+      {/* Sub-tabs */}
+      <div style={{ display: 'flex', gap: 4 }}>
+        {(['episodes', 'compactions'] as const).map(v => (
+          <button key={v} onClick={() => setView(v)} style={{
+            padding: '4px 10px', borderRadius: 'var(--radius-sm)', fontSize: 11,
+            background: view === v ? 'var(--coral-subtle)' : 'transparent',
+            color: view === v ? 'var(--coral)' : 'var(--text-muted)',
+            border: 'none', cursor: 'pointer', fontWeight: view === v ? 600 : 400,
+          }}>{v === 'episodes' ? `📖 Episodes (${episodes.length})` : `📦 Compactions (${compactions.length})`}</button>
+        ))}
+      </div>
+
+      {loading && <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>Loading…</div>}
+
+      {/* Episodes list */}
+      {!loading && view === 'episodes' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 350, overflowY: 'auto' }}>
+          {episodes.length === 0 && (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 16 }}>No episodes recorded</div>
+          )}
+          {episodes.map(ep => (
+            <div key={ep.id} style={{
+              background: 'var(--bg)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)', padding: '8px 10px',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: EPISODE_COLORS[ep.type] ?? 'var(--text-muted)' }}>
+                  {EPISODE_ICONS[ep.type] ?? '⚪'} {ep.type}
+                </span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                  {new Date(ep.event_at).toLocaleString()}
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text)', wordBreak: 'break-word', lineHeight: 1.5 }}>
+                {ep.content.slice(0, 300)}{ep.content.length > 300 ? '…' : ''}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Compactions list */}
+      {!loading && view === 'compactions' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 350, overflowY: 'auto' }}>
+          {compactions.length === 0 && (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 16 }}>No compactions recorded</div>
+          )}
+          {compactions.map(c => (
+            <div key={c.id} style={{
+              background: 'var(--bg)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)', padding: '8px 10px',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--yellow)' }}>📦 Compaction</span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                  {new Date(c.created_at).toLocaleString()}
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text)', marginBottom: 6, lineHeight: 1.5 }}>
+                {c.summary.slice(0, 200)}{c.summary.length > 200 ? '…' : ''}
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {[
+                  { label: 'Facts extracted', value: c.extracted_facts, color: 'var(--green)' },
+                  { label: 'Messages compacted', value: c.messages_compacted, color: 'var(--blue)' },
+                  { label: 'Tokens saved', value: c.tokens_before - c.tokens_after, color: 'var(--coral)' },
+                ].map(s => (
+                  <span key={s.label} style={{
+                    fontSize: 10, padding: '2px 6px', borderRadius: 4,
+                    background: `color-mix(in srgb, ${s.color} 12%, transparent)`,
+                    color: s.color, fontWeight: 500, fontFamily: 'var(--font-mono)',
+                  }}>{s.label}: {s.value}</span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Layer: Graph — Memory relationships (edges)
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+function GraphLayer({ agentId }: { agentId: string }) {
+  const [graph, setGraph] = useState<MemoryGraph | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [typeFilter, setTypeFilter] = useState('all');
+
+  useEffect(() => {
+    if (!agentId) return;
+    setLoading(true);
+    fetch(`${API}/memory/agents/${agentId}/graph?limit=50`)
+      .then(r => r.json()).then(d => setGraph(d.data ?? null))
+      .catch(() => setGraph(null))
+      .finally(() => setLoading(false));
+  }, [agentId]);
+
+  if (loading) return <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 16 }}>Loading graph…</div>;
+  if (!graph) return <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 16 }}>No graph data</div>;
+
+  const nodeMap = new Map(graph.nodes.map(n => [n.id, n]));
+  const filteredEdges = typeFilter === 'all' ? graph.edges : graph.edges.filter(e => e.relation === typeFilter);
+  const edgeTypes = [...new Set(graph.edges.map(e => e.relation))];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+        Relationships between memories — contradictions, updates, support chains.
+      </div>
+
+      {/* Summary */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+          🧠 {graph.nodes.length} nodes
+        </span>
+        <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+          🔗 {graph.edges.length} edges
+        </span>
+      </div>
+
+      {/* Edge type filter */}
+      <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+        <button onClick={() => setTypeFilter('all')} style={{
+          padding: '3px 8px', borderRadius: 4, fontSize: 10,
+          background: typeFilter === 'all' ? 'var(--coral-subtle)' : 'transparent',
+          color: typeFilter === 'all' ? 'var(--coral)' : 'var(--text-muted)',
+          border: 'none', cursor: 'pointer', fontWeight: typeFilter === 'all' ? 600 : 400,
+        }}>All</button>
+        {edgeTypes.map(et => (
+          <button key={et} onClick={() => setTypeFilter(et)} style={{
+            padding: '3px 8px', borderRadius: 4, fontSize: 10,
+            background: typeFilter === et ? 'var(--coral-subtle)' : 'transparent',
+            color: typeFilter === et ? EDGE_COLORS[et] ?? 'var(--coral)' : 'var(--text-muted)',
+            border: 'none', cursor: 'pointer', fontWeight: typeFilter === et ? 600 : 400,
+          }}>{EDGE_ICONS[et] ?? '↔'} {et}</button>
+        ))}
+      </div>
+
+      {/* Edge list */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 350, overflowY: 'auto' }}>
+        {filteredEdges.length === 0 && (
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: 16 }}>
+            No relationships found
+          </div>
+        )}
+        {filteredEdges.map(edge => {
+          const src = nodeMap.get(edge.source_id);
+          const tgt = nodeMap.get(edge.target_id);
+          const relColor = EDGE_COLORS[edge.relation] ?? 'var(--text-muted)';
+          return (
+            <div key={edge.id} style={{
+              background: 'var(--bg)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)', padding: '8px 10px',
+              borderLeft: `3px solid ${relColor}`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: relColor }}>
+                  {EDGE_ICONS[edge.relation] ?? '↔'} {edge.relation}
+                </span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                  w:{edge.weight}
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {/* Source */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 600 }}>FROM</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                    {src ? `${TYPE_ICONS[src.type] ?? '⚪'} ${src.key}` : edge.source_id.slice(0, 8)}
+                  </span>
+                </div>
+                {/* Target */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontSize: 10, color: 'var(--blue)', fontWeight: 600 }}>TO&nbsp;&nbsp;</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                    {tgt ? `${TYPE_ICONS[tgt.type] ?? '⚪'} ${tgt.key}` : edge.target_id.slice(0, 8)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Layer: Full-Text Search (Archival)
+   ══════════════════════════════════════════════════════════════════════════════ */
 
 function SearchLayer({ agentId }: { agentId: string }) {
   const [query, setQuery] = useState('');
@@ -479,7 +882,9 @@ function SearchLayer({ agentId }: { agentId: string }) {
   );
 }
 
-/* ── Layer: Stats ─────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   Layer: Stats
+   ══════════════════════════════════════════════════════════════════════════════ */
 
 function StatsLayer({ agentId, agentName, agentEmoji }: { agentId: string; agentName?: string; agentEmoji?: string }) {
   const [stats, setStats] = useState<MemoryStats | null>(null);
@@ -533,7 +938,7 @@ function StatsLayer({ agentId, agentName, agentEmoji }: { agentId: string; agent
             const type = t.type as MemType;
             return (
               <div key={t.type} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span style={{ fontSize: 11, width: 80, color: 'var(--text-secondary)' }}>
+                <span style={{ fontSize: 11, width: 90, color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {TYPE_ICONS[type] ?? '⚪'} {t.type}
                 </span>
                 <div style={{ flex: 1, height: 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden' }}>
