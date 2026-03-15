@@ -28,7 +28,7 @@ export interface UIState {
   rightPanelCollapsed: boolean;
   rightPanelTab: RightPanelTab;
   commandPaletteOpen: boolean;
-  theme: 'dark' | 'light' | 'system';
+  theme: 'dark' | 'light' | 'system' | 'midnight' | 'forest' | 'rose' | 'honey';
 
   // Mobile overlay state
   mobileSidebarOpen: boolean;
@@ -55,7 +55,7 @@ export interface UIState {
   setRightPanelTab: (tab: RightPanelTab) => void;
   setCommandPaletteOpen: (v: boolean) => void;
   toggleCommandPalette: () => void;
-  setTheme: (theme: 'dark' | 'light' | 'system') => void;
+  setTheme: (theme: 'dark' | 'light' | 'system' | 'midnight' | 'forest' | 'rose' | 'honey') => void;
 
   // Mobile actions
   setMobileSidebarOpen: (open: boolean) => void;

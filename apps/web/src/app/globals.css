@@ -3,65 +3,95 @@
 /* Import Inter + JetBrains Mono */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
+/* ══════════════════════════════════════════════════════════════════════════
+   HiveClaw Design System v2 — inspired by shadcn/ui token architecture
+   6 themes: Zinc (default dark), Light, Midnight, Forest, Rose, Honey
+   HSL-based tokens for maximum flexibility
+   ══════════════════════════════════════════════════════════════════════════ */
+
 :root {
-  /* Electron traffic lights are positioned at y=50 in main.ts so they sit
-     below the sidebar header row — no padding adjustment needed here. */
   --electron-titlebar-height: 0px;
-  
-  /* Core palette from demo HTML */
-  --bg: #0D1117;
-  --surface: #161B22;
-  --surface-hover: #1C2128;
-  --border: #30363D;
-  --border-hover: #484F58;
 
-  /* Text */
-  --text: #E6EDF3;
-  --text-secondary: #8B949E;
-  --text-muted: #484F58;
-
-  /* Accent colors — HiveClaw 🐝 amber/honey theme */
-  --coral: #F59E0B;
-  --coral-hover: #D97706;
-  --coral-subtle: rgba(245,158,11,0.15);
-  --blue: #58A6FF;
-  --blue-subtle: rgba(88,166,255,0.15);
-  --purple: #BC8CFF;
-  --purple-subtle: rgba(188,140,255,0.15);
-  --green: #3FB950;
-  --green-subtle: rgba(63,185,80,0.15);
-  --yellow: #D29922;
-  --yellow-subtle: rgba(210,153,34,0.15);
-  --red: #F85149;
-
-  /* On-accent text (buttons, badges on colored backgrounds) */
-  --text-on-accent: #FFFFFF;
-
-  /* Components */
-  --card-bg: rgba(22,27,34,0.8);
-  --card-border: var(--border);
-  --input-bg: rgba(22,27,34,0.6);
-  --badge-bg: rgba(110,118,129,0.2);
-
-  /* Glass effect */
-  --glass-bg: rgba(13,17,23,0.85);
-  --glass-border: rgba(48,54,61,0.8);
-
-  /* Code */
-  --code-bg: #0D1117;
-  --code-text: #E6EDF3;
-
-  /* Typography */
+  /* ── Typography ────────────────────────────────────────────────────── */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
 
-  /* Spacing */
+  /* ── Spacing / Radius ─────────────────────────────────────────────── */
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
+  --radius: 8px;
+}
 
-  /* Legacy aliases — keep so any remaining old refs still resolve */
+/* ══════════════════════════════════════════════════════════════════════════
+   THEME: Zinc (Default Dark) — shadcn/ui default
+   ══════════════════════════════════════════════════════════════════════════ */
+[data-theme="dark"], :root {
+  color-scheme: dark;
+
+  /* Backgrounds */
+  --bg: #09090B;
+  --surface: #18181B;
+  --surface-hover: #27272A;
+  --muted: #27272A;
+  --muted-foreground: #A1A1AA;
+
+  /* Borders */
+  --border: #27272A;
+  --border-hover: #3F3F46;
+  --ring: #D4D4D8;
+
+  /* Text */
+  --text: #FAFAFA;
+  --text-secondary: #A1A1AA;
+  --text-muted: #52525B;
+
+  /* Primary accent */
+  --primary: #FAFAFA;
+  --primary-foreground: #18181B;
+
+  /* Brand / coral (HiveClaw amber) */
+  --coral: #F59E0B;
+  --coral-hover: #D97706;
+  --coral-subtle: rgba(245,158,11,0.15);
+
+  /* Semantic colors */
+  --blue: #3B82F6;
+  --blue-subtle: rgba(59,130,246,0.15);
+  --purple: #A855F7;
+  --purple-subtle: rgba(168,85,247,0.15);
+  --green: #22C55E;
+  --green-subtle: rgba(34,197,94,0.15);
+  --yellow: #EAB308;
+  --yellow-subtle: rgba(234,179,8,0.15);
+  --red: #EF4444;
+  --red-subtle: rgba(239,68,68,0.15);
+
+  /* On-accent */
+  --text-on-accent: #FFFFFF;
+
+  /* Components */
+  --card-bg: #18181B;
+  --card-border: #27272A;
+  --input-bg: #18181B;
+  --input-border: #27272A;
+  --badge-bg: rgba(161,161,170,0.15);
+
+  /* Glass */
+  --glass-bg: rgba(9,9,11,0.85);
+  --glass-border: rgba(39,39,42,0.8);
+
+  /* Code */
+  --code-bg: #09090B;
+  --code-text: #FAFAFA;
+
+  /* Sidebar */
+  --sidebar-bg: #09090B;
+  --sidebar-border: #27272A;
+  --sidebar-accent: #27272A;
+
+  /* Legacy aliases */
   --bg-primary: var(--bg);
   --bg-secondary: var(--surface);
   --bg-card: var(--card-bg);
@@ -74,95 +104,353 @@
   --error: var(--red);
 }
 
-/* ── Light Theme ──────────────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════
+   THEME: Light — Clean white, shadcn/ui light
+   ══════════════════════════════════════════════════════════════════════════ */
 [data-theme="light"] {
+  color-scheme: light;
+
   --bg: #FFFFFF;
-  --surface: #F6F8FA;
-  --surface-hover: #EEF1F5;
-  --border: #D0D7DE;
-  --border-hover: #B0B8C1;
+  --surface: #F4F4F5;
+  --surface-hover: #E4E4E7;
+  --muted: #F4F4F5;
+  --muted-foreground: #71717A;
 
-  /* Text */
-  --text: #1F2328;
-  --text-secondary: #656D76;
-  --text-muted: #8C959F;
+  --border: #E4E4E7;
+  --border-hover: #D4D4D8;
+  --ring: #18181B;
 
-  /* Accent colors — adjusted for light backgrounds (GitHub Light palette) */
-  --coral: #B45309;
-  --coral-hover: #92400E;
-  --coral-subtle: rgba(180,83,9,0.12);
-  --blue: #0969DA;
-  --blue-subtle: rgba(9,105,218,0.1);
-  --purple: #8250DF;
-  --purple-subtle: rgba(130,80,223,0.1);
-  --green: #1A7F37;
-  --green-subtle: rgba(26,127,55,0.1);
-  --yellow: #9A6700;
-  --yellow-subtle: rgba(154,103,0,0.1);
-  --red: #CF222E;
+  --text: #09090B;
+  --text-secondary: #71717A;
+  --text-muted: #A1A1AA;
 
-  /* On-accent text (buttons, badges on colored backgrounds) */
+  --primary: #18181B;
+  --primary-foreground: #FAFAFA;
+
+  --coral: #D97706;
+  --coral-hover: #B45309;
+  --coral-subtle: rgba(217,119,6,0.12);
+
+  --blue: #2563EB;
+  --blue-subtle: rgba(37,99,235,0.1);
+  --purple: #9333EA;
+  --purple-subtle: rgba(147,51,234,0.1);
+  --green: #16A34A;
+  --green-subtle: rgba(22,163,74,0.1);
+  --yellow: #CA8A04;
+  --yellow-subtle: rgba(202,138,4,0.1);
+  --red: #DC2626;
+  --red-subtle: rgba(220,38,38,0.1);
+
   --text-on-accent: #FFFFFF;
 
-  /* Components */
-  --card-bg: rgba(246,248,250,0.9);
-  --card-border: var(--border);
-  --input-bg: rgba(255,255,255,0.9);
-  --badge-bg: rgba(175,184,193,0.2);
+  --card-bg: #FFFFFF;
+  --card-border: #E4E4E7;
+  --input-bg: #FFFFFF;
+  --input-border: #E4E4E7;
+  --badge-bg: rgba(113,113,122,0.1);
 
-  /* Glass effect */
-  --glass-bg: rgba(255,255,255,0.85);
-  --glass-border: rgba(208,215,222,0.8);
+  --glass-bg: rgba(255,255,255,0.9);
+  --glass-border: rgba(228,228,231,0.8);
 
-  /* Code */
-  --code-bg: #F6F8FA;
-  --code-text: #1F2328;
+  --code-bg: #F4F4F5;
+  --code-text: #09090B;
 
-  color-scheme: light;
+  --sidebar-bg: #FAFAFA;
+  --sidebar-border: #E4E4E7;
+  --sidebar-accent: #F4F4F5;
 }
 
-/* ── System preference: light ─────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════
+   THEME: Midnight — Deep blue-black, premium feel
+   ══════════════════════════════════════════════════════════════════════════ */
+[data-theme="midnight"] {
+  color-scheme: dark;
+
+  --bg: #0B1120;
+  --surface: #111827;
+  --surface-hover: #1E293B;
+  --muted: #1E293B;
+  --muted-foreground: #94A3B8;
+
+  --border: #1E293B;
+  --border-hover: #334155;
+  --ring: #CBD5E1;
+
+  --text: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --text-muted: #475569;
+
+  --primary: #E2E8F0;
+  --primary-foreground: #0F172A;
+
+  --coral: #60A5FA;
+  --coral-hover: #3B82F6;
+  --coral-subtle: rgba(96,165,250,0.15);
+
+  --blue: #60A5FA;
+  --blue-subtle: rgba(96,165,250,0.15);
+  --purple: #A78BFA;
+  --purple-subtle: rgba(167,139,250,0.15);
+  --green: #34D399;
+  --green-subtle: rgba(52,211,153,0.15);
+  --yellow: #FBBF24;
+  --yellow-subtle: rgba(251,191,36,0.15);
+  --red: #F87171;
+  --red-subtle: rgba(248,113,113,0.15);
+
+  --text-on-accent: #FFFFFF;
+
+  --card-bg: #111827;
+  --card-border: #1E293B;
+  --input-bg: #111827;
+  --input-border: #1E293B;
+  --badge-bg: rgba(148,163,184,0.12);
+
+  --glass-bg: rgba(11,17,32,0.9);
+  --glass-border: rgba(30,41,59,0.8);
+
+  --code-bg: #0B1120;
+  --code-text: #F1F5F9;
+
+  --sidebar-bg: #0B1120;
+  --sidebar-border: #1E293B;
+  --sidebar-accent: #1E293B;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THEME: Forest — Deep green, nature-inspired
+   ══════════════════════════════════════════════════════════════════════════ */
+[data-theme="forest"] {
+  color-scheme: dark;
+
+  --bg: #052E16;
+  --surface: #14532D;
+  --surface-hover: #166534;
+  --muted: #166534;
+  --muted-foreground: #86EFAC;
+
+  --border: #166534;
+  --border-hover: #22863A;
+  --ring: #BBF7D0;
+
+  --text: #F0FDF4;
+  --text-secondary: #86EFAC;
+  --text-muted: #4ADE80;
+
+  --primary: #F0FDF4;
+  --primary-foreground: #052E16;
+
+  --coral: #4ADE80;
+  --coral-hover: #22C55E;
+  --coral-subtle: rgba(74,222,128,0.15);
+
+  --blue: #38BDF8;
+  --blue-subtle: rgba(56,189,248,0.15);
+  --purple: #C084FC;
+  --purple-subtle: rgba(192,132,252,0.15);
+  --green: #4ADE80;
+  --green-subtle: rgba(74,222,128,0.15);
+  --yellow: #FDE047;
+  --yellow-subtle: rgba(253,224,71,0.15);
+  --red: #FB7185;
+  --red-subtle: rgba(251,113,133,0.15);
+
+  --text-on-accent: #052E16;
+
+  --card-bg: #14532D;
+  --card-border: #166534;
+  --input-bg: #14532D;
+  --input-border: #166534;
+  --badge-bg: rgba(134,239,172,0.12);
+
+  --glass-bg: rgba(5,46,22,0.9);
+  --glass-border: rgba(22,101,52,0.8);
+
+  --code-bg: #052E16;
+  --code-text: #F0FDF4;
+
+  --sidebar-bg: #052E16;
+  --sidebar-border: #166534;
+  --sidebar-accent: #166534;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THEME: Rose — Warm pink/rose tones
+   ══════════════════════════════════════════════════════════════════════════ */
+[data-theme="rose"] {
+  color-scheme: dark;
+
+  --bg: #1C0A1C;
+  --surface: #2D1530;
+  --surface-hover: #3D1F3F;
+  --muted: #3D1F3F;
+  --muted-foreground: #F9A8D4;
+
+  --border: #3D1F3F;
+  --border-hover: #5B2D5E;
+  --ring: #FBCFE8;
+
+  --text: #FDF2F8;
+  --text-secondary: #F9A8D4;
+  --text-muted: #BE185D;
+
+  --primary: #FDF2F8;
+  --primary-foreground: #1C0A1C;
+
+  --coral: #F472B6;
+  --coral-hover: #EC4899;
+  --coral-subtle: rgba(244,114,182,0.15);
+
+  --blue: #7DD3FC;
+  --blue-subtle: rgba(125,211,252,0.15);
+  --purple: #D8B4FE;
+  --purple-subtle: rgba(216,180,254,0.15);
+  --green: #6EE7B7;
+  --green-subtle: rgba(110,231,183,0.15);
+  --yellow: #FDE68A;
+  --yellow-subtle: rgba(253,230,138,0.15);
+  --red: #FCA5A5;
+  --red-subtle: rgba(252,165,165,0.15);
+
+  --text-on-accent: #1C0A1C;
+
+  --card-bg: #2D1530;
+  --card-border: #3D1F3F;
+  --input-bg: #2D1530;
+  --input-border: #3D1F3F;
+  --badge-bg: rgba(249,168,212,0.12);
+
+  --glass-bg: rgba(28,10,28,0.9);
+  --glass-border: rgba(61,31,63,0.8);
+
+  --code-bg: #1C0A1C;
+  --code-text: #FDF2F8;
+
+  --sidebar-bg: #1C0A1C;
+  --sidebar-border: #3D1F3F;
+  --sidebar-accent: #3D1F3F;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THEME: Honey — HiveClaw signature warm amber
+   ══════════════════════════════════════════════════════════════════════════ */
+[data-theme="honey"] {
+  color-scheme: dark;
+
+  --bg: #1A1207;
+  --surface: #27200F;
+  --surface-hover: #362C16;
+  --muted: #362C16;
+  --muted-foreground: #D4A853;
+
+  --border: #362C16;
+  --border-hover: #4D3D1E;
+  --ring: #FDE68A;
+
+  --text: #FEFCE8;
+  --text-secondary: #D4A853;
+  --text-muted: #92702A;
+
+  --primary: #FEFCE8;
+  --primary-foreground: #1A1207;
+
+  --coral: #F59E0B;
+  --coral-hover: #D97706;
+  --coral-subtle: rgba(245,158,11,0.15);
+
+  --blue: #38BDF8;
+  --blue-subtle: rgba(56,189,248,0.15);
+  --purple: #C084FC;
+  --purple-subtle: rgba(192,132,252,0.15);
+  --green: #4ADE80;
+  --green-subtle: rgba(74,222,128,0.15);
+  --yellow: #FBBF24;
+  --yellow-subtle: rgba(251,191,36,0.15);
+  --red: #FB7185;
+  --red-subtle: rgba(251,113,133,0.15);
+
+  --text-on-accent: #1A1207;
+
+  --card-bg: #27200F;
+  --card-border: #362C16;
+  --input-bg: #27200F;
+  --input-border: #362C16;
+  --badge-bg: rgba(212,168,83,0.12);
+
+  --glass-bg: rgba(26,18,7,0.9);
+  --glass-border: rgba(54,44,22,0.8);
+
+  --code-bg: #1A1207;
+  --code-text: #FEFCE8;
+
+  --sidebar-bg: #1A1207;
+  --sidebar-border: #362C16;
+  --sidebar-accent: #362C16;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   THEME: System — follows OS preference
+   ══════════════════════════════════════════════════════════════════════════ */
 @media (prefers-color-scheme: light) {
   [data-theme="system"] {
+    color-scheme: light;
+
     --bg: #FFFFFF;
-    --surface: #F6F8FA;
-    --surface-hover: #EEF1F5;
-    --border: #D0D7DE;
-    --border-hover: #B0B8C1;
+    --surface: #F4F4F5;
+    --surface-hover: #E4E4E7;
+    --muted: #F4F4F5;
+    --muted-foreground: #71717A;
 
-    --text: #1F2328;
-    --text-secondary: #656D76;
-    --text-muted: #8C959F;
+    --border: #E4E4E7;
+    --border-hover: #D4D4D8;
+    --ring: #18181B;
 
-    --coral: #B45309;
-    --coral-hover: #92400E;
-    --coral-subtle: rgba(180,83,9,0.12);
-    --blue: #0969DA;
-    --blue-subtle: rgba(9,105,218,0.1);
-    --purple: #8250DF;
-    --purple-subtle: rgba(130,80,223,0.1);
-    --green: #1A7F37;
-    --green-subtle: rgba(26,127,55,0.1);
-    --yellow: #9A6700;
-    --yellow-subtle: rgba(154,103,0,0.1);
-    --red: #CF222E;
+    --text: #09090B;
+    --text-secondary: #71717A;
+    --text-muted: #A1A1AA;
+
+    --primary: #18181B;
+    --primary-foreground: #FAFAFA;
+
+    --coral: #D97706;
+    --coral-hover: #B45309;
+    --coral-subtle: rgba(217,119,6,0.12);
+
+    --blue: #2563EB;
+    --blue-subtle: rgba(37,99,235,0.1);
+    --purple: #9333EA;
+    --purple-subtle: rgba(147,51,234,0.1);
+    --green: #16A34A;
+    --green-subtle: rgba(22,163,74,0.1);
+    --yellow: #CA8A04;
+    --yellow-subtle: rgba(202,138,4,0.1);
+    --red: #DC2626;
+    --red-subtle: rgba(220,38,38,0.1);
 
     --text-on-accent: #FFFFFF;
 
-    --card-bg: rgba(246,248,250,0.9);
-    --card-border: var(--border);
-    --input-bg: rgba(255,255,255,0.9);
-    --badge-bg: rgba(175,184,193,0.2);
+    --card-bg: #FFFFFF;
+    --card-border: #E4E4E7;
+    --input-bg: #FFFFFF;
+    --input-border: #E4E4E7;
+    --badge-bg: rgba(113,113,122,0.1);
 
-    --glass-bg: rgba(255,255,255,0.85);
-    --glass-border: rgba(208,215,222,0.8);
+    --glass-bg: rgba(255,255,255,0.9);
+    --glass-border: rgba(228,228,231,0.8);
 
-    --code-bg: #F6F8FA;
-    --code-text: #1F2328;
+    --code-bg: #F4F4F5;
+    --code-text: #09090B;
 
-    color-scheme: light;
+    --sidebar-bg: #FAFAFA;
+    --sidebar-border: #E4E4E7;
+    --sidebar-accent: #F4F4F5;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Global Resets & Utilities
+   ══════════════════════════════════════════════════════════════════════════ */
 
 * {
   box-sizing: border-box;
@@ -183,7 +471,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Scrollbar styling */
+/* Scrollbar — thin, minimal */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -272,8 +560,6 @@ html, body {
 }
 
 /* ─── PWA Standalone Mode ──────────────────────────────────────────────────── */
-
-/* Safe area insets for notch / Dynamic Island devices */
 @media (display-mode: standalone) {
   body {
     padding-top: env(safe-area-inset-top);
@@ -281,8 +567,6 @@ html, body {
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
   }
-
-  /* Prevent pull-to-refresh in standalone */
   html {
     overscroll-behavior: none;
   }
