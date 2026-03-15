@@ -13,6 +13,7 @@ import { AgentMemoryRepository } from '../db/agent-memory.js';
 import { getDb } from '../db/index.js';
 import { logger } from '../lib/logger.js';
 import { LoopDetector } from './loop-detector.js';
+import { ProgressChecker } from './progress-checker.js';
 import { touchSession } from './session-consolidator.js';
 
 // ─── SSE Event Types ──────────────────────────────────────────────────────────
@@ -275,7 +276,15 @@ export async function* runAgent(
   }
 
   // ── 7. Agentic loop ──────────────────────────────────────────────────────────
+  // Sprint 79: Smart loop — ProgressChecker replaces fixed limit as primary guard
   const maxIterations = agentConfig.maxToolIterations ?? TOOL_LIMITS.MAX_TOOL_ITERATIONS;
+  const progressChecker = new ProgressChecker({
+    duplicateThreshold: 2,  // stop if same tool + same args called 2x in a row
+    stallThreshold: 6,      // stop if no new progress in 6 iterations
+    tokenBudget: 80_000,    // stop if token usage exceeds 80k
+    timeBudgetMs: 120_000,  // stop if response exceeds 2 minutes
+    checkInterval: 5,       // check stall every 5 iterations
+  });
   for (let iteration = 0; iteration < maxIterations; iteration++) {
     const llmOptions: LLMOptions = {
       model: agentConfig.modelId,
@@ -362,6 +371,24 @@ export async function* runAgent(
     totalTokensIn += iterationTokensIn;
     totalTokensOut += iterationTokensOut;
 
+    // ── Sprint 79: Token budget check ─────────────────────────────────────────
+    const tokenCheck = progressChecker.recordTokens(iterationTokensIn, iterationTokensOut);
+    if (tokenCheck.shouldStop) {
+      logger.warn(`[AgentRunner] Token budget: ${tokenCheck.details}`);
+      yield { event: 'message.delta', data: { text: `\n\n⚠️ ${tokenCheck.recommendation}` } };
+      fullAssistantText += `\n\n⚠️ ${tokenCheck.recommendation}`;
+      break;
+    }
+
+    // ── Sprint 79: Progress stall check ───────────────────────────────────────
+    const progressCheck = progressChecker.fullCheck(iteration);
+    if (progressCheck.shouldStop) {
+      logger.warn(`[AgentRunner] Progress stalled: ${progressCheck.details}`);
+      yield { event: 'message.delta', data: { text: `\n\n⚠️ ${progressCheck.recommendation}` } };
+      fullAssistantText += `\n\n⚠️ ${progressCheck.recommendation}`;
+      break;
+    }
+
     // ── 7c. No tool calls → done ───────────────────────────────────────────────
     if (pendingToolCalls.length === 0) {
       // Check for response loop
@@ -390,6 +417,18 @@ export async function* runAgent(
           data: { text: `\n\n[Loop detected: ${toolLoop.details}. Breaking loop.]` },
         };
         fullAssistantText += `\n\n[Loop detected: ${toolLoop.details}. Breaking loop.]`;
+        loopBroken = true;
+        break;
+      }
+      // Sprint 79: ProgressChecker duplicate tool check
+      const dupCheck = progressChecker.recordToolCall(tc.name, tc.input);
+      if (dupCheck.shouldStop) {
+        logger.warn(`[AgentRunner] Duplicate tool detected: ${dupCheck.details}`);
+        yield {
+          event: 'message.delta',
+          data: { text: `\n\n⚠️ ${dupCheck.recommendation}` },
+        };
+        fullAssistantText += `\n\n⚠️ ${dupCheck.recommendation}`;
         loopBroken = true;
         break;
       }
@@ -479,6 +518,10 @@ export async function* runAgent(
       break;
     }
   } // end agentic loop
+
+  // Sprint 79: Log progress summary
+  const progressSummary = progressChecker.getSummary();
+  logger.info(`[AgentRunner] Loop summary for session ${sessionId}: ${JSON.stringify(progressSummary)}`);
 
   // ── 8. Persist assistant message ─────────────────────────────────────────────
   const cost = estimateTokenCost(
