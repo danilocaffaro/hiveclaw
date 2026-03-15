@@ -20,7 +20,7 @@ export function ScrollFAB({ visible, unreadCount, onClick }: ScrollFABProps) {
       aria-label={`Scroll to bottom${unreadCount > 0 ? ` (${unreadCount} new)` : ''}`}
       style={{
         position: 'absolute',
-        bottom: 80,
+        bottom: 16,
         right: 20,
         zIndex: 50,
         width: 40,

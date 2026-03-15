@@ -97,11 +97,19 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
     }
   }, [messages, activeSessionId]);
 
-  // When switching sessions/squads → always jump to bottom instantly and re-enable auto-scroll
+  // When switching sessions/squads → reset state and schedule scroll-to-bottom
+  // after React has rendered the new messages (requestAnimationFrame x2 to wait for paint)
   useEffect(() => {
     setAutoScroll(true);
-    const el = scrollContainerRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    setFabUnreadCount(0);
+    const raf1 = requestAnimationFrame(() => {
+      const raf2 = requestAnimationFrame(() => {
+        const el = scrollContainerRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+      });
+      return () => cancelAnimationFrame(raf2);
+    });
+    return () => cancelAnimationFrame(raf1);
   }, [activeSessionId, activeSquadId]);
 
   // When new messages arrive → scroll only if auto-scroll is enabled (user hasn't scrolled up)
@@ -111,8 +119,10 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
       setFabUnreadCount((c) => c + 1);
       return;
     }
-    const el = scrollContainerRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(() => {
+      const el = scrollContainerRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
   }, [messages, autoScroll]);
 
   // Track manual scroll: if user scrolls up, disable auto-scroll; if at bottom, re-enable
@@ -298,11 +308,12 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
       ) : isLoadingMessages ? (
         <LoadingSkeleton />
       ) : (
-        <div
-          ref={scrollContainerRef}
-          onScroll={handleScroll}
-          style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '12px 12px' : '16px 24px', position: 'relative' }}
-        >
+        <div style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '12px 12px' : '16px 24px' }}
+          >
           {messages.map((msg, i) => (
             <React.Fragment key={msg.id}>
               {/* F6: Date separator when date changes */}
@@ -331,8 +342,9 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
             <TypingIndicator />
           )}
           <div ref={messagesEndRef} />
+          </div>
 
-          {/* F5: Scroll-to-bottom FAB */}
+          {/* F5: Scroll-to-bottom FAB — OUTSIDE scroll container so it stays fixed visually */}
           <ScrollFAB visible={!autoScroll} unreadCount={fabUnreadCount} onClick={scrollToBottom} />
         </div>
       )}
