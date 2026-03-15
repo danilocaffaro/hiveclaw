@@ -199,6 +199,51 @@ export function ReplyPreview({ senderName, senderEmoji, content, onCancel }: Rep
 }
 
 /**
+ * Bubble Action Button — WhatsApp Web style dropdown arrow on hover (desktop only)
+ * Appears at top-right corner of message bubble when hovered.
+ */
+interface BubbleActionButtonProps {
+  onClick: (e: React.MouseEvent) => void;
+  isUser?: boolean;
+}
+
+export function BubbleActionButton({ onClick, isUser }: BubbleActionButtonProps) {
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick(e); }}
+      aria-label="Message actions"
+      style={{
+        position: 'absolute',
+        top: 4,
+        right: isUser ? undefined : 4,
+        left: isUser ? 4 : undefined,
+        width: 24, height: 24,
+        borderRadius: 'var(--radius-sm)',
+        background: 'var(--surface)',
+        border: '1px solid var(--border)',
+        cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 10, color: 'var(--text-muted)',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+        transition: 'opacity 100ms, background 100ms',
+        zIndex: 2,
+        padding: 0,
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-hover)';
+        (e.currentTarget as HTMLButtonElement).style.color = 'var(--text)';
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface)';
+        (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)';
+      }}
+    >
+      ▾
+    </button>
+  );
+}
+
+/**
  * F1 — Quoted reply block inside a message bubble
  */
 interface QuotedReplyProps {

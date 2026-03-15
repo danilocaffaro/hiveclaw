@@ -21,7 +21,7 @@ import { WelcomeScreen, SquadWelcomeScreen } from './chat/WelcomeScreen';
 import { InputBar, type Attachment } from './chat/InputBar';
 import { DateSeparator, shouldShowDateSeparator } from './chat/DateSeparator';
 import { ScrollFAB } from './chat/ScrollFAB';
-import { MessageContextMenu, QuickReactionBar, ReplyPreview } from './chat/MessageActions';
+import { MessageContextMenu, QuickReactionBar, ReplyPreview, BubbleActionButton } from './chat/MessageActions';
 import { SearchOverlay } from './chat/SearchOverlay';
 
 // ─── Main ChatArea ──────────────────────────────────────────────────────────────
@@ -47,6 +47,8 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
   // F2/F3: Context menu state
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; msg: Message } | null>(null);
   const [reactionBar, setReactionBar] = useState<{ x: number; y: number; msgId: string } | null>(null);
+  // Hover state for desktop bubble action button
+  const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
   const [agentInfoOpen, setAgentInfoOpen] = useState(false);
   // F11: Search overlay
   const [searchOpen, setSearchOpen] = useState(false);
@@ -307,9 +309,21 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
               {shouldShowDateSeparator(messages[i - 1]?.created_at, msg.created_at) && msg.created_at && (
                 <DateSeparator dateStr={msg.created_at} />
               )}
-              {/* F1/F2/F3: Right-click context menu on messages */}
-              <div onContextMenu={(e) => handleMessageContextMenu(e, msg)}>
+              {/* F1/F2/F3: Right-click context menu + hover action button on messages */}
+              <div
+                onContextMenu={(e) => handleMessageContextMenu(e, msg)}
+                onMouseEnter={() => { if (!isMobile) setHoveredMsgId(msg.id); }}
+                onMouseLeave={() => { if (!isMobile) setHoveredMsgId(null); }}
+                style={{ position: 'relative' }}
+              >
                 <MessageBubble key={msg.id} msg={msg} />
+                {/* Desktop: WhatsApp-style action button on hover */}
+                {!isMobile && hoveredMsgId === msg.id && !contextMenu && (
+                  <BubbleActionButton
+                    isUser={msg.role === 'user'}
+                    onClick={(e) => handleMessageContextMenu(e, msg)}
+                  />
+                )}
               </div>
             </React.Fragment>
           ))}
