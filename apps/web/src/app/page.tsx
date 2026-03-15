@@ -20,6 +20,8 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { useGlobalSSE } from '@/hooks/useGlobalSSE';
 import { PWAProvider } from '@/components/PWAProvider';
 import { MuiThemeProvider } from '@/components/MuiThemeProvider';
+import { LoginPage } from '@/components/auth/LoginPage';
+import { useAuthStore } from '@/stores/auth-store';
 
 // ─── ThemeSync ─────────────────────────────────────────────────────────────────
 function ThemeSync() {
@@ -200,6 +202,39 @@ export default function HomePage() {
     void useSquadStore.getState().fetchSquads();
   }, []);
 
+  // ── P-8 Auth gate (feature flag: NEXT_PUBLIC_ENABLE_AUTH=true) ──────────────
+  const AUTH_ENABLED = process.env.NEXT_PUBLIC_ENABLE_AUTH === 'true';
+  const { user: authUser, checked: authChecked, setUser: setAuthUser } = useAuthStore();
+
+  useEffect(() => {
+    if (!AUTH_ENABLED) {
+      // Auth disabled — mark as checked, no gate
+      useAuthStore.getState().setChecked(true);
+      return;
+    }
+    // Try auto-login (same-origin owner fallback or stored API key)
+    let cancelled = false;
+    const tryAutoLogin = async () => {
+      try {
+        const headers: Record<string, string> = {};
+        const storedKey = localStorage.getItem('hiveclaw-api-key');
+        if (storedKey) headers['x-api-key'] = storedKey;
+        const res = await fetch(`${API_BASE}/auth/me`, { headers, cache: 'no-store' });
+        if (cancelled) return;
+        if (res.ok) {
+          const { data } = await res.json();
+          useAuthStore.getState().setUser(data);
+        } else {
+          useAuthStore.getState().setChecked(true);
+        }
+      } catch {
+        if (!cancelled) useAuthStore.getState().setChecked(true);
+      }
+    };
+    void tryAutoLogin();
+    return () => { cancelled = true; };
+  }, [AUTH_ENABLED, API_BASE]);
+
   // ── Global keyboard shortcuts ──────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -248,6 +283,16 @@ export default function HomePage() {
       setMobileRightPanelOpen(false);
     }
   }, [isMobile, setMobileSidebarOpen, setMobileRightPanelOpen]);
+
+  // ── Auth gate — show login when auth is enabled but user not authenticated ──
+  if (AUTH_ENABLED && authChecked && !authUser) {
+    return (
+      <MuiThemeProvider>
+        <ThemeSync />
+        <LoginPage onLogin={(u) => setAuthUser(u)} />
+      </MuiThemeProvider>
+    );
+  }
 
   // ── Loading gate — prevent FOUC (flash of main app before wizard) ─────────
   if (!setupChecked) {

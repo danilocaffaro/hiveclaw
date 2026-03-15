@@ -183,14 +183,6 @@ export function ChatHeader({ onAgentInfoClick }: { onAgentInfoClick?: () => void
   const agentEmoji = agent?.emoji ?? '🤖';
   const agentDescription = agent?.role || 'Personal AI assistant';
 
-  // If squad session, show squad header
-  if (activeSquadId) {
-    const squad = squads.find((s) => s.id === activeSquadId);
-    if (squad) {
-      return <SquadChatHeader squad={squad} agents={agents} onSquadInfoClick={onAgentInfoClick} />;
-    }
-  }
-
   return (
     <div style={{
       padding: isMobile ? '10px 12px' : '12px 20px', borderBottom: '1px solid var(--border)',

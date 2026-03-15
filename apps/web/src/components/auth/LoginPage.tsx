@@ -26,7 +26,7 @@ export function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => void }) {
   useEffect(() => {
     if (autoLoginAttempted) return;
     setAutoLoginAttempted(true);
-    fetch('/auth/me')
+    fetch('/api/auth/me')
       .then(r => r.ok ? r.json() : null)
       .then(result => {
         if (result?.data) onLogin(result.data);
@@ -42,7 +42,7 @@ export function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => void }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/auth/me', {
+      const res = await fetch('/api/auth/me', {
         headers: { 'x-api-key': apiKey.trim() },
       });
       if (!res.ok) {
