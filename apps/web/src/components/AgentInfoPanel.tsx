@@ -273,21 +273,51 @@ export default function AgentInfoPanel({ open, onClose }: AgentInfoPanelProps) {
               {/* Divider */}
               <div style={{ borderBottom: '1px solid var(--border)', marginBottom: 16 }} />
 
-              {/* Editable fields */}
+              {/* ── Identity Section ── */}
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 }}>
+                Identity
+              </div>
               <EditableField label="Name" value={agent.name} onSave={v => saveField('name', v)} />
               <EditableField label="Emoji" value={agent.emoji} onSave={v => saveField('emoji', v)} />
               <EditableField label="Role" value={agent.role} onSave={v => saveField('role', v)} />
+              <EditableField label="Type" value={agent.type ?? 'specialist'} onSave={v => saveField('type', v)} />
+              <EditableField label="Color" value={agent.color ?? '#7c5bf5'} onSave={v => saveField('color', v)} />
 
+              {/* ── Soul & Instructions Section ── */}
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 8, marginTop: 16, letterSpacing: 0.5 }}>
+                Soul & Instructions
+              </div>
+              <EditableField label="System Prompt" value={agent.systemPrompt ?? ''} type="textarea"
+                onSave={v => saveField('systemPrompt', v)} />
+
+              {/* ── Model & Provider Section ── */}
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 8, marginTop: 16, letterSpacing: 0.5 }}>
+                Model & Provider
+              </div>
               <EditableField label="Model" value={agent.modelPreference ?? ''} onSave={v => saveField('modelPreference', v)} />
               <EditableField label="Provider" value={agent.providerPreference ?? ''} onSave={v => saveField('providerPreference', v)} />
-
               <EditableField label="Temperature" value={String(agent.temperature ?? 0.7)} type="number"
                 onSave={v => saveField('temperature', v)} />
               <EditableField label="Max Tokens" value={String(agent.maxTokens ?? 4096)} type="number"
                 onSave={v => saveField('maxTokens', v)} />
 
-              <EditableField label="System Prompt" value={agent.systemPrompt ?? ''} type="textarea"
-                onSave={v => saveField('systemPrompt', v)} />
+              {/* ── Skills Section ── */}
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 8, marginTop: 16, letterSpacing: 0.5 }}>
+                Skills
+              </div>
+              {(agent.skills ?? []).length > 0 ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+                  {(agent.skills ?? []).map((skill, i) => (
+                    <span key={i} style={{
+                      padding: '3px 8px', borderRadius: 'var(--radius-sm)',
+                      background: 'var(--blue-subtle)', color: 'var(--blue)',
+                      fontSize: 11, fontWeight: 500,
+                    }}>{skill}</span>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>No skills assigned</div>
+              )}
 
               {/* Status */}
               <div style={{ marginTop: 8 }}>
