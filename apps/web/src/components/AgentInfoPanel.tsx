@@ -5,6 +5,7 @@ import { useRSPStore, selectActiveAgentId, selectActiveSquadId } from '@/stores/
 import { useAgentStore } from '@/stores/agent-store';
 import { useSquadStore } from '@/stores/squad-store';
 import { useSessionStore } from '@/stores/session-store';
+import AgentMemoryExplorer from './AgentMemoryExplorer';
 
 interface AgentInfoPanelProps {
   open: boolean;
@@ -307,6 +308,11 @@ export default function AgentInfoPanel({ open, onClose }: AgentInfoPanelProps) {
                     {agent.status}
                   </span>
                 </div>
+              </div>
+
+              {/* Memory Explorer */}
+              <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                <AgentMemoryExplorer agentId={agent.id} agentName={agent.name} agentEmoji={agent.emoji} />
               </div>
             </>
           ) : (
