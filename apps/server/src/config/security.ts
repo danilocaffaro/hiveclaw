@@ -11,10 +11,11 @@ import { homedir } from 'os';
 
 /**
  * Resolve the workspace root.
- * Priority: SUPERCLAW_WORKSPACE env > ~/.hiveclaw/workspace > cwd
+ * Priority: HIVECLAW_WORKSPACE env > SUPERCLAW_WORKSPACE (legacy) > ~/.hiveclaw/workspace > cwd
  */
 export function getWorkspaceRoot(): string {
-  return process.env.SUPERCLAW_WORKSPACE
+  return process.env.HIVECLAW_WORKSPACE
+    || process.env.SUPERCLAW_WORKSPACE // legacy fallback
     || resolve(homedir(), '.hiveclaw', 'workspace');
 }
 
@@ -89,7 +90,7 @@ export function validateToolPath(
   return {
     allowed: false,
     reason: `Access denied: path '${requestedPath}' is outside the workspace (${workspace}). ` +
-      `Set SUPERCLAW_WORKSPACE env to expand access.`,
+      `Set HIVECLAW_WORKSPACE env to expand access.`,
   };
 }
 

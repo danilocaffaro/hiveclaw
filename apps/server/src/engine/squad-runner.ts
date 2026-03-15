@@ -256,7 +256,7 @@ async function* runExternalAgent(
     recentHistory: recentMessages,
   };
 
-  const baseUrl = process.env.SUPERCLAW_PUBLIC_URL ?? 'http://localhost:4070';
+  const baseUrl = process.env.HIVECLAW_PUBLIC_URL ?? process.env.SUPERCLAW_PUBLIC_URL ?? 'http://localhost:4070';
   const response = await dispatchToExternalAgent(extAgent, ctx, baseUrl);
 
   yield {

@@ -76,8 +76,8 @@ import { DEFAULT_PORT, DEFAULT_HOST, DEV_CORS_ORIGINS } from './config/defaults.
 import { SECURITY_HEADERS, isPublicRoute, SSE_MAX_CONNECTIONS_PER_IP, SSE_MAX_TOTAL_CONNECTIONS } from './config/security.js';
 import { getAuthUser } from './api/auth.js';
 
-const PORT = parseInt(process.env.PORT ?? process.env.SUPERCLAW_PORT ?? String(DEFAULT_PORT), 10);
-const HOST = process.env.SUPERCLAW_HOST ?? DEFAULT_HOST;
+const PORT = parseInt(process.env.PORT ?? process.env.HIVECLAW_PORT ?? process.env.SUPERCLAW_PORT ?? String(DEFAULT_PORT), 10);
+const HOST = process.env.HIVECLAW_HOST ?? process.env.SUPERCLAW_HOST ?? DEFAULT_HOST;
 const VERSION = '0.1.0';
 
 async function main() {
@@ -206,8 +206,9 @@ async function main() {
   });
 
     // CORS
-  const corsOrigins: (string | RegExp)[] = process.env.SUPERCLAW_CORS_ORIGINS
-    ? process.env.SUPERCLAW_CORS_ORIGINS.split(',').map(s => s.trim())
+  const corsEnv = process.env.HIVECLAW_CORS_ORIGINS || process.env.SUPERCLAW_CORS_ORIGINS;
+  const corsOrigins: (string | RegExp)[] = corsEnv
+    ? corsEnv.split(',').map(s => s.trim())
     : [
         ...DEV_CORS_ORIGINS,
         /^https?:\/\/.*\.ts\.net$/,
@@ -341,7 +342,7 @@ async function main() {
   });
 
   // ─── Static SPA serving ───────────────────────────────────────────────
-  const webDir = process.env.SUPERCLAW_WEB_DIR
+  const webDir = process.env.HIVECLAW_WEB_DIR || process.env.SUPERCLAW_WEB_DIR
     || (() => {
       const monorepoOut = join(import.meta.dirname, '..', '..', 'web', 'out');
       return existsSync(join(monorepoOut, 'index.html')) ? monorepoOut : undefined;

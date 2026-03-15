@@ -15,7 +15,7 @@
  *   const engine = getEngineService();
  *   const result = await engine.sessions.runAgent(...);
  *
- * @see https://github.com/hiveclaw/superclaw-pure — Block Architecture docs
+ * @see https://github.com/hiveclaw/hiveclaw — Block Architecture docs
  */
 
 // ─── Engine module imports ─────────────────────────────────────────────────────

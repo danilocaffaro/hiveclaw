@@ -299,7 +299,7 @@ export function registerFileRoutes(app: FastifyInstance, workspacePath: string) 
   // Upload file(s) for chat attachments. Saves to /tmp/hiveclaw-uploads/
   // Returns array of { name, path, size, type }
   // Register at BOTH paths to avoid /api/* catch-all breaking multipart
-  const UPLOAD_DIR = process.env.SUPERCLAW_UPLOAD_DIR ?? '/tmp/hiveclaw-uploads';
+  const UPLOAD_DIR = process.env.HIVECLAW_UPLOAD_DIR ?? process.env.SUPERCLAW_UPLOAD_DIR ?? '/tmp/hiveclaw-uploads';
 
   const uploadHandler = async (req: import('fastify').FastifyRequest, reply: import('fastify').FastifyReply) => {
     if (!existsSync(UPLOAD_DIR)) mkdirSync(UPLOAD_DIR, { recursive: true });

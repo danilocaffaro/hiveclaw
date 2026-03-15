@@ -9,8 +9,8 @@ export function getAuthUser(req: FastifyRequest, users: UserRepository): User | 
   const apiKey = req.headers['x-api-key'] as string | undefined;
   if (apiKey) return users.getByApiKey(apiKey) ?? null;
   // Self-hosted owner fallback: if running on same machine (no API key), allow owner
-  // SEC-05: opt-in via SUPERCLAW_DEV_AUTH=true or explicitly non-production
-  const isDev = process.env.NODE_ENV === 'development' || process.env.SUPERCLAW_DEV_AUTH === 'true';
+  // SEC-05: opt-in via HIVECLAW_DEV_AUTH=true or explicitly non-production
+  const isDev = process.env.NODE_ENV === 'development' || process.env.HIVECLAW_DEV_AUTH === 'true' || process.env.SUPERCLAW_DEV_AUTH === 'true';
   if (process.env.NODE_ENV === 'production' && !isDev) {
     // In production, allow self-hosted owner fallback (SPA on same origin doesn't send x-api-key)
     return users.getOwner() ?? null;

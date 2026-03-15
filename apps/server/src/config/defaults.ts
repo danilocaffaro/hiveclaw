@@ -69,7 +69,7 @@ export function providerNeedsApiKey(providerType: string): boolean {
 }
 
 // ─── CORS ───────────────────────────────────────────────────────────────────────
-// In production, SUPERCLAW_CORS_ORIGINS env var should be set.
+// In production, HIVECLAW_CORS_ORIGINS env var should be set.
 // These are ONLY for local development.
 
 export const DEV_CORS_ORIGINS = [

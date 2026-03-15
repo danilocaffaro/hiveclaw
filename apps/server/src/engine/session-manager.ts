@@ -10,8 +10,8 @@ import { mkdirSync } from 'fs';
 import { AgentMemoryRepository } from '../db/agent-memory.js';
 import { logger } from '../lib/logger.js';
 
-const SUPERCLAW_DIR = join(homedir(), '.superclaw');
-const DB_PATH = join(SUPERCLAW_DIR, 'superclaw.db');
+const HIVECLAW_DIR = join(homedir(), '.hiveclaw');
+const DB_PATH = join(HIVECLAW_DIR, 'hiveclaw.db');
 
 // ─── Public Interfaces ────────────────────────────────────────────────────────
 

@@ -212,7 +212,11 @@ export async function* runAgent(
   const toolsList = toolNames.length > 0
     ? `\nAvailable tools: ${toolNames.join(', ')}. Use them proactively — you have real access to web, files, code execution, memory, and more. Never claim you lack capabilities that your tools provide.`
     : '';
-  const runtimeContext = `\n\n## Runtime\n${runtimeLine}${toolsList}`;
+  const honesty = `\n\n## Tool Output Integrity (MANDATORY)
+- When a tool returns an error or fails, report the EXACT error. Do NOT guess, infer, or reconstruct what the output might have been.
+- If you cannot verify something, say "I could not verify this" — never fabricate plausible output from memory or context.
+- Prefer "I don't know" over a confident wrong answer.`;
+  const runtimeContext = `\n\n## Runtime\n${runtimeLine}${toolsList}${honesty}`;
   systemPrompt = systemPrompt + runtimeContext;
 
   // ── 3. Build messages array ─────────────────────────────────────────────────
@@ -542,9 +546,16 @@ export async function* runAgent(
       }
 
       // Append tool result as a "tool" role message
+      // Anti-fabrication: when a tool fails, append enforcement notice so the LLM
+      // reports the real error instead of guessing what the output would have been.
+      const isError = resultContent.startsWith('ERROR:');
+      const enforced = isError
+        ? `${resultContent}\n\n[SYSTEM] This tool call FAILED. Report the exact error above. Do NOT guess or reconstruct what the output might have been.`
+        : resultContent;
+
       toolResultMessages.push({
         role: 'tool',
-        content: resultContent,
+        content: enforced,
         toolCallId: tc.id,
         name: tc.name,
       });
