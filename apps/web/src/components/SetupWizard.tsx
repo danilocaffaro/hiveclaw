@@ -599,12 +599,17 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const PROVIDER_CARDS = [
     {
       id: 'anthropic', name: 'Anthropic', icon: '🟣', desc: 'Claude Opus, Sonnet, Haiku',
-      hint: 'console.anthropic.com → API Keys',
+      hint: 'Two options: Claude Pro/Max subscription OR pay-per-use API key',
       steps: [
-        'Go to console.anthropic.com and sign up or log in',
-        'Click Settings → API Keys → Create Key',
-        'Give it a name (e.g. "HiveClaw"), click Create',
-        'Copy the key (starts with sk-ant-…) and paste it below',
+        '💡 Option A — Claude Pro/Max subscription (recommended if you already have one):',
+        'Go to claude.ai/settings → scroll to "API Key" or "OAuth Token"',
+        'Copy the token (starts with sk-ant-oat…) and paste below',
+        'This uses your existing subscription — no extra charges!',
+        '─────────────────────────',
+        '💳 Option B — Pay-per-use API key:',
+        'Go to console.anthropic.com → Settings → API Keys → Create Key',
+        'Copy the key (starts with sk-ant-api…) and paste below',
+        'This is billed per usage (pay only for what you use)',
       ],
       url: 'https://console.anthropic.com/settings/keys',
     },

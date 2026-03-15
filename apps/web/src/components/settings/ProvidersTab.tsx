@@ -31,7 +31,7 @@ const PROVIDERS: ProviderDef[] = [
     color: '#D97706',
     hasBaseUrl: false,
     defaultBaseUrl: 'https://api.anthropic.com',
-    keyPlaceholder: 'sk-ant-...',
+    keyPlaceholder: 'sk-ant-oat… (Claude Pro/Max) or sk-ant-api… (pay-per-use)',
   },
   {
     id: 'openai',
