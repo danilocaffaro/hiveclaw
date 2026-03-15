@@ -313,14 +313,16 @@ export async function* runAgent(
   }
 
   // ── 7. Agentic loop ──────────────────────────────────────────────────────────
-  // Sprint 79: Smart loop — ProgressChecker replaces fixed limit as primary guard
+  // The ProgressChecker is the PRIMARY stop mechanism — it detects stalls,
+  // loops, and budget exhaustion intelligently.  The hard cap is a safety net
+  // only, set very high so legitimate complex work is never interrupted.
   const maxIterations = agentConfig.maxToolIterations ?? TOOL_LIMITS.MAX_TOOL_ITERATIONS;
   const progressChecker = new ProgressChecker({
-    duplicateThreshold: 2,  // stop if same tool + same args called 2x in a row
-    stallThreshold: 6,      // stop if no new progress in 6 iterations
-    tokenBudget: 80_000,    // stop if token usage exceeds 80k
-    timeBudgetMs: 120_000,  // stop if response exceeds 2 minutes
-    checkInterval: 5,       // check stall every 5 iterations
+    duplicateThreshold: 3,   // stop if same tool + same args called 3x consecutively
+    stallThreshold: 12,      // stop if no new unique tool call in 12 iterations
+    tokenBudget: 200_000,    // generous — let the agent work
+    timeBudgetMs: 600_000,   // 10 minutes — complex tasks need time
+    checkInterval: 5,        // evaluate stall every 5 iterations
   });
   for (let iteration = 0; iteration < maxIterations; iteration++) {
     const llmOptions: LLMOptions = {

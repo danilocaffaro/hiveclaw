@@ -455,10 +455,11 @@ export function registerSetupRoutes(
       : providerId;
 
     // Build ModelConfig[] from discovered model names (simple format for runtime-discovered models)
+    // All modern LLMs support tool/function calling — mark capabilities accordingly.
     const discoveredModelConfigs = test.models?.map((m) => ({
       id: m, name: prettifyModelName(m), provider: saveId,
       contextWindow: 128000, maxOutput: 8192,
-      costPerMInput: 0, costPerMOutput: 0, capabilities: ['text'] as string[],
+      costPerMInput: 0, costPerMOutput: 0, capabilities: ['text', 'tools'] as string[],
     }));
 
     const updated = providerRepo.upsert({

@@ -123,7 +123,7 @@ async function main() {
       const modelConfigs = installed.map(m => ({
         id: m.name, name: m.name, provider: 'ollama',
         contextWindow: 128000, maxOutput: 8192,
-        costPerMInput: 0, costPerMOutput: 0, capabilities: ['text'] as string[],
+        costPerMInput: 0, costPerMOutput: 0, capabilities: ['text', 'tools'] as string[],
       }));
       providers.upsert({ id: 'ollama', models: modelConfigs });
       logger.info(`[Ollama] Synced ${installed.length} installed model(s): ${installed.map(m => m.name).join(', ')}`);
@@ -133,6 +133,24 @@ async function main() {
   marketplace.seed();
   const userRepo = new UserRepository(db);
   userRepo.seedOwner();
+
+  // ─── Fix model capabilities — ensure 'tools' is present ──────────────
+  // Runtime-discovered models were previously saved with capabilities: ['text']
+  // only.  All modern LLMs support tool calling.
+  for (const prov of providers.list()) {
+    let updated = false;
+    const fixedModels = prov.models.map(m => {
+      if (m.capabilities && !m.capabilities.includes('tools')) {
+        updated = true;
+        return { ...m, capabilities: [...m.capabilities, 'tools'] };
+      }
+      return m;
+    });
+    if (updated) {
+      providers.upsert({ id: prov.id, models: fixedModels });
+      logger.info(`[Boot] Fixed model capabilities for ${prov.name} — added 'tools'`);
+    }
+  }
 
   // ─── Log configured providers ─────────────────────────────────────────
   const providerList = providers.list();
