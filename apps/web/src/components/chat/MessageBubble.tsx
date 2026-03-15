@@ -4,6 +4,7 @@ import React, { useState, type ReactNode } from 'react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { LinkPreviews } from './LinkPreview';
 import { AudioPlayer, isVoiceMessage } from './AudioPlayer';
+import { QuotedReply } from './MessageActions';
 import type { Message } from '@/stores/session-store';
 import { useSessionStore } from '@/stores/session-store';
 import { DebateCard, WorkflowCard, SprintProgressCard } from '../SpecialCards';
@@ -195,6 +196,15 @@ export function MessageBubble({ msg }: { msg: Message }) {
   // Always render full message (no truncation). Collapse only long code blocks.
   const displayContent = effectiveIsUser ? content : stripProtocolMeta(content);
 
+  // P-1: Parse reply quote prefix — `> **Name**: text\n\nmessage`
+  let quotedReply: { senderName: string; content: string } | null = null;
+  let mainContent = displayContent;
+  const quoteMatch = displayContent.match(/^>\s*\*\*([^*]+)\*\*:\s*(.+?)(?:\n\n([\s\S]*))?$/);
+  if (quoteMatch) {
+    quotedReply = { senderName: quoteMatch[1], content: quoteMatch[2] };
+    mainContent = quoteMatch[3]?.trim() ?? '';
+  }
+
   // Multi-agent attribution — prefer msg fields, then resolved agent from store
   const rawName = msg.agentName ?? resolvedAgent?.name ?? '';
   const agentId = msg.agentId ?? resolvedAgent?.id ?? '';
@@ -255,21 +265,25 @@ export function MessageBubble({ msg }: { msg: Message }) {
             {voiceSrc ? (
               <AudioPlayer src={voiceSrc} />
             ) : effectiveIsUser ? (
-              hasFileRefs ? (
-                <MarkdownRenderer content={displayContent} />
-              ) : (
-                <span style={{ whiteSpace: 'pre-wrap' }}>{displayContent}</span>
-              )
+              <>
+                {quotedReply && <QuotedReply senderName={quotedReply.senderName} content={quotedReply.content} />}
+                {hasFileRefs ? (
+                  <MarkdownRenderer content={mainContent} />
+                ) : (
+                  <span style={{ whiteSpace: 'pre-wrap' }}>{mainContent}</span>
+                )}
+              </>
             ) : (
               <>
+                {quotedReply && <QuotedReply senderName={quotedReply.senderName} content={quotedReply.content} />}
                 {renderSpecialCard(msg)}
-                <MarkdownRenderer content={displayContent.replace(/:::(?:debate|workflow|sprint)\{[\s\S]*?\}:::/g, '').trim()} />
+                <MarkdownRenderer content={mainContent.replace(/:::(?:debate|workflow|sprint)\{[\s\S]*?\}:::/g, '').trim()} />
               </>
             )}
           </div>
 
           {/* F10: Link previews */}
-          {!effectiveIsUser && <LinkPreviews content={displayContent} />}
+          {!effectiveIsUser && <LinkPreviews content={mainContent} />}
 
           {/* Time + delivery status */}
           <span style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, padding: '0 2px', display: 'flex', alignItems: 'center', gap: 3 }}>
@@ -350,21 +364,25 @@ export function MessageBubble({ msg }: { msg: Message }) {
           {voiceSrc ? (
             <AudioPlayer src={voiceSrc} />
           ) : effectiveIsUser ? (
-            hasFileRefs ? (
-              <MarkdownRenderer content={displayContent} />
-            ) : (
-              <span style={{ whiteSpace: 'pre-wrap' }}>{displayContent}</span>
-            )
+            <>
+              {quotedReply && <QuotedReply senderName={quotedReply.senderName} content={quotedReply.content} />}
+              {hasFileRefs ? (
+                <MarkdownRenderer content={mainContent} />
+              ) : (
+                <span style={{ whiteSpace: 'pre-wrap' }}>{mainContent}</span>
+              )}
+            </>
           ) : (
             <>
+              {quotedReply && <QuotedReply senderName={quotedReply.senderName} content={quotedReply.content} />}
               {renderSpecialCard(msg)}
-              <MarkdownRenderer content={displayContent.replace(/:::(?:debate|workflow|sprint)\{[\s\S]*?\}:::/g, '').trim()} />
+              <MarkdownRenderer content={mainContent.replace(/:::(?:debate|workflow|sprint)\{[\s\S]*?\}:::/g, '').trim()} />
             </>
           )}
         </div>
 
         {/* F10: Link previews (desktop) */}
-        {!effectiveIsUser && <LinkPreviews content={displayContent} />}
+        {!effectiveIsUser && <LinkPreviews content={mainContent} />}
 
         {/* Token info */}
         {((msg.tokens_in ?? 0) > 0 || (msg.tokens_out ?? 0) > 0) && (
