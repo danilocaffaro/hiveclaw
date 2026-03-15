@@ -259,7 +259,9 @@ async function* streamAnthropic(messages: ChatMessage[], opts: ChatOptions): Asy
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': opts.apiKey ?? '',
+        ...(opts.apiKey?.includes('sk-ant-oat')
+          ? { Authorization: `Bearer ${opts.apiKey}`, 'anthropic-beta': 'oauth-2025-04-20' }
+          : { 'x-api-key': opts.apiKey ?? '' }),
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify(body),

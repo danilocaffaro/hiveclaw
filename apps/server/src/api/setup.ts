@@ -49,11 +49,42 @@ async function testProviderConnection(
   try {
     if (providerId === 'anthropic') {
       const url = resolveProviderBaseUrl('anthropic', baseUrl);
+      const isOAuth = apiKey.includes('sk-ant-oat');
+      const authHeaders: Record<string, string> = isOAuth
+        ? { Authorization: `Bearer ${apiKey}`, 'anthropic-beta': 'oauth-2025-04-20' }
+        : { 'x-api-key': apiKey };
+
+      if (isOAuth) {
+        // OAuth tokens (Claude Max/Pro): validate via a minimal chat call with Bearer auth
+        const oauthRes = await fetch(`${url}/v1/messages`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...authHeaders,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 1,
+            messages: [{ role: 'user', content: 'hi' }],
+          }),
+        });
+        if (!oauthRes.ok) {
+          const body = await oauthRes.text();
+          return { success: false, error: `OAuth validation failed (${oauthRes.status}): ${body.slice(0, 200)}` };
+        }
+        return {
+          success: true,
+          models: ['claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-opus-4-5'],
+        };
+      }
+
+      // Standard API key validation
       const res = await fetch(`${url}/v1/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': apiKey,
+          ...authHeaders,
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
@@ -69,7 +100,7 @@ async function testProviderConnection(
       // Discover available models
       try {
         const modelsRes = await fetch(`${url}/v1/models`, {
-          headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+          headers: { ...authHeaders, 'anthropic-version': '2023-06-01' },
           signal: AbortSignal.timeout(10000),
         });
         if (modelsRes.ok) {
