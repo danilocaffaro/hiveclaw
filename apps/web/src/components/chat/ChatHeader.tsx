@@ -11,7 +11,7 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 
 // ─── Squad Chat Header ──────────────────────────────────────────────────────────
 
-export function SquadChatHeader({ squad, agents }: { squad: Squad; agents: Agent[] }) {
+export function SquadChatHeader({ squad, agents, onSquadInfoClick }: { squad: Squad; agents: Agent[]; onSquadInfoClick?: () => void }) {
   const { isStreaming } = useSessionStore();
   const { toggleRightPanel, toggleSettings, setMobileSidebarOpen, setMobileRightPanelOpen, interfaceMode } = useUIStore();
   const isMobile = useIsMobile();
@@ -37,7 +37,14 @@ export function SquadChatHeader({ squad, agents }: { squad: Squad; agents: Agent
           </button>
         )}
 
-        {/* Squad emoji in colored square */}
+        {/* Squad emoji in colored square — clickable to open info panel */}
+        <div
+          onClick={onSquadInfoClick}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            cursor: onSquadInfoClick ? 'pointer' : 'default',
+          }}
+        >
         <div style={{
           width: 34, height: 34, borderRadius: 10,
           background: 'var(--purple-subtle)',
@@ -89,6 +96,7 @@ export function SquadChatHeader({ squad, agents }: { squad: Squad; agents: Agent
               {(squad.agentIds ?? []).length} agents
             </span>
           </div>
+        </div>
         </div>
       </div>
 
@@ -163,7 +171,7 @@ export function ChatHeader({ onAgentInfoClick }: { onAgentInfoClick?: () => void
   if (activeSquadId) {
     const squad = squads.find((s) => s.id === activeSquadId);
     if (squad) {
-      return <SquadChatHeader squad={squad} agents={agents} />;
+      return <SquadChatHeader squad={squad} agents={agents} onSquadInfoClick={onAgentInfoClick} />;
     }
   }
 
@@ -179,7 +187,7 @@ export function ChatHeader({ onAgentInfoClick }: { onAgentInfoClick?: () => void
   if (activeSquadId) {
     const squad = squads.find((s) => s.id === activeSquadId);
     if (squad) {
-      return <SquadChatHeader squad={squad} agents={agents} />;
+      return <SquadChatHeader squad={squad} agents={agents} onSquadInfoClick={onAgentInfoClick} />;
     }
   }
 
