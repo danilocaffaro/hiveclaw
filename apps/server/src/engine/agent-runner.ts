@@ -15,6 +15,8 @@ import { logger } from '../lib/logger.js';
 import { LoopDetector } from './loop-detector.js';
 import { ProgressChecker } from './progress-checker.js';
 import { touchSession } from './session-consolidator.js';
+import { checkTokenStatus } from './token-monitor.js';
+import { handleThreshold, ensureSessionChainSchema } from './session-rotator.js';
 
 // ─── SSE Event Types ──────────────────────────────────────────────────────────
 
@@ -223,6 +225,41 @@ export async function* runAgent(
   // If user message was not persisted (squad context injection), still add it to LLM context
   if (opts?.skipPersistUserMessage && userMessage) {
     messages.push({ role: 'user', content: userMessage });
+  }
+
+  // ── 4.5 Token monitoring & session rotation ─────────────────────────────────
+  // Sprint 80: Eidetic Memory v2 — context-aware session management
+  try {
+    ensureSessionChainSchema();
+    const modelId = agentConfig.modelId || 'unknown';
+    const tokenStatus = checkTokenStatus(
+      freshMessages.map(m => ({ role: m.role, content: m.content, tool_result: m.tool_result })),
+      modelId,
+    );
+
+    if (tokenStatus.actionRequired) {
+      logger.info('[AgentRunner] Token status: %s', tokenStatus.message);
+      const newSessionId = await handleThreshold(tokenStatus, sessionId, agentConfig.id, modelId);
+
+      if (newSessionId) {
+        // Session was rotated — yield event and redirect
+        yield {
+          event: 'message.delta' as const,
+          data: { text: '\n\n🔄 *Session auto-rotated for optimal performance. Memory preserved.*\n' },
+        };
+        yield {
+          event: 'message.finish' as const,
+          data: {
+            sessionId: newSessionId,
+            rotated: true,
+            oldSessionId: sessionId,
+          },
+        };
+        return;
+      }
+    }
+  } catch (e) {
+    logger.debug({ err: e }, '[agent-runner] Token monitoring failed, continuing normally');
   }
 
   // ── 5. Signal start ──────────────────────────────────────────────────────────

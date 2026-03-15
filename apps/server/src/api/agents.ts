@@ -230,7 +230,7 @@ export function registerAgentRoutes(app: FastifyInstance, injectedAgents?: Agent
         return reply.status(400).send({ error: { code: 'VALIDATION', message: 'key and value are required' } });
       }
 
-      const validTypes = ['short_term', 'long_term', 'entity', 'preference'] as const;
+      const validTypes = ['short_term', 'long_term', 'entity', 'preference', 'fact', 'decision', 'goal', 'event', 'procedure', 'correction'] as const;
       if (type && !validTypes.includes(type as typeof validTypes[number])) {
         return reply.status(400).send({ error: { code: 'VALIDATION', message: `type must be one of: ${validTypes.join(', ')}` } });
       }

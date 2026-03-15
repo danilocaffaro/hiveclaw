@@ -154,7 +154,6 @@ async function main() {
 
   // /api/ prefix rewrite — frontend calls /api/* but routes are at root
   const nativeApiPrefixes = [
-    '/api/auth/',
     '/api/config/database/', '/api/config/database',
     '/api/config/integrations',
     '/api/console/',
