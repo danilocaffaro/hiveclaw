@@ -181,7 +181,10 @@ function installSkill(slug: string, content: string): void {
     mkdirSync(scriptsDir, { recursive: true });
     const scriptPath = join(scriptsDir, scriptName);
     writeFileSync(scriptPath, scriptContent, 'utf-8');
-    execSync(`chmod +x "${scriptPath}"`);
+    // chmod +x is only needed on Unix — Windows ignores file permissions
+    if (process.platform !== 'win32') {
+      execSync(`chmod +x "${scriptPath}"`);
+    }
   }
 }
 
@@ -189,7 +192,13 @@ function auditSkill(slug: string): { passed: boolean; issues: string[] } {
   const skillDir = join(SKILLS_DIR, slug);
 
   if (!existsSync(AUDIT_SCRIPT)) {
-    // Basic audit if audit-skill.sh not available
+    // Basic audit if audit-skill.sh not available (or on Windows)
+    return { passed: true, issues: [] };
+  }
+
+  // Audit script requires bash — skip on Windows
+  if (process.platform === 'win32') {
+    logger.warn({ slug }, 'Skill audit skipped on Windows — audit-skill.sh requires bash');
     return { passed: true, issues: [] };
   }
 

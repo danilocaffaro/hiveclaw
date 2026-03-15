@@ -4,8 +4,10 @@
  * All sandboxing, blocking, and access control rules live here.
  */
 
-import { resolve, normalize } from 'path';
-import { homedir } from 'os';
+import { resolve, normalize, sep } from 'path';
+import { homedir, tmpdir } from 'os';
+
+const IS_WINDOWS = process.platform === 'win32';
 
 // ─── Workspace Sandbox ──────────────────────────────────────────────────────────
 
@@ -21,27 +23,39 @@ export function getWorkspaceRoot(): string {
 
 /**
  * Directories that tools can always read (even outside workspace).
- * e.g. /tmp for scratch, node_modules for installs.
+ * Computed at runtime for cross-platform compatibility.
  */
-export const READABLE_ALLOWLIST = [
-  '/tmp',
-  '/var/tmp',
-];
+export const READABLE_ALLOWLIST: string[] = IS_WINDOWS
+  ? [
+      resolve(tmpdir()),                    // e.g. C:\Users\<user>\AppData\Local\Temp
+      resolve(process.env.TEMP ?? tmpdir()),
+      resolve(process.env.TMP ?? tmpdir()),
+    ]
+  : [
+      '/tmp',
+      '/var/tmp',
+    ];
 
 /**
  * Sensitive paths that must NEVER be read/written by tools.
+ * Includes both Unix and Windows-style paths.
  */
 export const SENSITIVE_PATHS = [
+  // Unix
   '.ssh',
   '.gnupg',
   '.aws/credentials',
   '.config/gcloud',
   '.kube/config',
-  '.npmrc',           // may contain tokens
-  '.env',             // dotenv secrets
+  '.npmrc',
+  '.env',
   '/etc/shadow',
   '/etc/passwd',
   '/etc/sudoers',
+  // Windows
+  'AppData\\Roaming\\Microsoft\\Credentials',
+  'AppData\\Roaming\\Microsoft\\Protect',
+  '.azure',
 ];
 
 /**
@@ -57,9 +71,11 @@ export function validateToolPath(
 
   // Block sensitive paths always
   for (const sensitive of SENSITIVE_PATHS) {
+    // Normalize separator for matching on both platforms
+    const normalizedSensitive = sensitive.replace(/[\\/]/g, sep);
     if (
-      normalized.includes(`/${sensitive}`) ||
-      normalized.endsWith(`/${sensitive}`)
+      normalized.includes(`${sep}${normalizedSensitive}`) ||
+      normalized.endsWith(`${sep}${normalizedSensitive}`)
     ) {
       return { allowed: false, reason: `Access denied: ${sensitive} is a protected path` };
     }
@@ -100,36 +116,47 @@ export function validateToolPath(
  * Dangerous command patterns.
  * Uses blocklist approach — blocks known destructive patterns.
  * Does NOT block general utilities (curl, wget, etc.) as they're needed for agent work.
+ * Includes both Unix and Windows patterns.
  */
 export const BLOCKED_COMMAND_PATTERNS: RegExp[] = [
-  // Destructive filesystem operations
+  // ── Unix destructive filesystem ──
   /\brm\s+-rf\s+\/(?!\w)/,        // rm -rf / (root)
   /\brm\s+-rf\s+~\//,             // rm -rf ~/ (home)
   /\brm\s+-rf\s+\$HOME/,          // rm -rf $HOME
   /\bmkfs\b/,                      // format filesystem
   /\bdd\s+.*of=\/dev/,             // dd to device
 
-  // System destabilization
-  /:(){ :|:& };:/,                  // fork bomb
-  /\bshutdown\b/,                   // shutdown
+  // ── Windows destructive filesystem ──
+  /\brd\s+\/s\s+\/q\s+[A-Z]:\\/i,    // rd /s /q C:\ (recursive delete drive root)
+  /\brmdir\s+\/s\s+\/q\s+[A-Z]:\\/i, // rmdir /s /q C:\
+  /\bdel\s+\/f\s+\/s\s+\/q\s+[A-Z]:\\/i, // del /f /s /q C:\
+  /\bformat\s+[A-Z]:/i,               // format C:
+
+  // ── System destabilization (cross-platform) ──
+  /:(){ :|:& };:/,                  // fork bomb (bash)
+  /\bshutdown\b/,                   // shutdown (both platforms)
   /\breboot\b/,                     // reboot
   /\bhalt\b/,                       // halt
   /\bsystemctl\s+(stop|disable)\s+(sshd|network|firewall)/,  // critical services
+  /\bStop-Service\s+(sshd|W32Time|Winmgmt|wuauserv)/i,       // Windows critical services
 
-  // Credential exfiltration patterns
+  // ── Credential exfiltration patterns ──
   /\bcat\s+.*\/\.ssh\//,           // cat ~/.ssh/*
   /\bcat\s+.*\/\.env\b/,           // cat .env files
   /\bcat\s+\/etc\/(shadow|sudoers)/,  // system secrets
   /\bbase64\s+.*\.ssh\//,          // base64 encode ssh keys
   /\bcurl\s+.*-d\s+.*\$\(/,        // curl -d $(command) — exfil via POST
   /\bwget\s+.*--post-data/,        // wget exfil
+  /\btype\s+.*\\\.ssh\\/i,         // Windows: type ..\.ssh\*
+  /\bGet-Content\s+.*\\\.ssh\\/i,  // PowerShell: Get-Content ~/.ssh/*
 
-  // Privilege escalation
+  // ── Privilege escalation ──
   /\bchmod\s+[0-7]*777\s+\//,     // chmod 777 on root paths
   /\bchown\s+root/,                // chown to root
   /\bsudo\s+chmod\s+u\+s/,        // setuid bit
+  /\bSet-ExecutionPolicy\s+Unrestricted/i, // PowerShell unrestricted exec
 
-  // Crypto mining patterns
+  // ── Crypto mining patterns ──
   /\bxmrig\b/,                     // XMRig miner
   /\bminerd\b/,                    // CPU miner
   /stratum\+tcp:\/\//,             // Mining pool connection

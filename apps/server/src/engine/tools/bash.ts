@@ -7,6 +7,23 @@ const execFileAsync = promisify(execFile);
 
 const MAX_OUTPUT = 50_000; // chars
 const DEFAULT_TIMEOUT = 30_000; // ms
+const IS_WINDOWS = process.platform === 'win32';
+
+/**
+ * Resolve the shell executable and args for the current platform.
+ * - macOS/Linux: bash -c "<command>"
+ * - Windows: cmd.exe /d /s /c "<command>"  (falls back to powershell if HIVECLAW_SHELL=powershell)
+ */
+function getShellArgs(command: string): [string, string[]] {
+  if (!IS_WINDOWS) {
+    return ['bash', ['-c', command]];
+  }
+  const preferPowershell = (process.env.HIVECLAW_SHELL ?? '').toLowerCase() === 'powershell';
+  if (preferPowershell) {
+    return ['powershell', ['-NoProfile', '-NonInteractive', '-Command', command]];
+  }
+  return ['cmd.exe', ['/d', '/s', '/c', command]];
+}
 
 export class BashTool implements Tool {
   readonly definition: ToolDefinition = {
@@ -45,7 +62,8 @@ export class BashTool implements Tool {
     }
 
     try {
-      const { stdout, stderr } = await execFileAsync('bash', ['-c', command], {
+      const [shell, shellArgs] = getShellArgs(command);
+      const { stdout, stderr } = await execFileAsync(shell, shellArgs, {
         timeout,
         cwd: cwdCheck.resolved,
         env: { ...process.env },

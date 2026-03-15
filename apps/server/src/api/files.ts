@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { readdirSync, statSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
-import { join, extname, relative, basename, dirname } from 'path';
-import { resolve } from 'path';
+import { join, extname, relative, basename, dirname, isAbsolute, resolve, sep } from 'path';
 import { randomUUID } from 'node:crypto';
+import { tmpdir } from 'os';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -128,7 +128,7 @@ function guardPath(requestedPath: string, workspacePath: string): string | null 
   // Block path traversal attempts (.. escaping)
   if (requestedPath.includes('..')) return null;
 
-  const resolved = requestedPath.startsWith('/')
+  const resolved = isAbsolute(requestedPath)
     ? resolve(requestedPath)
     : resolve(join(workspacePath, requestedPath));
 
@@ -138,15 +138,18 @@ function guardPath(requestedPath: string, workspacePath: string): string | null 
     resolve(join(workspacePath, '..')),  // parent for monorepo project selector
   ];
 
-  // Block sensitive system paths regardless
-  const blocked = ['/etc', '/var', '/usr', '/bin', '/sbin', '/root', '/home',
-    '/private/etc', '/System', '/Library'];
+  // Block sensitive system paths regardless (cross-platform)
+  const blocked = process.platform === 'win32'
+    ? ['\\Windows', '\\Program Files', '\\Program Files (x86)', '\\ProgramData']
+    : ['/etc', '/var', '/usr', '/bin', '/sbin', '/root', '/home',
+       '/private/etc', '/System', '/Library'];
   for (const b of blocked) {
-    if (resolved.startsWith(b + '/') || resolved === b) return null;
+    const rb = resolve(b);
+    if (resolved.startsWith(rb + sep) || resolved === rb) return null;
   }
 
   // Allow paths within workspace or its parent (project selector)
-  const inAllowed = allowedRoots.some(root => resolved.startsWith(root + '/') || resolved === root);
+  const inAllowed = allowedRoots.some(root => resolved.startsWith(root + sep) || resolved === root);
   if (!inAllowed) return null;
 
   return resolved;
@@ -299,7 +302,7 @@ export function registerFileRoutes(app: FastifyInstance, workspacePath: string) 
   // Upload file(s) for chat attachments. Saves to /tmp/hiveclaw-uploads/
   // Returns array of { name, path, size, type }
   // Register at BOTH paths to avoid /api/* catch-all breaking multipart
-  const UPLOAD_DIR = process.env.HIVECLAW_UPLOAD_DIR ?? process.env.SUPERCLAW_UPLOAD_DIR ?? '/tmp/hiveclaw-uploads';
+  const UPLOAD_DIR = process.env.HIVECLAW_UPLOAD_DIR ?? process.env.SUPERCLAW_UPLOAD_DIR ?? join(tmpdir(), 'hiveclaw-uploads');
 
   const uploadHandler = async (req: import('fastify').FastifyRequest, reply: import('fastify').FastifyReply) => {
     if (!existsSync(UPLOAD_DIR)) mkdirSync(UPLOAD_DIR, { recursive: true });
