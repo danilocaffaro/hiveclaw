@@ -19,6 +19,7 @@ import { useSquadStore } from '@/stores/squad-store';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useGlobalSSE } from '@/hooks/useGlobalSSE';
 import { PWAProvider } from '@/components/PWAProvider';
+import { MuiThemeProvider } from '@/components/MuiThemeProvider';
 
 // ─── ThemeSync ─────────────────────────────────────────────────────────────────
 function ThemeSync() {
@@ -278,7 +279,7 @@ export default function HomePage() {
   // ── Mobile: WhatsApp-style stack navigation ──────────────────────────────
   if (isMobile) {
     return (
-      <>
+      <MuiThemeProvider>
         <ThemeSync />
         {needsSetup ? (
           <SetupWizard onComplete={(agentId) => {
@@ -297,11 +298,12 @@ export default function HomePage() {
           </ErrorBoundary>
         )}
         <SettingsPanel />
-      </>
+      </MuiThemeProvider>
     );
   }
 
   return (
+    <MuiThemeProvider>
     <div
       style={{
         display: 'flex',
@@ -455,5 +457,6 @@ export default function HomePage() {
         }
       `}</style>
     </div>
+    </MuiThemeProvider>
   );
 }

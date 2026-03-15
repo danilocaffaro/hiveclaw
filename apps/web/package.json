@@ -10,7 +10,10 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
     "@hiveclaw/shared": "workspace:*",
+    "@mui/material": "^7.3.9",
     "@tailwindcss/postcss": "^4.2.1",
     "@types/dompurify": "^3.2.0",
     "dompurify": "^3.3.3",
