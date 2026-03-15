@@ -331,7 +331,7 @@ export default function SecurityTab() {
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{sess.userAgent}</span>
+                <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', maxWidth: '100%' }} title={sess.userAgent}>{sess.userAgent}</span>
                 {sess.current && (
                   <span style={{
                     fontSize: 10, padding: '1px 6px', borderRadius: 4,

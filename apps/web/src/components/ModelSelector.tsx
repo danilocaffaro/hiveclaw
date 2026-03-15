@@ -153,6 +153,7 @@ export default function ModelSelector() {
   }, [open]);
 
   if (loading || !currentModel) {
+    const isEmpty = !loading && models.length === 0;
     return (
       <div style={{ position: 'relative', width: '100%' }}>
         <button
@@ -171,8 +172,8 @@ export default function ModelSelector() {
             cursor: 'default',
           }}
         >
-          <span style={{ fontSize: 14, flexShrink: 0 }}>⏳</span>
-          <span style={{ flex: 1, fontSize: 12 }}>Loading models...</span>
+          <span style={{ fontSize: 14, flexShrink: 0 }}>{isEmpty ? '⚠️' : '⏳'}</span>
+          <span style={{ flex: 1, fontSize: 12 }}>{isEmpty ? 'No models — add a provider' : 'Loading models...'}</span>
         </button>
       </div>
     );

@@ -36,7 +36,7 @@ const NAV_ITEMS: { key: SettingsTab; icon: string; label: string }[] = [
   { key: 'integrations', icon: '🔗', label: 'Integrations' },
   { key: 'vault', icon: '🔐', label: 'Vault' },
   { key: 'advanced', icon: '🛠️', label: 'Advanced' },
-  { key: 'deploys', icon: '🚀', label: 'Deploys' },
+  { key: 'deploys', icon: '📊', label: 'System' },
 ];
 
 export default function SettingsPanel() {
