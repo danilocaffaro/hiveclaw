@@ -4,6 +4,7 @@ import type { AgentCreateInput } from '@hiveclaw/shared';
 import { getWorkerPool } from '../engine/agent-worker-pool.js';
 import { AgentMemoryRepository, type MemoryType } from '../db/agent-memory.js';
 import { DEFAULT_SKILLS } from '../engine/skill-hub.js';
+import { getEngineService } from '../engine/engine-service.js';
 
 // ── Agent Templates ──────────────────────────────────────────────────────────
 
@@ -74,11 +75,14 @@ export type AgentTemplate = (typeof AGENT_TEMPLATES)[number];
 
 // ── Route Registration ────────────────────────────────────────────────────────
 
-export function registerAgentRoutes(app: FastifyInstance, agents: AgentRepository, memoryRepo?: AgentMemoryRepository) {
+export function registerAgentRoutes(app: FastifyInstance, injectedAgents?: AgentRepository, memoryRepo?: AgentMemoryRepository) {
+  // P-3: Facade fallback — resolve repo via EngineService when not injected
+  const agents = () => injectedAgents ?? getEngineService().db.agents();
+
   // List agents — systemPrompt stripped by default (opt-in via ?include=systemPrompt)
   app.get<{ Querystring: { include?: string } }>('/agents', async (req) => {
     const includeSystemPrompt = req.query.include?.split(',').includes('systemPrompt') ?? false;
-    const list = agents.list();
+    const list = agents().list();
     if (includeSystemPrompt) return { data: list };
     // Strip systemPrompt from list response — it can be large and is sensitive
     return { data: list.map(({ systemPrompt: _sp, ...rest }) => rest) };
@@ -129,7 +133,7 @@ export function registerAgentRoutes(app: FastifyInstance, agents: AgentRepositor
 
   // Get agent by ID
   app.get<{ Params: { id: string } }>('/agents/:id', async (req, reply) => {
-    const agent = agents.getById(req.params.id);
+    const agent = agents().getById(req.params.id);
     if (!agent) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
     return { data: agent };
   });
@@ -140,7 +144,7 @@ export function registerAgentRoutes(app: FastifyInstance, agents: AgentRepositor
     if (!name || !role || !systemPrompt) {
       return reply.status(400).send({ error: { code: 'VALIDATION', message: 'name, role, and systemPrompt are required' } });
     }
-    const agent = agents.create(req.body);
+    const agent = agents().create(req.body);
     return reply.status(201).send({ data: agent });
   });
 
@@ -151,14 +155,14 @@ export function registerAgentRoutes(app: FastifyInstance, agents: AgentRepositor
 
   // Update agent
   app.patch<{ Params: { id: string }; Body: Partial<AgentCreateInput> }>('/agents/:id', async (req, reply) => {
-    const agent = agents.update(req.params.id, req.body);
+    const agent = agents().update(req.params.id, req.body);
     if (!agent) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
     return { data: agent };
   });
 
   // Delete agent
   app.delete<{ Params: { id: string } }>('/agents/:id', async (req, reply) => {
-    const ok = agents.delete(req.params.id);
+    const ok = agents().delete(req.params.id);
     if (!ok) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Agent not found or protected' } });
     return { data: { deleted: true } };
   });
@@ -174,7 +178,7 @@ export function registerAgentRoutes(app: FastifyInstance, agents: AgentRepositor
           error: { code: 'NOT_FOUND', message: `Template '${templateId}' not found` },
         });
       }
-      const agent = agents.create({
+      const agent = agents().create({
         name: name || template.name,
         emoji: template.emoji,
         role: template.role,
@@ -195,7 +199,7 @@ export function registerAgentRoutes(app: FastifyInstance, agents: AgentRepositor
       Params: { id: string };
       Querystring: { type?: MemoryType; limit?: string; search?: string };
     }>('/agents/:id/memory', async (req, reply) => {
-      const agent = agents.getById(req.params.id);
+      const agent = agents().getById(req.params.id);
       if (!agent) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
 
       const { type, limit, search } = req.query;
@@ -218,7 +222,7 @@ export function registerAgentRoutes(app: FastifyInstance, agents: AgentRepositor
       Params: { id: string };
       Body: { key: string; value: string; type?: MemoryType; relevance?: number };
     }>('/agents/:id/memory', async (req, reply) => {
-      const agent = agents.getById(req.params.id);
+      const agent = agents().getById(req.params.id);
       if (!agent) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
 
       const { key, value, type, relevance } = req.body;
@@ -249,7 +253,7 @@ export function registerAgentRoutes(app: FastifyInstance, agents: AgentRepositor
     app.delete<{
       Params: { id: string; memoryId: string };
     }>('/agents/:id/memory/:memoryId', async (req, reply) => {
-      const agent = agents.getById(req.params.id);
+      const agent = agents().getById(req.params.id);
       if (!agent) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
 
       const ok = memoryRepo.delete(req.params.memoryId);
@@ -262,7 +266,7 @@ export function registerAgentRoutes(app: FastifyInstance, agents: AgentRepositor
       Params: { id: string };
       Body: { memories: Array<{ key: string; value: string; type?: MemoryType; relevance?: number }> };
     }>('/agents/:id/memory/bulk', async (req, reply) => {
-      const agent = agents.getById(req.params.id);
+      const agent = agents().getById(req.params.id);
       if (!agent) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
 
       const { memories } = req.body ?? {};
@@ -290,7 +294,7 @@ export function registerAgentRoutes(app: FastifyInstance, agents: AgentRepositor
 
     // Clear all memories for an agent
     app.delete<{ Params: { id: string } }>('/agents/:id/memory', async (req, reply) => {
-      const agent = agents.getById(req.params.id);
+      const agent = agents().getById(req.params.id);
       if (!agent) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
 
       const cleared = memoryRepo.clearAgent(req.params.id);
