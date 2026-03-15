@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useRSPStore, selectActiveAgentId, selectActiveSquadId } from '@/stores/rsp-store';
+import { useAgentStore } from '@/stores/agent-store';
 
 interface BrowserTab {
   id: string;
@@ -22,6 +24,15 @@ function BrowserPanel() {
   const [inputUrl, setInputUrl] = useState('https://');
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+
+  // P-4: RSP context
+  const activeAgentId = useRSPStore(selectActiveAgentId);
+  const activeSquadId = useRSPStore(selectActiveSquadId);
+  const agents = useAgentStore(s => s.agents);
+  const activeAgent = agents.find(a => a.id === activeAgentId);
+  const agentLabel = activeAgent
+    ? `${activeAgent.emoji ?? '🤖'} ${activeAgent.name}`
+    : activeSquadId ? '👥 Squad workspace' : null;
 
   const activeTab = tabs.find(t => t.id === activeTabId) ?? tabs[0];
 
@@ -109,6 +120,20 @@ function BrowserPanel() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* P-4: Agent context header */}
+      {agentLabel && (
+        <div style={{
+          padding: '4px 10px',
+          fontSize: 11,
+          color: 'var(--text-muted)',
+          background: 'var(--surface)',
+          borderBottom: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <span style={{ opacity: 0.6 }}>Browser:</span>
+          <span style={{ color: 'var(--coral)', fontWeight: 600 }}>{agentLabel}</span>
+        </div>
+      )}
       {/* Tab bar */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 0,
