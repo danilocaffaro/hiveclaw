@@ -48,7 +48,7 @@ export class BashTool implements Tool {
       const { stdout, stderr } = await execFileAsync('bash', ['-c', command], {
         timeout,
         cwd: cwdCheck.resolved,
-        env: { ...process.env, HOME: getWorkspaceRoot() },
+        env: { ...process.env },
         maxBuffer: MAX_OUTPUT * 4,
       });
 

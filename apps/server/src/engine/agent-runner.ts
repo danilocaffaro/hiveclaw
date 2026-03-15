@@ -17,6 +17,7 @@ import { ProgressChecker } from './progress-checker.js';
 import { touchSession } from './session-consolidator.js';
 import { checkTokenStatus } from './token-monitor.js';
 import { handleThreshold, ensureSessionChainSchema } from './session-rotator.js';
+import { getWorkspaceRoot } from '../config/security.js';
 
 // ─── SSE Event Types ──────────────────────────────────────────────────────────
 
@@ -204,6 +205,8 @@ export async function* runAgent(
     `tools=${toolNames.length}`,
     `date=${new Date().toISOString().split('T')[0]}`,
     `platform=HiveClaw`,
+    `cwd=${process.cwd()}`,
+    `workspace=${getWorkspaceRoot()}`,
   ];
   const runtimeLine = `Runtime: ${runtimeParts.join(' | ')}`;
   const toolsList = toolNames.length > 0
