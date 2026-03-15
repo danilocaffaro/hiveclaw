@@ -13,6 +13,7 @@ export type SettingsTab =
   | 'skills'
   | 'keybindings'
   | 'security'
+  | 'users'
   | 'data-storage'
   | 'integrations'
   | 'vault'

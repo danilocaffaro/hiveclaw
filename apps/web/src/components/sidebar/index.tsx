@@ -105,21 +105,21 @@ export default function Sidebar() {
     setEditingAgent(null);
   };
 
-  // Agent picker for New Chat
-  const [agentPickerOpen, setAgentPickerOpen] = useState(false);
-  const agentPickerRef = useRef<HTMLDivElement>(null);
+  // Agent picker for New Chat → replaced by create menu (P-8)
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const createMenuRef = useRef<HTMLDivElement>(null);
 
-  // Close picker on outside click
+  // Close create menu on outside click
   useEffect(() => {
-    if (!agentPickerOpen) return;
+    if (!createMenuOpen) return;
     const handler = (e: MouseEvent) => {
-      if (agentPickerRef.current && !agentPickerRef.current.contains(e.target as Node)) {
-        setAgentPickerOpen(false);
+      if (createMenuRef.current && !createMenuRef.current.contains(e.target as Node)) {
+        setCreateMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [agentPickerOpen]);
+  }, [createMenuOpen]);
 
   return (
     <>
@@ -206,124 +206,93 @@ export default function Sidebar() {
             </button>
           </div>
 
-          {/* New Chat (agent picker) + Create Agent row */}
+          {/* P-8: Create menu — single + button with 3 options */}
           {!sidebarCollapsed && (
-            <div style={{ display: 'flex', gap: 6, margin: '3px 0', position: 'relative' }}>
-              <div ref={agentPickerRef} style={{ flex: 1, position: 'relative' }}>
-                <button
-                  onClick={() => setAgentPickerOpen(!agentPickerOpen)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    width: '100%',
-                    padding: '7px 12px',
-                    background: 'var(--surface-hover)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-md)',
-                    fontSize: 13,
-                    fontWeight: 500,
-                    color: 'var(--text)',
-                    transition: 'all 150ms',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--coral)';
-                    (e.currentTarget as HTMLButtonElement).style.background = 'var(--coral-subtle)';
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)';
-                    (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-hover)';
-                  }}
-                >
-                  <span style={{ fontSize: 16, lineHeight: 1, color: 'var(--text-secondary)' }}>✎</span>
-                  New Chat
-                </button>
-
-                {/* Agent picker dropdown */}
-                {agentPickerOpen && displayAgents.length > 0 && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '100%',
-                    left: 0,
-                    right: 0,
-                    marginTop: 4,
-                    background: 'var(--surface)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-md)',
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
-                    zIndex: 100,
-                    overflow: 'hidden',
-                    maxHeight: 220,
-                    overflowY: 'auto',
-                  }}>
-                    <div style={{ padding: '6px 10px 3px', fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      Choose agent
-                    </div>
-                    {displayAgents.map((agent) => (
-                      <button
-                        key={agent.id}
-                        onClick={() => {
-                          setAgentPickerOpen(false);
-                          setActiveAgent(agent.id);
-                          void createSession({ title: `Chat with ${agent.name}`, agent_id: agent.id });
-                          if (window.innerWidth < 768) useUIStore.getState().setMobileSidebarOpen(false);
-                        }}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 8,
-                          width: '100%',
-                          padding: '7px 10px',
-                          background: 'transparent',
-                          border: 'none',
-                          cursor: 'pointer',
-                          fontSize: 13,
-                          color: 'var(--text)',
-                          textAlign: 'left',
-                          transition: 'background 100ms',
-                        }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-hover)'; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-                      >
-                        <span style={{ fontSize: 15 }}>{agent.emoji || '🤖'}</span>
-                        <span>{agent.name}</span>
-                        {agent.isExternal && <span style={{ fontSize: 9, color: '#A855F7', fontWeight: 600 }}>EXT</span>}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+            <div ref={createMenuRef} style={{ margin: '3px 0', position: 'relative' }}>
               <button
-                onClick={openCreateAgent}
-                title="Create new agent"
+                onClick={() => setCreateMenuOpen(!createMenuOpen)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  width: 36,
-                  padding: '7px 0',
-                  background: 'var(--surface-hover)',
-                  border: '1px solid var(--border)',
+                  gap: 6,
+                  width: '100%',
+                  padding: '7px 12px',
+                  background: createMenuOpen ? 'var(--coral-subtle)' : 'var(--surface-hover)',
+                  border: `1px solid ${createMenuOpen ? 'var(--coral)' : 'var(--border)'}`,
                   borderRadius: 'var(--radius-md)',
-                  fontSize: 15,
-                  color: 'var(--blue, #58A6FF)',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: 'var(--text)',
                   transition: 'all 150ms',
                   cursor: 'pointer',
-                  flexShrink: 0,
                 }}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--blue, #58A6FF)';
-                  (e.currentTarget as HTMLButtonElement).style.background = 'color-mix(in srgb, var(--blue, #58A6FF) 8%, transparent)';
+                  if (!createMenuOpen) {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--coral)';
+                    (e.currentTarget as HTMLButtonElement).style.background = 'var(--coral-subtle)';
+                  }
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)';
-                  (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-hover)';
+                  if (!createMenuOpen) {
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)';
+                    (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-hover)';
+                  }
                 }}
               >
-                ➕
+                <span style={{ fontSize: 14, lineHeight: 1, transition: 'transform 150ms', transform: createMenuOpen ? 'rotate(45deg)' : 'none' }}>＋</span>
+                <span>New</span>
               </button>
+
+              {/* Create menu dropdown */}
+              {createMenuOpen && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  marginTop: 4,
+                  background: 'var(--surface)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-md)',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+                  zIndex: 100,
+                  overflow: 'hidden',
+                }}>
+                  {[
+                    { icon: '🤖', label: 'Create Agent', desc: 'Add a new AI agent', action: () => { setCreateMenuOpen(false); openCreateAgent(); } },
+                    { icon: '👥', label: 'Create Squad', desc: 'Group agents into a team', action: () => { setCreateMenuOpen(false); setSquadModalOpen(true); } },
+                    { icon: '🔗', label: 'Invite User', desc: 'External agent or human', action: () => { setCreateMenuOpen(false); setInviteModalOpen(true); } },
+                  ].map((item) => (
+                    <button
+                      key={item.label}
+                      onClick={item.action}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        width: '100%',
+                        padding: '9px 12px',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: 13,
+                        color: 'var(--text)',
+                        textAlign: 'left',
+                        transition: 'background 100ms',
+                      }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-hover)'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+                    >
+                      <span style={{ fontSize: 16, flexShrink: 0 }}>{item.icon}</span>
+                      <div>
+                        <div style={{ fontWeight: 500 }}>{item.label}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{item.desc}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
