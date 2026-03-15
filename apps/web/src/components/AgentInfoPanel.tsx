@@ -108,6 +108,7 @@ export default function AgentInfoPanel({ open, onClose }: AgentInfoPanelProps) {
   const agents = useAgentStore((s) => s.agents);
   const updateAgent = useAgentStore((s) => s.updateAgent);
   const squads = useSquadStore((s) => s.squads);
+  const updateSquad = useSquadStore((s) => s.updateSquad);
   const sessions = useSessionStore((s) => s.sessions);
   const activeSessionId = useSessionStore((s) => s.activeSessionId);
   const [visible, setVisible] = useState(false);
@@ -131,6 +132,14 @@ export default function AgentInfoPanel({ open, onClose }: AgentInfoPanelProps) {
     else patch[field] = value;
     void updateAgent(agent.id, patch);
   }, [agent, updateAgent]);
+
+  const saveSquadField = useCallback((field: string, value: string) => {
+    if (!squad) return;
+    const patch: Record<string, string | boolean> = {};
+    if (field === 'debateEnabled') patch[field] = value === 'true';
+    else patch[field] = value;
+    void updateSquad(squad.id, patch);
+  }, [squad, updateSquad]);
 
   if (!open) return null;
 
@@ -176,19 +185,43 @@ export default function AgentInfoPanel({ open, onClose }: AgentInfoPanelProps) {
         <div style={{ padding: 20, flex: 1, overflowY: 'auto' }}>
           {squad ? (
             <>
-              <div style={{ textAlign: 'center', marginBottom: 16 }}>
+              {/* Identity */}
+              <div style={{ textAlign: 'center', marginBottom: 20 }}>
                 <div style={{ fontSize: 40, marginBottom: 8 }}>{squad.emoji || '👥'}</div>
                 <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--text)' }}>{squad.name}</div>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                  {squad.routingStrategy} · {squad.agentIds?.length ?? 0} members
+                  {squad.agentIds?.length ?? 0} members
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+                  <code>{squad.id}</code>
                 </div>
               </div>
-              {squad.description && (
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 16 }}>
-                  {squad.description}
-                </div>
-              )}
-              <div>
+
+              {/* Divider */}
+              <div style={{ borderBottom: '1px solid var(--border)', marginBottom: 16 }} />
+
+              {/* Editable fields */}
+              <EditableField label="Name" value={squad.name} onSave={v => saveSquadField('name', v)} />
+              <EditableField label="Emoji" value={squad.emoji ?? ''} onSave={v => saveSquadField('emoji', v)} />
+              <EditableField label="Description" value={squad.description ?? ''} type="textarea"
+                onSave={v => saveSquadField('description', v)} />
+              <EditableField label="Routing Strategy" value={squad.routingStrategy ?? 'sequential'}
+                type="select" options={[
+                  { value: 'sequential', label: 'Sequential' },
+                  { value: 'round-robin', label: 'Round Robin' },
+                  { value: 'debate', label: 'Debate' },
+                  { value: 'specialist', label: 'Specialist' },
+                ]}
+                onSave={v => saveSquadField('routingStrategy', v)} />
+              <EditableField label="Debate Mode" value={String(squad.debateEnabled ?? false)}
+                type="select" options={[
+                  { value: 'true', label: 'Enabled' },
+                  { value: 'false', label: 'Disabled' },
+                ]}
+                onSave={v => saveSquadField('debateEnabled', v)} />
+
+              {/* Members */}
+              <div style={{ marginTop: 8 }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 8 }}>
                   Members
                 </div>
@@ -197,13 +230,19 @@ export default function AgentInfoPanel({ open, onClose }: AgentInfoPanelProps) {
                   return (
                     <div key={id} style={{
                       display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '6px 0', borderBottom: '1px solid var(--border)',
+                      padding: '8px 10px', marginBottom: 4,
+                      background: 'var(--bg)', borderRadius: 6,
                     }}>
                       <span style={{ fontSize: 16 }}>{a?.emoji ?? '🤖'}</span>
-                      <div>
+                      <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>{a?.name ?? id.slice(0, 8)}</div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{a?.role ?? 'agent'}</div>
                       </div>
+                      <div style={{
+                        width: 8, height: 8, borderRadius: '50%',
+                        background: a?.status === 'active' ? 'var(--green, #3FB950)' :
+                          a?.status === 'busy' ? 'var(--coral)' : 'var(--text-muted)',
+                      }} />
                     </div>
                   );
                 })}
