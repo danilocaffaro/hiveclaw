@@ -191,7 +191,7 @@ export async function intensiveExtraction(
           (fact.type ?? 'fact') as any,
           0.9,  // High confidence — intensive extraction
           undefined,
-          { source: 'intensive_extraction', session_id: sessionId },
+          { source: 'intensive_extraction' },
         );
         factsExtracted++;
       }
@@ -269,11 +269,11 @@ export async function fidelityCheck(
   previousResult: ExtractionResult,
 ): Promise<ExtractionResult> {
   if (previousResult.fidelityScore >= 0.8) {
-    logger.info('[SessionRotator] Fidelity check passed (score=%.2f)', previousResult.fidelityScore);
+    logger.info('[SessionRotator] Fidelity check passed (score=%s)', previousResult.fidelityScore.toFixed(2));
     return previousResult;
   }
 
-  logger.warn('[SessionRotator] Fidelity low (score=%.2f), running second extraction pass', previousResult.fidelityScore);
+  logger.warn('[SessionRotator] Fidelity low (score=%s), running second extraction pass', previousResult.fidelityScore.toFixed(2));
   const secondPass = await intensiveExtraction(sessionId, agentId);
 
   // Merge results
@@ -331,7 +331,7 @@ export async function rotateSession(
     agent_id: oldSession.agent_id,
     mode: oldSession.mode,
     squad_id: oldSession.squad_id,
-  });
+  }).id;
 
   // ── Link sessions in chain ────────────────────────────────────────────────
   // Register old session in chain if first rotation
@@ -373,7 +373,7 @@ export async function rotateSession(
 
   // L3: Working memory (compacted — current task state)
   try {
-    const workingMem = memRepo.getWorkingMemory(oldSessionId, agentId);
+    const workingMem = memRepo.getWorkingMemory(oldSessionId);
     if (workingMem) {
       const wmParts: string[] = ['[Working Memory — Current State]'];
       if (workingMem.activeGoals?.length) wmParts.push(`Goals: ${workingMem.activeGoals.join('; ')}`);
@@ -389,7 +389,7 @@ export async function rotateSession(
 
   // L4: Recent relevant facts
   try {
-    const recentFacts = memRepo.search(agentId, 'session context', 10);
+    const recentFacts = memRepo.search('session context', 10);
     if (recentFacts.length > 0) {
       const factLines = recentFacts.map(f => `- [${f.type}] ${f.value}`);
       contextParts.push(`[Recent Knowledge]\n${factLines.join('\n')}`);

@@ -308,6 +308,30 @@ export async function* runAgent(
     if (!fallbackChain.includes(p.id)) fallbackChain.push(p.id);
   }
 
+  // ── Helper: persist accumulated assistant text before early returns ──────────
+  // Called on error paths where the normal addMessage at the end is unreachable.
+  // Skips if fullAssistantText is empty (nothing to save) or if the normal path
+  // already saved it (ranToCompletion guard is managed by the caller).
+  const persistPartialResponse = (reason: string) => {
+    if (!fullAssistantText.trim()) return;
+    try {
+      sessionManager.addMessage(sessionId, {
+        role: 'assistant',
+        content: fullAssistantText,
+        agent_id: agentConfig.id,
+        agent_name: agentConfig.name ?? '',
+        agent_emoji: (agentConfig as { emoji?: string }).emoji ?? '🤖',
+        sender_type: 'agent',
+        tokens_in: totalTokensIn,
+        tokens_out: totalTokensOut,
+        cost: 0,
+      });
+      logger.info('[AgentRunner] Persisted partial assistant response (%d chars) on %s', fullAssistantText.length, reason);
+    } catch (e) {
+      logger.error('[AgentRunner] Failed to persist partial response: %s', (e as Error).message);
+    }
+  };
+
   if (fallbackChain.length === 0) {
     yield {
       event: 'error',
@@ -387,6 +411,7 @@ export async function* runAgent(
           finishReason = reason;
 
           if (reason === 'error') {
+            persistPartialResponse('provider-finish-error');
             yield {
               event: 'error',
               data: { message: 'Provider returned an error', code: 'PROVIDER_ERROR' },
@@ -396,6 +421,7 @@ export async function* runAgent(
         } else if (chunk.type === 'error') {
           // All providers exhausted or provider-level error
           const errMsg = (chunk as unknown as { error?: string }).error ?? 'Provider error';
+          persistPartialResponse('provider-chunk-error');
           yield {
             event: 'error',
             data: { message: errMsg, code: 'PROVIDER_ERROR' },
@@ -404,6 +430,7 @@ export async function* runAgent(
         }
       }
     } catch (err) {
+      persistPartialResponse('stream-exception');
       yield {
         event: 'error',
         data: {

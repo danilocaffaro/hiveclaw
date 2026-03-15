@@ -10,6 +10,12 @@
  *
  * Sessions are keyed as `channel:{channelId}:{fromId}` so each external user
  * gets a persistent conversation thread with the assigned agent.
+ *
+ * Fix (2026-03-15): Guarantee persistence even on error paths.
+ *   - User message is saved before runAgent (was already true via runAgent itself)
+ *   - If runAgent exits via error event or throw, we still persist the error response
+ *     as an assistant message so session history stays consistent with channel_messages.
+ *   - Temporal awareness: inject [TIME GAP] notice when >30min between messages.
  */
 
 import type { Agent } from '@hiveclaw/shared';
@@ -51,6 +57,49 @@ function agentRowToConfig(agent: Agent): AgentConfig {
   };
 }
 
+/**
+ * Build a temporal-awareness prefix when there's a significant gap since the
+ * last session message.  This lets the agent know time has passed so it
+ * doesn't confuse stale context with the current request.
+ */
+function buildTemporalPrefix(sessionId: string): string {
+  try {
+    const sm = getSessionManager();
+    const msgs = sm.getMessages(sessionId, { limit: 1 });
+    if (msgs.length === 0) return '';
+
+    const lastMsg = msgs[msgs.length - 1];
+    const lastTs = new Date(lastMsg.created_at);
+    const now = new Date();
+    const diffMs = now.getTime() - lastTs.getTime();
+    const diffMin = Math.floor(diffMs / 60_000);
+
+    if (diffMin < 30) return ''; // less than 30 min — no notice needed
+
+    const diffH = Math.floor(diffMin / 60);
+    const diffD = Math.floor(diffH / 24);
+
+    let gapStr: string;
+    if (diffD > 0) {
+      gapStr = `${diffD}d ${diffH % 24}h`;
+    } else if (diffH > 0) {
+      gapStr = `${diffH}h ${diffMin % 60}min`;
+    } else {
+      gapStr = `${diffMin}min`;
+    }
+
+    const nowStr = now.toLocaleString('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    });
+
+    return `[⏱ TIME GAP: ${gapStr} have passed since your last message. Current time: ${nowStr} (São Paulo). Your previous context may be stale — verify assumptions before acting.]\n\n`;
+  } catch {
+    return '';
+  }
+}
+
 // ─── Core ───────────────────────────────────────────────────────────────────────
 
 export interface ChannelInbound {
@@ -63,6 +112,11 @@ export interface ChannelInbound {
 /**
  * Process an inbound channel message and return the agent's response.
  * Creates/reuses a persistent session for this channel+sender pair.
+ *
+ * Persistence guarantee: every call results in BOTH the user message AND the
+ * assistant response being written to the session's messages table, even when
+ * runAgent exits via an error path.  This keeps session history in sync with
+ * channel_messages so the agent never loses conversational context.
  */
 export async function handleChannelInbound(inbound: ChannelInbound): Promise<string> {
   const sm = getSessionManager();
@@ -88,7 +142,6 @@ export async function handleChannelInbound(inbound: ChannelInbound): Promise<str
   const sessionKey = `channel:${inbound.channelId}:${inbound.fromId}`;
   let sessionId: string;
 
-  // Look for existing session with this title pattern
   const sessions = sm.listSessions();
   const existing = sessions.find(s => s.title === sessionKey);
   if (existing) {
@@ -103,26 +156,89 @@ export async function handleChannelInbound(inbound: ChannelInbound): Promise<str
     logger.info('[channel-responder] Created session %s for %s', sessionId, sessionKey);
   }
 
-  // 3. Run agent loop, collect full response
+  // 3. Build temporal prefix (inject time gap notice if >30min since last message)
+  const temporalPrefix = buildTemporalPrefix(sessionId);
+  const userMessageWithContext = temporalPrefix
+    ? `${temporalPrefix}${inbound.text}`
+    : inbound.text;
+
+  // 4. Run agent loop, collect full response.
+  //    runAgent internally saves the user message + assistant response.
+  //    On ANY error path we fall through to the fallback persistence block below.
   let fullResponse = '';
+  let ranToCompletion = false;
+
   try {
-    for await (const event of runAgent(sessionId, inbound.text, agentConfig)) {
+    for await (const event of runAgent(sessionId, userMessageWithContext, agentConfig)) {
       if (event.event === 'message.delta') {
         const delta = event.data as { text?: string };
         if (delta.text) fullResponse += delta.text;
+      } else if (event.event === 'message.finish') {
+        ranToCompletion = true;
       } else if (event.event === 'error') {
         const errData = event.data as { message?: string };
-        logger.error('[channel-responder] Agent error: %s', errData?.message ?? 'Unknown');
-        return `⚠️ ${errData?.message ?? 'Unknown error'}`;
+        const errMsg = errData?.message ?? 'Unknown error';
+        logger.error('[channel-responder] Agent error: %s', errMsg);
+        // runAgent already saved user message but may NOT have saved assistant message.
+        // If we have partial text, use it; otherwise use the error message.
+        if (!fullResponse.trim()) {
+          fullResponse = `⚠️ ${errMsg}`;
+        }
+        // Persist assistant response explicitly when runAgent exits via error event
+        // (runAgent's own addMessage at line 588 is unreachable on error paths)
+        try {
+          sm.addMessage(sessionId, {
+            role: 'assistant',
+            content: fullResponse,
+            agent_id: agentConfig.id,
+            agent_name: agentConfig.name ?? '',
+            agent_emoji: (agentConfig as { emoji?: string }).emoji ?? '🤖',
+            sender_type: 'agent',
+          });
+          logger.info('[channel-responder] Persisted assistant message after error path (%d chars)', fullResponse.length);
+        } catch (persistErr) {
+          logger.error('[channel-responder] Failed to persist assistant message after error: %s', (persistErr as Error).message);
+        }
+        return fullResponse.trim();
       }
     }
   } catch (err) {
     logger.error({ err }, '[channel-responder] runAgent threw');
-    return '⚠️ Sorry, I encountered an error processing your message.';
+    if (!fullResponse.trim()) {
+      fullResponse = '⚠️ Sorry, I encountered an error processing your message.';
+    }
+    // runAgent threw — persist what we have
+    try {
+      sm.addMessage(sessionId, {
+        role: 'assistant',
+        content: fullResponse,
+        agent_id: agentConfig.id,
+        agent_name: agentConfig.name ?? '',
+        agent_emoji: (agentConfig as { emoji?: string }).emoji ?? '🤖',
+        sender_type: 'agent',
+      });
+      logger.info('[channel-responder] Persisted assistant message after throw (%d chars)', fullResponse.length);
+    } catch (persistErr) {
+      logger.error('[channel-responder] Failed to persist assistant message after throw: %s', (persistErr as Error).message);
+    }
+    return fullResponse.trim();
   }
 
   if (!fullResponse.trim()) {
-    return '🤖 (no response)';
+    fullResponse = '🤖 (no response)';
+    // Persist empty response too so session stays in sync
+    if (!ranToCompletion) {
+      try {
+        sm.addMessage(sessionId, {
+          role: 'assistant',
+          content: fullResponse,
+          agent_id: agentConfig.id,
+          agent_name: agentConfig.name ?? '',
+          agent_emoji: (agentConfig as { emoji?: string }).emoji ?? '🤖',
+          sender_type: 'agent',
+        });
+      } catch { /* non-fatal */ }
+    }
   }
 
   return fullResponse.trim();
