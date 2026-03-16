@@ -31,6 +31,13 @@ export default function UsersTab() {
   const [editName, setEditName] = useState('');
   const [editRole, setEditRole] = useState<UserItem['role']>('member');
 
+  // Invite link state
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteRole, setInviteRole] = useState<'member' | 'viewer'>('member');
+  const [inviteLink, setInviteLink] = useState('');
+  const [inviteCopied, setInviteCopied] = useState(false);
+  const [invites, setInvites] = useState<Array<{ id: string; code: string; role: string; uses: number; max_uses: number; expired: boolean; exhausted: boolean; created_at: string }>>([]);
+
   const fetchUsers = useCallback(async () => {
     try {
       const res = await fetch('/auth/users');
@@ -43,6 +50,43 @@ export default function UsersTab() {
   }, []);
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
+
+  // Invite link functions
+  const fetchInvites = useCallback(async () => {
+    try {
+      const res = await fetch('/api/invites');
+      if (res.ok) { const { data } = await res.json(); setInvites(data); }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { fetchInvites(); }, [fetchInvites]);
+
+  const createInvite = async () => {
+    try {
+      const res = await fetch('/api/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: inviteRole, maxUses: 5, expiresInDays: 7 }),
+      });
+      if (res.ok) {
+        const { data } = await res.json();
+        const link = `${window.location.origin}/invite/${data.code}`;
+        setInviteLink(link);
+        fetchInvites();
+      }
+    } catch { /* ignore */ }
+  };
+
+  const revokeInvite = async (id: string) => {
+    await fetch(`/api/invites/${id}`, { method: 'DELETE' });
+    fetchInvites();
+  };
+
+  const copyInviteLink = () => {
+    navigator.clipboard.writeText(inviteLink);
+    setInviteCopied(true);
+    setTimeout(() => setInviteCopied(false), 2000);
+  };
 
   const createUser = async () => {
     if (!newName.trim()) return;
@@ -114,6 +158,21 @@ export default function UsersTab() {
       {/* Actions */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <button
+          onClick={() => setShowInvite(v => !v)}
+          style={{
+            padding: '6px 14px',
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--accent)',
+            color: '#fff',
+            fontSize: 12,
+            fontWeight: 600,
+            border: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          🔗 Generate Invite Link
+        </button>
+        <button
           onClick={() => setShowCreate(v => !v)}
           style={{
             padding: '6px 14px',
@@ -143,6 +202,123 @@ export default function UsersTab() {
           🔄 Refresh
         </button>
       </div>
+
+      {/* Invite Link Panel */}
+      {showInvite && (
+        <div style={{
+          padding: 16, marginBottom: 16,
+          borderRadius: 'var(--radius-lg)',
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border)',
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: 'var(--text)' }}>
+            🔗 Generate Invite Link
+          </div>
+
+          {!inviteLink ? (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>Role:</label>
+              <select
+                value={inviteRole}
+                onChange={e => setInviteRole(e.target.value as 'member' | 'viewer')}
+                style={{
+                  padding: '5px 8px', borderRadius: 'var(--radius-md)',
+                  background: 'var(--input-bg)', border: '1px solid var(--border)',
+                  color: 'var(--text)', fontSize: 12,
+                }}
+              >
+                <option value="member">Member (can chat)</option>
+                <option value="viewer">Viewer (read only)</option>
+              </select>
+              <button onClick={createInvite} style={{
+                padding: '6px 14px', borderRadius: 'var(--radius-md)',
+                background: 'var(--accent)', color: '#fff',
+                fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer',
+              }}>
+                Generate
+              </button>
+            </div>
+          ) : (
+            <div>
+              <div style={{
+                display: 'flex', gap: 8, alignItems: 'center',
+                padding: '10px 12px', borderRadius: 'var(--radius-md)',
+                background: 'var(--surface)', border: '1px solid var(--border)',
+              }}>
+                <input
+                  readOnly value={inviteLink}
+                  style={{
+                    flex: 1, background: 'transparent', border: 'none',
+                    color: 'var(--text)', fontSize: 12, outline: 'none',
+                  }}
+                />
+                <button onClick={copyInviteLink} style={{
+                  padding: '4px 10px', borderRadius: 'var(--radius-sm)',
+                  background: inviteCopied ? '#10B981' : 'var(--accent)',
+                  color: '#fff', fontSize: 11, fontWeight: 600,
+                  border: 'none', cursor: 'pointer',
+                }}>
+                  {inviteCopied ? '✓ Copied' : '📋 Copy'}
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
+                Expires in 7 days · 5 uses max · Share this link with anyone you want to invite
+              </div>
+              <button
+                onClick={() => { setInviteLink(''); setShowInvite(false); }}
+                style={{
+                  marginTop: 8, padding: '4px 10px', fontSize: 11,
+                  background: 'transparent', color: 'var(--text-muted)',
+                  border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+                  cursor: 'pointer',
+                }}
+              >
+                Done
+              </button>
+            </div>
+          )}
+
+          {/* Active invites */}
+          {invites.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Active Invite Links
+              </div>
+              {invites.map(inv => (
+                <div key={inv.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '8px 0',
+                  borderBottom: '1px solid var(--border)',
+                  fontSize: 12,
+                }}>
+                  <span style={{ color: inv.expired || inv.exhausted ? 'var(--text-muted)' : 'var(--text)' }}>
+                    {inv.code.slice(0, 8)}…
+                  </span>
+                  <span style={{ color: ROLE_LABELS[inv.role]?.color ?? '#6B7280', fontSize: 11 }}>
+                    {inv.role}
+                  </span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                    {inv.uses}/{inv.max_uses} used
+                  </span>
+                  {(inv.expired || inv.exhausted) && (
+                    <span style={{ color: '#EF4444', fontSize: 10 }}>
+                      {inv.expired ? 'Expired' : 'Exhausted'}
+                    </span>
+                  )}
+                  <button onClick={() => revokeInvite(inv.id)} style={{
+                    marginLeft: 'auto', padding: '2px 8px', fontSize: 10,
+                    background: 'transparent', color: '#EF4444',
+                    border: '1px solid #EF4444', borderRadius: 'var(--radius-sm)',
+                    cursor: 'pointer',
+                  }}>
+                    Revoke
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Create form */}
       {showCreate && (
