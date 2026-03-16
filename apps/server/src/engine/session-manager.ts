@@ -265,8 +265,21 @@ export class SessionManager {
   }
 
   deleteSession(id: string): void {
-    // messages cascade-delete via FK ON DELETE CASCADE
+    // Clean related tables that lack ON DELETE CASCADE
+    for (const table of ['artifacts', 'tasks', 'episodes', 'compaction_log', 'credential_requests', 'session_chain']) {
+      try { this.db.prepare(`DELETE FROM ${table} WHERE session_id = ?`).run(id); } catch { /* table may not exist */ }
+    }
+    // FTS delete trigger can fail if content is out of sync — temporarily drop it
+    try { this.db.exec('DROP TRIGGER IF EXISTS messages_fts_delete'); } catch { /* ignore */ }
+    // messages + session_usage + working_memory cascade via FK ON DELETE CASCADE
     this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+    // Recreate FTS trigger
+    try {
+      this.db.exec(`CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
+        INSERT INTO messages_fts(messages_fts, rowid, content, session_id, agent_id, role, created_at)
+        VALUES ('delete', OLD.rowid, OLD.content, OLD.session_id, OLD.agent_id, OLD.role, OLD.created_at);
+      END`);
+    } catch { /* ignore */ }
   }
 
   // ── Message persistence ─────────────────────────────────────────────────────

@@ -233,7 +233,7 @@ function BrowserPanel() {
             key={activeTab.url}
             src={activeTab.url}
             title={activeTab.title}
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            sandbox="allow-scripts allow-forms allow-popups"
             style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
             onLoad={() => updateTab(activeTab.id, { loading: false })}
             onError={() => {

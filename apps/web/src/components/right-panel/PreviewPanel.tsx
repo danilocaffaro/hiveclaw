@@ -246,7 +246,7 @@ function PreviewPanel() {
                 onLoad={() => setIsLoading(false)}
                 onError={() => { setIsLoading(false); setError('Failed to load'); }}
                 style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }}
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                sandbox="allow-scripts allow-forms allow-popups"
               />
             </div>
           </DeviceChrome>
