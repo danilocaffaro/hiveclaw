@@ -369,6 +369,21 @@ export function initDatabase(): Database.Database {
       expires_at DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    -- R4: Invite links for multi-user access
+    CREATE TABLE IF NOT EXISTS invites (
+      id TEXT PRIMARY KEY,
+      code TEXT UNIQUE NOT NULL,
+      created_by TEXT NOT NULL,
+      role TEXT DEFAULT 'member' CHECK(role IN ('admin','member','viewer')),
+      allowed_agents TEXT DEFAULT '[]',
+      max_uses INTEGER DEFAULT 1,
+      uses INTEGER DEFAULT 0,
+      expires_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_invites_code ON invites(code);
   `);
 
   // ── Migrations (idempotent column additions) ──────────────────────────────
@@ -634,12 +649,21 @@ export function initDatabase(): Database.Database {
     )
   `);
   // Current schema version: bump when adding migrations
-  const CURRENT_SCHEMA = 2;
+  const CURRENT_SCHEMA = 3;
   const sv = db.prepare("SELECT version FROM schema_version WHERE id=1").get() as { version: number } | undefined;
   if (!sv) {
     db.prepare("INSERT INTO schema_version (id, version, applied_at) VALUES (1, ?, datetime('now'))").run(CURRENT_SCHEMA);
   } else if (sv.version < CURRENT_SCHEMA) {
     db.prepare("UPDATE schema_version SET version=?, applied_at=datetime('now') WHERE id=1").run(CURRENT_SCHEMA);
+  }
+
+  // R4: Add allowed_agents to users table if missing
+  const userCols = (db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>).map(c => c.name);
+  if (!userCols.includes('allowed_agents')) {
+    db.exec("ALTER TABLE users ADD COLUMN allowed_agents TEXT DEFAULT '[]'");
+  }
+  if (!userCols.includes('invited_by')) {
+    db.exec("ALTER TABLE users ADD COLUMN invited_by TEXT DEFAULT ''");
   }
 
   // No default agent seed — the setup wizard creates the first agent

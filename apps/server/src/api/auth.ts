@@ -364,3 +364,16 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database):
     return reply.status(200).send({ data: { success: true } });
   });
 }
+
+// R4.4: Agent access control — checks if user can access a given agent
+export function canAccessAgent(user: User | null, agentId: string, db: import('better-sqlite3').Database): boolean {
+  if (!user) return false;
+  // Owner and admin see all agents
+  if (user.role === 'owner' || user.role === 'admin') return true;
+  // Members/viewers: check allowed_agents
+  const row = db.prepare('SELECT allowed_agents FROM users WHERE id = ?').get(user.id) as { allowed_agents: string } | undefined;
+  if (!row) return false;
+  const allowed = JSON.parse(row.allowed_agents || '[]') as string[];
+  if (allowed.length === 0) return true; // empty = all access
+  return allowed.includes(agentId);
+}

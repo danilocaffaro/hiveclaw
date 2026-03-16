@@ -46,6 +46,7 @@ import { registerDataRoutes } from './api/data.js';
 import { registerPresentationRoutes } from './api/presentations.js';
 import { registerMarketplaceRoutes } from './api/marketplace.js';
 import { registerAuthRoutes } from './api/auth.js';
+import { registerInviteRoutes } from './api/invites.js';
 import { registerFinetuneRoutes } from './api/finetune.js';
 import { registerCredentialRoutes } from './api/credentials.js';
 import { CredentialRepository } from './db/credentials.js';
@@ -180,6 +181,8 @@ async function main() {
     '/api/health',
     '/api/version',
     '/api/update',
+    '/api/invites',
+    '/api/invites/',
     '/api/preview/',
     '/api/agents/status/stream',
     // NOTE: /api/engine/ is intentionally NOT here — rewriteUrl strips /api prefix
@@ -430,6 +433,7 @@ async function main() {
   registerPresentationRoutes(app);
   registerMarketplaceRoutes(app, db);
   registerAuthRoutes(app, db);
+  registerInviteRoutes(app, db);
   registerFinetuneRoutes(app, finetuneDatasets, finetuneJobs);
   registerConsoleRoutes(app);
   registerCredentialRoutes(app, credentialRepo);
