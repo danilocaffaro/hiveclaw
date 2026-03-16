@@ -779,6 +779,12 @@ async function* runDebate(
       };
     }
   }
+
+  // Emit resolved debate card so frontend transitions from active → resolved
+  yield {
+    event: 'message.delta',
+    data: { text: `\n\n:::debate${JSON.stringify({ ...debateCardData, status: 'resolved', resolution: highestConf.name })}:::\n\n` },
+  };
 }
 
 // ─── Routing Strategy: Sequential ────────────────────────────────────────────

@@ -87,10 +87,11 @@ export function ToolCallBlock({ msg }: { msg: Message }) {
 export function renderSpecialCard(msg: Message): ReactNode | null {
   const content = msg.content ?? '';
 
-  const debateMatch = content.match(/:::debate(\{[\s\S]*?\}):::/);
-  if (debateMatch) {
+  const debateMatches = [...content.matchAll(/:::debate(\{[\s\S]*?\}):::/g)];
+  if (debateMatches.length > 0) {
     try {
-      const props = JSON.parse(debateMatch[1]);
+      // Use last match — resolved card overwrites active card
+      const props = JSON.parse(debateMatches[debateMatches.length - 1][1]);
       return <DebateCard {...props} />;
     } catch { /* ignore malformed json */ }
   }

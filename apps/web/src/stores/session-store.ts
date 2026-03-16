@@ -42,6 +42,22 @@ export interface Message {
   replyTo?: string;
 }
 
+export interface ActiveTool {
+  name: string;
+  status: 'running' | 'done' | 'failed';
+  startedAt: number;
+  finishedAt?: number;
+}
+
+export interface SquadWorkflowStep {
+  agentId: string;
+  agentName: string;
+  agentEmoji: string;
+  status: 'pending' | 'running' | 'done' | 'failed';
+  startedAt?: number;
+  finishedAt?: number;
+}
+
 interface SessionStore {
   sessions: Session[];
   activeSessionId: string | null;
@@ -50,6 +66,8 @@ interface SessionStore {
   isStreaming: boolean;
   streamingSessions: Set<string>;
   messageQueue: Map<string, string[]>;
+  squadWorkflow: SquadWorkflowStep[];
+  activeTools: ActiveTool[];
   setSessions: (sessions: Session[]) => void;
   setActiveSession: (id: string | null) => void;
   setMessages: (messages: Message[]) => void;
@@ -97,6 +115,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   isStreaming: false,
   streamingSessions: new Set<string>(),
   messageQueue: new Map<string, string[]>(),
+  squadWorkflow: [],
+  activeTools: [],
 
   setSessions: (sessions) => set({ sessions }),
   setActiveSession: (id) => {
@@ -374,6 +394,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       created_at: new Date().toISOString(),
     };
     addMessage(assistantMsg);
+    set({ squadWorkflow: [], activeTools: [] }); // Reset workflow/tools for new message
     startStreaming();
 
     try {
@@ -491,14 +512,33 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                       break;
                     }
                   }
-                  return { messages: msgs };
+                  // Mark current agent step as done in workflow
+                  const wf = [...s.squadWorkflow];
+                  const agentStep = parsed.agentId
+                    ? wf.find(st => st.agentId === parsed.agentId && st.status === 'running')
+                    : wf.find(st => st.status === 'running');
+                  if (agentStep) {
+                    agentStep.status = 'done';
+                    agentStep.finishedAt = Date.now();
+                  }
+                  return { messages: msgs, squadWorkflow: wf };
                 });
                 // In squad mode, only stop streaming after the last agent finishes
                 if (!get().activeSquadId || parsed.isLastAgent) {
+                  // Clear workflow when squad is done
+                  set({ squadWorkflow: [] });
                   stopStreaming();
                 }
                 break;
               case 'tool.start':
+                // Track active tool
+                set((s) => ({
+                  activeTools: [...s.activeTools, {
+                    name: parsed.name ?? parsed.tool ?? 'tool',
+                    status: 'running' as const,
+                    startedAt: Date.now(),
+                  }],
+                }));
                 // Add tool message placeholder
                 addMessage({
                   id: generateId(),
@@ -511,6 +551,15 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                 });
                 break;
               case 'tool.finish':
+                // Mark tool as done
+                set((s) => {
+                  const tools = [...s.activeTools];
+                  const running = tools.findIndex(t => t.status === 'running');
+                  if (running >= 0) {
+                    tools[running] = { ...tools[running], status: 'done', finishedAt: Date.now() };
+                  }
+                  return { activeTools: tools };
+                });
                 // Update last tool message with result, then add new assistant message
                 set((s) => {
                   const msgs = [...s.messages];
@@ -538,6 +587,31 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                 // (avoids duplicate empty bubble in DM mode where we pre-create one).
                 set((s) => {
                   const lastMsg = s.messages[s.messages.length - 1];
+
+                  // ── Track squad workflow steps ──
+                  const wf = [...s.squadWorkflow];
+                  // Mark any previously running step as done
+                  for (const step of wf) {
+                    if (step.status === 'running') {
+                      step.status = 'done';
+                      step.finishedAt = Date.now();
+                    }
+                  }
+                  // Add or update current agent step
+                  const existing = wf.find(st => st.agentId === parsed.agentId);
+                  if (existing) {
+                    existing.status = 'running';
+                    existing.startedAt = Date.now();
+                  } else if (parsed.agentId && parsed.agentName) {
+                    wf.push({
+                      agentId: parsed.agentId,
+                      agentName: parsed.agentName,
+                      agentEmoji: parsed.agentEmoji ?? '🤖',
+                      status: 'running',
+                      startedAt: Date.now(),
+                    });
+                  }
+
                   if (lastMsg?.role === 'assistant' && !lastMsg.content) {
                     // Just stamp agent info onto existing empty message
                     const msgs = [...s.messages];
@@ -547,7 +621,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                       agentName: parsed.agentName ?? lastMsg.agentName,
                       agentEmoji: parsed.agentEmoji ?? lastMsg.agentEmoji,
                     };
-                    return { messages: msgs };
+                    return { messages: msgs, squadWorkflow: wf };
                   }
                   // Last message has content → push new empty one (squad multi-agent)
                   return {
@@ -564,6 +638,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                         created_at: new Date().toISOString(),
                       },
                     ],
+                    squadWorkflow: wf,
                   };
                 });
                 break;

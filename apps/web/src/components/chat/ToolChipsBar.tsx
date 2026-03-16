@@ -1,97 +1,90 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useSessionStore } from '@/stores/session-store';
-import { useUIStore } from '@/stores/ui-store';
+import React from 'react';
+import { useSessionStore, type ActiveTool } from '@/stores/session-store';
 
-// ─── ToolChips Bar ──────────────────────────────────────────────────────────────
+const TOOL_META: Record<string, { icon: string; color: string }> = {
+  bash: { icon: '💻', color: 'var(--green)' },
+  read: { icon: '📖', color: 'var(--blue)' },
+  write: { icon: '✏️', color: 'var(--coral)' },
+  edit: { icon: '🔧', color: 'var(--yellow)' },
+  grep: { icon: '🔍', color: 'var(--purple)' },
+  glob: { icon: '📁', color: 'var(--text-secondary)' },
+  web_search: { icon: '🌐', color: 'var(--blue)' },
+  web_fetch: { icon: '📡', color: 'var(--blue)' },
+  browser: { icon: '🖥️', color: 'var(--purple)' },
+  screenshot: { icon: '📸', color: 'var(--coral)' },
+  mac_control: { icon: '🖱️', color: 'var(--yellow)' },
+  memory_read: { icon: '🧠', color: 'var(--green)' },
+  memory_write: { icon: '🧠', color: 'var(--green)' },
+  squad_message: { icon: '💬', color: 'var(--blue)' },
+};
 
-export function ToolChipsBar() {
-  const { setSettingsOpen, setSettingsTab } = useUIStore();
-  const [extendedThinking, setExtendedThinking] = useState(false);
-  const [extToastVisible, setExtToastVisible] = useState(false);
+function getToolMeta(name: string) {
+  return TOOL_META[name] ?? { icon: '⚡', color: 'var(--text-muted)' };
+}
 
-  const openSettings = (tab: Parameters<typeof setSettingsTab>[0]) => {
-    setSettingsTab(tab);
-    setSettingsOpen(true);
-  };
-
-  const toggleExtended = () => {
-    const next = !extendedThinking;
-    setExtendedThinking(next);
-    setExtToastVisible(true);
-    setTimeout(() => setExtToastVisible(false), 2000);
-  };
-
-  const chips: { icon: string; label: string; color: string; count?: number; onClick: () => void }[] = [
-    { icon: '⚡', label: 'Skills', color: 'var(--coral)', onClick: () => openSettings('skills') },
-    { icon: '🔌', label: 'MCP', count: 5, color: 'var(--purple)', onClick: () => openSettings('mcp') },
-    { icon: '🤖', label: 'Models', color: 'var(--blue)', onClick: () => openSettings('models') },
-    {
-      icon: '🧠', label: extendedThinking ? 'Extended ✓' : 'Extended',
-      color: extendedThinking ? 'var(--green)' : 'var(--yellow)', onClick: toggleExtended,
-    },
-    { icon: '📄', label: 'Context', count: 3, color: 'var(--green)', onClick: () => openSettings('general') },
-  ];
+function ToolChip({ tool }: { tool: ActiveTool }) {
+  const { icon, color } = getToolMeta(tool.name);
+  const duration = tool.finishedAt
+    ? `${((tool.finishedAt - tool.startedAt) / 1000).toFixed(1)}s`
+    : null;
 
   return (
-    <div role="toolbar" aria-label="Active tools" style={{ position: 'relative' }}>
-      {/* Extended thinking toast */}
-      {extToastVisible && (
-        <div style={{
-          position: 'absolute',
-          bottom: '110%',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: extendedThinking ? 'var(--green-subtle)' : 'var(--surface-hover)',
-          border: `1px solid ${extendedThinking ? 'rgba(63,185,80,0.4)' : 'var(--border)'}`,
-          color: extendedThinking ? 'var(--green)' : 'var(--text-secondary)',
-          padding: '5px 12px',
-          borderRadius: 'var(--radius-md)',
-          fontSize: 12,
-          fontWeight: 500,
-          whiteSpace: 'nowrap',
-          zIndex: 50,
-          pointerEvents: 'none',
-          animation: 'fadeIn 150ms ease',
-        }}>
-          {extendedThinking ? '🧠 Extended thinking ON' : '🧠 Extended thinking OFF'}
-        </div>
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: '2px 8px', borderRadius: 'var(--radius-sm)',
+      background: tool.status === 'running'
+        ? `color-mix(in srgb, ${color} 15%, transparent)`
+        : `color-mix(in srgb, ${color} 8%, transparent)`,
+      border: `1px solid color-mix(in srgb, ${color} ${tool.status === 'running' ? '30' : '15'}%, transparent)`,
+      color: tool.status === 'running' ? color : 'var(--text-muted)',
+      fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap',
+      transition: 'all 0.2s ease',
+      animation: tool.status === 'running' ? 'chipPulse 1.5s ease infinite' : 'none',
+    }}>
+      <span style={{ fontSize: 11 }}>{icon}</span>
+      <span>{tool.name}</span>
+      {tool.status === 'done' && (
+        <span style={{ color: 'var(--green)', fontSize: 10 }}>✓</span>
       )}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        padding: '6px 20px', flexWrap: 'wrap', overflow: 'hidden'
-      }}>
-        {chips.map((chip) => (
-          <button key={chip.label} onClick={chip.onClick} style={{
-            display: 'flex', alignItems: 'center', gap: 4,
-            padding: '3px 10px', borderRadius: 'var(--radius-sm)',
-            background: `color-mix(in srgb, ${chip.color} 12%, transparent)`,
-            border: `1px solid color-mix(in srgb, ${chip.color} 25%, transparent)`,
-            color: chip.color, fontSize: 12, fontWeight: 500,
-            cursor: 'pointer', transition: 'all 150ms', whiteSpace: 'nowrap',
-          }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = `color-mix(in srgb, ${chip.color} 20%, transparent)`;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = `color-mix(in srgb, ${chip.color} 12%, transparent)`;
-            }}
-          >
-            <span>{chip.icon}</span>
-            <span>{chip.label}</span>
-            {chip.count !== undefined && (
-              <span style={{
-                padding: '0 5px', borderRadius: 4, fontSize: 10, fontWeight: 600,
-                background: `color-mix(in srgb, ${chip.color} 20%, transparent)`,
-              }}>
-                {chip.count}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-    </div>
+      {duration && (
+        <span style={{ fontSize: 9, color: 'var(--text-muted)', opacity: 0.7 }}>{duration}</span>
+      )}
+    </span>
   );
 }
 
+export function ToolChipsBar() {
+  const activeTools = useSessionStore((s) => s.activeTools);
+  const isStreaming = useSessionStore((s) => s.isStreaming);
+
+  // Only show during streaming, and only if there are tools
+  if (!isStreaming || activeTools.length === 0) return null;
+
+  return (
+    <>
+      <style>{`
+        @keyframes chipPulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.7; }
+        }
+      `}</style>
+      <div
+        role="toolbar"
+        aria-label="Active tools"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 4,
+          padding: '4px 16px', flexWrap: 'wrap', overflow: 'hidden',
+        }}
+      >
+        <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500, marginRight: 2 }}>
+          Tools:
+        </span>
+        {activeTools.map((tool, i) => (
+          <ToolChip key={`${tool.name}-${i}`} tool={tool} />
+        ))}
+      </div>
+    </>
+  );
+}

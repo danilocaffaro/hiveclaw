@@ -12,6 +12,7 @@ import { useSessionEvents } from '@/hooks/useSessionEvents';
 // Split components (was 1311 lines, now modular)
 import { MessageBubble, LoadingSkeleton } from './chat/MessageBubble';
 import { TypingIndicator } from './chat/TypingIndicator';
+import { SquadWorkflowBar } from './chat/SquadWorkflowBar';
 import { ChatHeader } from './chat/ChatHeader';
 import { SquadChatHeader } from './chat/ChatHeader';
 import AgentInfoPanel from './AgentInfoPanel';
@@ -338,6 +339,7 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
               </div>
             </React.Fragment>
           ))}
+          {isStreaming && activeSquadId && <SquadWorkflowBar />}
           {isStreaming && messages.length > 0 && messages[messages.length - 1].role !== 'assistant' && (
             <TypingIndicator />
           )}
@@ -349,8 +351,8 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
         </div>
       )}
 
-      {/* Tool Chips Bar — Pro mode only, hidden on mobile */}
-      {/* ToolChips bar disabled until real data available (B030) */}
+      {/* Tool Chips Bar — shows real-time tool execution */}
+      <ToolChipsBar />
 
       {/* F2: Quick reaction bar (floating above context menu) */}
       {reactionBar && (

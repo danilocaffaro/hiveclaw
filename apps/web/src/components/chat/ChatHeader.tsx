@@ -12,7 +12,7 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 // ─── Squad Chat Header ──────────────────────────────────────────────────────────
 
 export function SquadChatHeader({ squad, agents, onSquadInfoClick }: { squad: Squad; agents: Agent[]; onSquadInfoClick?: () => void }) {
-  const { isStreaming } = useSessionStore();
+  const { isStreaming, messages } = useSessionStore();
   const { toggleRightPanel, toggleSettings, setMobileSidebarOpen, setMobileRightPanelOpen, interfaceMode } = useUIStore();
   const isMobile = useIsMobile();
 
@@ -100,8 +100,33 @@ export function SquadChatHeader({ squad, agents, onSquadInfoClick }: { squad: Sq
         </div>
       </div>
 
-      {/* Settings + right panel buttons */}
+      {/* Token counter + Settings + right panel buttons */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {/* Token counter — sum of last conversation turn */}
+        {(() => {
+          let totalIn = 0, totalOut = 0;
+          // Sum tokens from last user message onwards
+          let foundUser = false;
+          for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i];
+            if (m.role === 'user') { foundUser = true; break; }
+            if (m.role === 'assistant') {
+              totalIn += m.tokens_in ?? 0;
+              totalOut += m.tokens_out ?? 0;
+            }
+          }
+          if (!foundUser || (totalIn === 0 && totalOut === 0)) return null;
+          return (
+            <span style={{
+              fontSize: 10, color: 'var(--text-muted)',
+              padding: '2px 8px', borderRadius: 'var(--radius-sm)',
+              background: 'var(--surface-hover)',
+              whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)',
+            }}>
+              ↓{totalIn.toLocaleString()} ↑{totalOut.toLocaleString()}
+            </span>
+          );
+        })()}
         <button onClick={toggleSettings} title="Settings (⌘,)" aria-label="Settings (⌘,)" style={{
           width: 32, height: 32, borderRadius: 'var(--radius-md)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
