@@ -4,7 +4,7 @@
 
 HiveClaw is a self-hosted personal AI platform with a native LLM engine, deep agent memory, squad orchestration, and full desktop automation. No cloud dependency, no vendor lock-in — your data stays on your hardware.
 
-[![Tests](https://img.shields.io/badge/tests-240%2F240-brightgreen)](https://github.com/danilocaffaro/hiveclaw)
+[![Tests](https://img.shields.io/badge/tests-270%2F270-brightgreen)](https://github.com/danilocaffaro/hiveclaw)
 [![Version](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com/danilocaffaro/hiveclaw/releases)
 [![Node](https://img.shields.io/badge/node-%3E%3D18-green)](https://nodejs.org)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)](https://github.com/danilocaffaro/hiveclaw)
@@ -136,7 +136,7 @@ packages/
 
 ```bash
 # Run tests
-pnpm test         # 240 tests across 16 files
+pnpm test         # 270 tests across 17 files
 
 # Type check
 pnpm build        # 0 TS errors
