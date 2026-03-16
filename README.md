@@ -69,7 +69,7 @@ pnpm start
 
 ### Windows
 
-Download the self-contained bundle from [hiveclaw-download-site.vercel.app](https://hiveclaw-download-site.vercel.app) — includes Node.js, no installation needed. Just unzip and run `start.bat`.
+Download the self-contained bundle from [danilocaffaro.github.io/superclaw-pure](https://danilocaffaro.github.io/superclaw-pure/) — includes Node.js, no installation needed. Just unzip and run `start.bat`.
 
 ## First Run
 
