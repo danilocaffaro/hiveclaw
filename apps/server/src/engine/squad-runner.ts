@@ -986,6 +986,16 @@ async function* runSequential(
     for (const pulledSquadAgent of a2aResult.pulledAgents) {
       if (extraTurnsUsed >= MAX_EXTRA_TURNS) break;
 
+      // B13 fix: Never re-trigger an agent that already spoke (prevents self-reply loops).
+      // detectPullThrough already excludes the speakingAgent, but when Agent A → B → A,
+      // B's response could pull A back in. Guard with spokenAgentIds.
+      if (spokenAgentIds.has(pulledSquadAgent.id)) {
+        logger.info(
+          `[SquadRunner] 2.8 Skip self-reply: ${pulledSquadAgent.name} already spoke`,
+        );
+        continue;
+      }
+
       const pulledConfig = config.agents.find(a => a.id === pulledSquadAgent.id);
       if (!pulledConfig) continue;
 
@@ -1009,6 +1019,9 @@ async function* runSequential(
         yield event;
       }
       lastResponse = a2aRef.text;
+
+      // B13: Mark pulled agent as spoken so they can't be re-triggered
+      spokenAgentIds.add(pulledConfig.id);
 
       // Add to a2a queue so this agent's response can also trigger further pulls
       if (a2aRef.text) {

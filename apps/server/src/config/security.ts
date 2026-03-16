@@ -160,6 +160,15 @@ export const BLOCKED_COMMAND_PATTERNS: RegExp[] = [
   /\bxmrig\b/,                     // XMRig miner
   /\bminerd\b/,                    // CPU miner
   /stratum\+tcp:\/\//,             // Mining pool connection
+
+  // ── Self-destabilization (agent must not interfere with running server) ──
+  /\bpnpm\s+(start|dev|serve)\b/,  // Would spawn conflicting server on same port
+  /\bnpm\s+(start|run\s+dev|run\s+serve)\b/,
+  /\bnode\s+.*server\.(js|ts|mjs)\b/,  // Direct server launch
+  /\blsof\s+.*:4070\s*\|\s*.*kill/, // Kill HiveClaw server process
+  /\bkill\b.*\b4070\b/,            // Kill processes on our port
+  /\blaunchctl\s+(unload|stop)\s+.*hiveclaw/i, // Stop our launchd service
+  /\bfuser\s+.*4070.*kill/,        // fuser kill on our port
 ];
 
 /**

@@ -17,6 +17,7 @@ import { SessionUsageRepository } from '../db/session-usage.js';
 import type { Agent } from '@hiveclaw/shared';
 import { ExternalAgentRepository } from '../db/external-agents.js';
 import { SquadMemberRepository } from '../db/squad-members.js';
+import { broadcastSSE } from './sse.js';
 
 // ─── In-memory pub/sub for multi-listener SSE ──────────────────────────────────
 //

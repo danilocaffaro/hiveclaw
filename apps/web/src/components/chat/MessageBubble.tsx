@@ -261,6 +261,9 @@ export function MessageBubble({ msg }: { msg: Message }) {
             border: effectiveIsUser ? 'none' : isFromExternalAgent ? '1px solid rgba(168,85,247,0.3)' : '1px solid color-mix(in srgb, var(--coral) 20%, transparent)',
             fontSize: 14, lineHeight: 1.55, color: effectiveIsUser ? '#fff' : 'var(--text)',
             wordBreak: 'break-word',
+            // B14 fix: ensure text is selectable on mobile
+            userSelect: 'text',
+            WebkitUserSelect: 'text',
           }}>
             {voiceSrc ? (
               <AudioPlayer src={voiceSrc} />
