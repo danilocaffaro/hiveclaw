@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { validateUrl } from '../src/lib/url-security.js';
+import { validateUrl, validateUrlWithDns } from '../src/lib/url-security.js';
 
 describe('URL Security (SSRF Protection)', () => {
-  describe('validateUrl', () => {
+  describe('validateUrl (sync)', () => {
     it('allows valid HTTPS URLs', () => {
       expect(() => validateUrl('https://example.com')).not.toThrow();
       expect(() => validateUrl('https://api.github.com/repos')).not.toThrow();
@@ -73,6 +73,75 @@ describe('URL Security (SSRF Protection)', () => {
 
     it('blocks reserved IP — 0.x.x.x', () => {
       expect(() => validateUrl('http://0.0.0.0')).toThrow('Reserved IP 0.x.x.x');
+    });
+
+    // S1.1: Hex/octal/integer IP bypass tests (Sherlock's suggestion)
+    it('blocks hex-encoded localhost (0x7f000001)', () => {
+      expect(() => validateUrl('http://0x7f000001/')).toThrow('Localhost');
+    });
+
+    it('blocks decimal integer localhost (2130706433)', () => {
+      expect(() => validateUrl('http://2130706433/')).toThrow('Localhost');
+    });
+
+    it('blocks octal-encoded localhost (017700000001)', () => {
+      expect(() => validateUrl('http://017700000001/')).toThrow('Localhost');
+    });
+
+    it('blocks hex-encoded private IP (0x0a000001 = 10.0.0.1)', () => {
+      expect(() => validateUrl('http://0x0a000001/')).toThrow('Private IP range 10.x.x.x');
+    });
+
+    it('blocks decimal integer private IP (3232235521 = 192.168.0.1)', () => {
+      expect(() => validateUrl('http://3232235521/')).toThrow('Private IP range 192.168');
+    });
+
+    it('blocks hex-encoded metadata IP (0xa9fea9fe = 169.254.169.254)', () => {
+      expect(() => validateUrl('http://0xa9fea9fe/')).toThrow('Link-local IP');
+    });
+
+    // DNS rebinding domains
+    it('blocks nip.io DNS rebinding', () => {
+      expect(() => validateUrl('http://127.0.0.1.nip.io/')).toThrow('DNS rebinding domain');
+    });
+
+    it('blocks sslip.io DNS rebinding', () => {
+      expect(() => validateUrl('http://10.0.0.1.sslip.io/')).toThrow('DNS rebinding domain');
+    });
+
+    it('blocks xip.io DNS rebinding', () => {
+      expect(() => validateUrl('http://192.168.1.1.xip.io/')).toThrow('DNS rebinding domain');
+    });
+
+    it('blocks localtest.me DNS rebinding', () => {
+      expect(() => validateUrl('http://localtest.me/')).toThrow('DNS rebinding domain');
+    });
+
+    it('blocks lvh.me DNS rebinding', () => {
+      expect(() => validateUrl('http://foo.lvh.me/')).toThrow('DNS rebinding domain');
+    });
+
+    it('allows legitimate hex-looking hostnames that are not IPs', () => {
+      // 0xdeadbeef.com is a valid domain, not an IP
+      expect(() => validateUrl('https://0xdeadbeef.com/')).not.toThrow();
+    });
+  });
+
+  describe('validateUrlWithDns (async)', () => {
+    it('allows valid public URLs', async () => {
+      await expect(validateUrlWithDns('https://example.com')).resolves.toBeUndefined();
+    });
+
+    it('blocks localhost by name (sync check)', async () => {
+      await expect(validateUrlWithDns('http://localhost:4070')).rejects.toThrow('Localhost');
+    });
+
+    it('blocks hex IP (sync check)', async () => {
+      await expect(validateUrlWithDns('http://0x7f000001/')).rejects.toThrow('Localhost');
+    });
+
+    it('blocks rebinding domains (sync check)', async () => {
+      await expect(validateUrlWithDns('http://127.0.0.1.nip.io/')).rejects.toThrow('DNS rebinding');
     });
   });
 });

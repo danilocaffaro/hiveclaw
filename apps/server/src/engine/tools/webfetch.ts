@@ -1,5 +1,5 @@
 import type { Tool, ToolInput, ToolOutput, ToolDefinition } from './types.js';
-import { validateUrl } from '../../lib/url-security.js';
+import { validateUrlWithDns } from '../../lib/url-security.js';
 
 const DEFAULT_MAX_CHARS = 50_000;
 
@@ -67,9 +67,9 @@ export class WebFetchTool implements Tool {
       return { success: false, error: 'url is required' };
     }
 
-    // S1: SSRF protection
+    // S1.1: SSRF protection with DNS rebinding defense
     try {
-      validateUrl(url);
+      await validateUrlWithDns(url);
     } catch (err) {
       return { success: false, error: (err as Error).message };
     }
