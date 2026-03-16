@@ -4,7 +4,7 @@ import { join, resolve } from 'path';
 import { existsSync } from 'fs';
 
 const isDev = !app.isPackaged;
-const SERVER_PORT = 4070;
+const SERVER_PORT = Number(process.env.PORT ?? 4070);
 const WEB_PORT = 4080;
 
 let mainWindow: BrowserWindow | null = null;

@@ -444,6 +444,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
               tokensIn?: number;
               tokensOut?: number;
               cost?: number;
+              isLastAgent?: boolean;
             };
 
             switch (eventType) {
@@ -492,7 +493,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                   }
                   return { messages: msgs };
                 });
-                stopStreaming();
+                // In squad mode, only stop streaming after the last agent finishes
+                if (!get().activeSquadId || parsed.isLastAgent) {
+                  stopStreaming();
+                }
                 break;
               case 'tool.start':
                 // Add tool message placeholder

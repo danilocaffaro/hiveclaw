@@ -1,23 +1,24 @@
 #!/bin/bash
-# SuperClaw Pure Health Check
+# HiveClaw Health Check
 # Returns: exit 0 = healthy, exit 1 = unhealthy
 
-ENDPOINT="http://localhost:4070/api/health"
+PORT="${PORT:-4070}"
+ENDPOINT="http://localhost:${PORT}/api/health"
 TIMEOUT=5
 
 response=$(curl -s -o /dev/null -w "%{http_code}" --max-time $TIMEOUT "$ENDPOINT" 2>/dev/null)
 
 if [ "$response" = "200" ]; then
-    # Also check Telegram webhook is reachable
-    webhook_response=$(curl -s -o /dev/null -w "%{http_code}" --max-time $TIMEOUT "http://localhost:4070/api/channels" 2>/dev/null)
+    # Also check channels API is reachable
+    webhook_response=$(curl -s -o /dev/null -w "%{http_code}" --max-time $TIMEOUT "http://localhost:${PORT}/api/channels" 2>/dev/null)
     if [ "$webhook_response" = "200" ]; then
-        echo "✅ SuperClaw Pure: healthy (HTTP 200, channels API OK)"
+        echo "✅ HiveClaw: healthy (HTTP 200, channels API OK)"
         exit 0
     else
-        echo "⚠️ SuperClaw Pure: server up but channels API returned $webhook_response"
+        echo "⚠️ HiveClaw: server up but channels API returned $webhook_response"
         exit 1
     fi
 else
-    echo "🔴 SuperClaw Pure: DOWN (HTTP $response)"
+    echo "🔴 HiveClaw: DOWN (HTTP $response)"
     exit 1
 fi

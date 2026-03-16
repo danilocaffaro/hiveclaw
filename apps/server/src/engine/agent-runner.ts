@@ -18,6 +18,7 @@ import { touchSession } from './session-consolidator.js';
 import { checkTokenStatus } from './token-monitor.js';
 import { handleThreshold, ensureSessionChainSchema } from './session-rotator.js';
 import { getWorkspaceRoot } from '../config/security.js';
+import { DEFAULT_PORT } from '../config/defaults.js';
 
 // ─── SSE Event Types ──────────────────────────────────────────────────────────
 
@@ -220,13 +221,14 @@ export async function* runAgent(
   // ── Operational Awareness (equivalent to SOUL.md for OpenClaw agents) ────────
   // Gives agents environmental intelligence so they know what to do AND what not to do,
   // without artificial blocklists. Smart agents > restricted agents.
+  const serverPort = process.env.PORT ?? DEFAULT_PORT;
   const operationalAwareness = `
 
 ## Operational Awareness
-You are an agent running INSIDE the HiveClaw server process on port 4070.
+You are an agent running INSIDE the HiveClaw server process on port ${serverPort}.
 
 ### Environment
-- **Server**: Fastify + better-sqlite3, port 4070, managed by launchd (\`ai.hiveclaw\`)
+- **Server**: Fastify + better-sqlite3, port ${serverPort}, managed by launchd (\`ai.hiveclaw\`)
 - **DB**: ~/.hiveclaw/hiveclaw.db (SQLite WAL mode — \`sqlite3\` CLI cannot see uncommitted writes, always query via API)
 - **Repo**: ${process.cwd()}
 - **Build**: \`pnpm build\` (must compile with 0 TS errors)
@@ -235,15 +237,15 @@ You are an agent running INSIDE the HiveClaw server process on port 4070.
 
 ### Self-Preservation Rules
 You run inside the server. These actions would crash YOUR OWN PROCESS:
-- \`pnpm start\` / \`pnpm dev\` → spawns a second server on :4070 → EADDRINUSE crash
-- \`kill\` / \`lsof -ti :4070 | xargs kill\` → kills YOU
+- \`pnpm start\` / \`pnpm dev\` → spawns a second server on :${serverPort} → EADDRINUSE crash
+- \`kill\` / \`lsof -ti :${serverPort} | xargs kill\` → kills YOU
 - \`launchctl unload ai.hiveclaw\` → stops YOU
 - Restarting the server disconnects your session mid-execution
 
 You CAN and SHOULD:
 - Read/write/edit any file in the repo
 - Run \`pnpm test\`, \`pnpm build\`, \`git\` commands
-- Use \`curl localhost:4070/api/...\` to test API endpoints
+- Use \`curl localhost:${serverPort}/api/...\` to test API endpoints
 - Install packages with \`pnpm add\`
 - Use all your tools freely (bash, read, write, edit, grep, glob, memory, etc.)
 
@@ -464,8 +466,14 @@ Read their responses before duplicating work. Use @mentions to delegate or reque
           iterationTokensOut += chunk.outputTokens ?? 0;
 
         } else if (chunk.type === 'finish') {
-          const reason = (chunk as unknown as { reason?: string; finishReason?: string }).reason ?? (chunk as unknown as { finishReason?: string }).finishReason ?? 'stop';
+          const finishData = chunk as unknown as { reason?: string; finishReason?: string; tokensIn?: number; tokensOut?: number };
+          const reason = finishData.reason ?? finishData.finishReason ?? 'stop';
           finishReason = reason;
+
+          // Real providers emit tokensIn/tokensOut in the finish chunk (via chat-engine 'done' event)
+          // Ollama emits separate 'usage' chunks (handled above)
+          if (finishData.tokensIn) iterationTokensIn += finishData.tokensIn;
+          if (finishData.tokensOut) iterationTokensOut += finishData.tokensOut;
 
           if (reason === 'error') {
             persistPartialResponse('provider-finish-error');

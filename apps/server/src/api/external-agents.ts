@@ -22,6 +22,7 @@ import { getEngineService } from '../engine/engine-service.js';
 import { generateProtocolPack } from '../engine/external-agent-bridge.js';
 import { broadcastSSE } from './sse.js';
 import { logger } from '../lib/logger.js';
+import { DEFAULT_PORT } from '../config/defaults.js';
 
 // ─── Pending callback storage (for async responses) ────────────────────────────
 
@@ -177,7 +178,7 @@ export function registerExternalAgentRoutes(app: FastifyInstance): void {
 
     // Build base URL from request
     const proto = req.headers['x-forwarded-proto'] ?? 'http';
-    const host = req.headers['x-forwarded-host'] ?? req.headers.host ?? 'localhost:4070';
+    const host = req.headers['x-forwarded-host'] ?? req.headers.host ?? `localhost:${process.env.PORT ?? DEFAULT_PORT}`;
     const baseUrl = `${proto}://${host}`;
 
     const pack = generateProtocolPack(agent, baseUrl);

@@ -37,7 +37,7 @@ import {
 } from './archer-router.js';
 import { ExternalAgentRepository } from '../db/external-agents.js';
 import { initDatabase } from '../db/index.js';
-import { ENABLE_MESSAGE_BUS } from '../config/defaults.js';
+import { ENABLE_MESSAGE_BUS, DEFAULT_PORT } from '../config/defaults.js';
 
 // ─── R7: Squad → Task auto-tracking ──────────────────────────────────────────
 
@@ -293,7 +293,7 @@ async function* runExternalAgent(
     recentHistory: recentMessages,
   };
 
-  const baseUrl = process.env.HIVECLAW_PUBLIC_URL ?? process.env.SUPERCLAW_PUBLIC_URL ?? 'http://localhost:4070';
+  const baseUrl = process.env.HIVECLAW_PUBLIC_URL ?? process.env.SUPERCLAW_PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? DEFAULT_PORT}`;
   const response = await dispatchToExternalAgent(extAgent, ctx, baseUrl);
 
   yield {
@@ -908,7 +908,7 @@ async function* runSequential(
     function enrichEvent(event: SSEEvent): SSEEvent {
       if (event.event === 'message.delta' || event.event === 'message.finish' || event.event === 'message.start') {
         const d = event.data as Record<string, unknown>;
-        return { ...event, data: { ...identity, ...d } };
+        return { ...event, data: { ...identity, ...d, ...(event.event === 'message.finish' ? { isLastAgent: isLast } : {}) } };
       }
       return event;
     }
