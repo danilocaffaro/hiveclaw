@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HiveClaw — Your AI team, self-hosted</title>
-<meta name="description" content="HiveClaw is the open-source, self-hosted AI platform that gives you a team of specialized AI agents — not just a chatbot. Multi-agent squads, 5-layer memory, zero cloud dependency.">
+<meta name="description" content="HiveClaw is the open-source, self-hosted AI platform with agents that know themselves and you. Core Memory identity system, multi-agent squads, 10-layer eidetic memory, zero cloud dependency.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐾</text></svg>">
 <style>
 /* ─── Reset & Base ─── */
@@ -300,7 +300,7 @@ footer a { color: var(--text2); }
 
 <span class="output">🐾 HiveClaw v1.0.0</span>
 <span class="output">   Engine: native (sqlite + FTS5 + sqlite-vec)</span>
-<span class="output">   Memory: 6-layer eidetic (Total Recall™)</span>
+<span class="output">   Memory: 10-layer eidetic (Core Identity + Total Recall™)</span>
 <span class="output">   Agents: 0 configured — visit setup wizard</span>
 <span class="output">   Server: http://localhost:4070</span>
 <span class="output">   Ready in 1.2s ⚡</span></pre>
@@ -365,16 +365,28 @@ footer a { color: var(--text2); }
 
     <div class="feature-grid">
       <div class="feature fade-up">
+        <span class="emoji">🎭</span>
+        <div class="highlight">Agent Identity System</div>
+        <h3>Agents that know themselves — and you</h3>
+        <p>Every agent has persistent Core Memory: four identity blocks (Persona, Human, Context, Scratchpad) injected into every prompt. Your agents learn who you are, what you work on, and how you think — and they remember it forever. Not just a system prompt. A soul.</p>
+      </div>
+      <div class="feature fade-up">
         <span class="emoji">👥</span>
         <div class="highlight">Multi-Agent Squads</div>
         <h3>A team, not a chatbot</h3>
-        <p>Create specialized agents — writer, analyst, coder, researcher — and put them in squads. They collaborate using real protocols (ARCHER v2, NEXUS v3) with @mention routing, debate mode, and consensus building.</p>
+        <p>Create specialized agents — writer, analyst, coder, researcher — and put them in squads. They collaborate with @mention routing, sequential/round-robin/debate/specialist strategies, and build on each other's work.</p>
       </div>
       <div class="feature fade-up">
         <span class="emoji">🧠</span>
-        <div class="highlight">6-Layer Eidetic Memory</div>
+        <div class="highlight">10-Layer Eidetic Memory</div>
         <h3>Total Recall™</h3>
-        <p>Not just "remembers your name." Six layers: context window → session compaction → episodic recall → semantic knowledge → long-term facts → visual memory. Your agents get <em>smarter</em> with every conversation, forever.</p>
+        <p>Not just "remembers your name." Ten layers: core identity → session buffer → smart compaction → working memory → episodic recall → knowledge graph → FTS5 archive → vector search → hybrid RRF fusion → session consolidation. Your agents get <em>smarter</em> with every conversation, forever.</p>
+      </div>
+      <div class="feature fade-up">
+        <span class="emoji">🛡️</span>
+        <div class="highlight">Smart Agents, Not Restricted</div>
+        <h3>Intelligence over handcuffs</h3>
+        <p>No artificial command blocklists. Instead, agents have Operational Awareness — they understand their environment, know what's safe, and make intelligent decisions. Like giving someone training instead of restrictions. Your agents have full power with the wisdom to use it right.</p>
       </div>
       <div class="feature fade-up">
         <span class="emoji">🔍</span>
@@ -398,7 +410,7 @@ footer a { color: var(--text2); }
         <span class="emoji">🛡️</span>
         <div class="highlight">Security-Hardened</div>
         <h3>Battle-tested, not theoretical</h3>
-        <p>Workspace sandboxing, path traversal protection, 25 blocked dangerous command patterns, circuit breakers, loop detection, encrypted credential vault. Audited at 8.8/10 by independent QA.</p>
+        <p>Workspace sandboxing, path traversal protection, operational awareness, circuit breakers, loop detection, encrypted credential vault. Security through intelligence, not blocklists.</p>
       </div>
     </div>
   </div>
@@ -408,38 +420,58 @@ footer a { color: var(--text2); }
 <section class="memory-section">
   <div class="container">
     <span class="tag tag--green">Innovation</span>
-    <h2 style="margin-top:16px">6-layer memory that never forgets.</h2>
+    <h2 style="margin-top:16px">10-layer memory that never forgets.</h2>
     <p class="intro">Most AI tools have context windows. We built a cognitive architecture.</p>
 
     <div class="memory-layers">
       <div class="memory-layer fade-up">
         <span class="layer-id">L1</span>
-        <span class="layer-name">🔴 Context Window</span>
-        <span class="layer-desc">Active conversation (4K–200K tokens)</span>
+        <span class="layer-name">🎭 Core Identity</span>
+        <span class="layer-desc">Persona, Human, Context, Scratchpad — always in prompt</span>
       </div>
       <div class="memory-layer fade-up">
         <span class="layer-id">L2</span>
+        <span class="layer-name">🔴 Session Buffer</span>
+        <span class="layer-desc">Active conversation window (4K–200K tokens)</span>
+      </div>
+      <div class="memory-layer fade-up">
+        <span class="layer-id">L3</span>
         <span class="layer-name">🟠 Smart Compaction</span>
         <span class="layer-desc">LLM-summarized session overflow</span>
       </div>
       <div class="memory-layer fade-up">
-        <span class="layer-id">L3</span>
-        <span class="layer-name">🟡 Episodic Recall</span>
-        <span class="layer-desc">Time-stamped events & episodes</span>
-      </div>
-      <div class="memory-layer fade-up">
         <span class="layer-id">L4</span>
-        <span class="layer-name">🟢 Semantic Knowledge</span>
-        <span class="layer-desc">Facts, decisions, goals, preferences</span>
+        <span class="layer-name">🟡 Working Memory</span>
+        <span class="layer-desc">Structured task state across sessions</span>
       </div>
       <div class="memory-layer fade-up">
         <span class="layer-id">L5</span>
-        <span class="layer-name">🔵 FTS5 + Vector Archive</span>
-        <span class="layer-desc">Hybrid search across all history</span>
+        <span class="layer-name">🟢 Episodic Recall</span>
+        <span class="layer-desc">Time-stamped events & consolidated insights</span>
       </div>
       <div class="memory-layer fade-up">
         <span class="layer-id">L6</span>
-        <span class="layer-name">🟣 Visual Memory</span>
+        <span class="layer-name">🔵 Knowledge Graph</span>
+        <span class="layer-desc">Facts, decisions, goals, entities with typed edges</span>
+      </div>
+      <div class="memory-layer fade-up">
+        <span class="layer-id">L7</span>
+        <span class="layer-name">🔵 FTS5 Archive</span>
+        <span class="layer-desc">Full-text search across all history</span>
+      </div>
+      <div class="memory-layer fade-up">
+        <span class="layer-id">L8</span>
+        <span class="layer-name">🟣 Vector Search</span>
+        <span class="layer-desc">Semantic similarity via sqlite-vec embeddings</span>
+      </div>
+      <div class="memory-layer fade-up">
+        <span class="layer-id">L9</span>
+        <span class="layer-name">🟣 Hybrid RRF Fusion</span>
+        <span class="layer-desc">Best of FTS5 + vector via Reciprocal Rank Fusion</span>
+      </div>
+      <div class="memory-layer fade-up">
+        <span class="layer-id">L10</span>
+        <span class="layer-name">🪩 Visual Memory</span>
         <span class="layer-desc">Describe-then-store image recall</span>
       </div>
     </div>
@@ -486,8 +518,17 @@ footer a { color: var(--text2); }
             <td><span class="cross">✗</span></td>
           </tr>
           <tr>
+            <td>Agent Identity (Core Memory)</td>
+            <td class="highlight-col"><span class="check">✓ 4 blocks per agent</span></td>
+            <td><span class="partial">~ SOUL.md file</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="partial">~ Basic memory</span></td>
+          </tr>
+          <tr>
             <td>Persistent memory</td>
-            <td class="highlight-col"><span class="check">✓ 6 layers</span></td>
+            <td class="highlight-col"><span class="check">✓ 10 layers + Core Identity</span></td>
             <td><span class="partial">~ MEMORY.md flat file</span></td>
             <td><span class="partial">~ Workspace files</span></td>
             <td><span class="partial">~ RAG only</span></td>
@@ -604,7 +645,7 @@ footer a { color: var(--text2); }
           </tr>
           <tr>
             <td>Test suite</td>
-            <td class="highlight-col"><span class="check">✓ 161 tests</span></td>
+            <td class="highlight-col"><span class="check">✓ 229+ tests</span></td>
             <td><span class="partial">~ Unknown</span></td>
             <td><span class="partial">~ Unknown</span></td>
             <td><span class="partial">~ Community</span></td>
