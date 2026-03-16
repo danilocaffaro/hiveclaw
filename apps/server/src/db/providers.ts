@@ -302,9 +302,10 @@ export class ProviderRepository {
 
     // Determine status
     let status: ProviderConfig['status'];
-    if (row.type === 'ollama') {
-      // Ollama doesn't need an API key; mark as connected by default (actual reachability tested separately)
-      status = 'connected';
+    if (row.type === 'ollama' || row.type === 'local' || row.type === 'lmstudio') {
+      // Keyless providers: check if they were ever successfully tested
+      // config_json.status is set to 'connected' after a successful test/connection
+      status = cfg.status === 'connected' ? 'connected' : 'not_configured';
     } else {
       status = row.api_key ? 'connected' : 'not_configured';
     }
@@ -367,7 +368,12 @@ export class ProviderRepository {
         ? (JSON.parse(existing.config_json) as ProviderConfigJson)
         : {};
       const models = data.models ?? existingCfg.models ?? [];
-      const configJson = JSON.stringify({ ...existingCfg, models });
+      // Mark keyless providers as connected when they have models (test succeeded)
+      const isKeyless = ['ollama', 'local', 'lmstudio'].includes(type);
+      const status = isKeyless && data.models && data.models.length > 0
+        ? 'connected'
+        : (isKeyless ? existingCfg.status : undefined);
+      const configJson = JSON.stringify({ ...existingCfg, models, ...(status ? { status } : {}) });
 
       this.db
         .prepare(

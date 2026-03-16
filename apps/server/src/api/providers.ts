@@ -114,7 +114,7 @@ export function registerProviderRoutes(app: FastifyInstance, repo: ProviderRepos
       // Use status field (derived from raw key in rowToConfig) — NOT the masked apiKey
       const safe = providers.map(({ apiKey, ...rest }) => ({
         ...rest,
-        configured: rest.status === 'connected' || rest.type === 'ollama',
+        configured: rest.status === 'connected',
       }));
       return reply.send({ data: safe });
     } catch (err) {
@@ -325,7 +325,7 @@ export function registerProviderRoutes(app: FastifyInstance, repo: ProviderRepos
       const providers = repo.list();
       const safe = providers.map(({ apiKey, ...rest }) => ({
         ...rest,
-        configured: rest.status === 'connected' || rest.type === 'ollama',
+        configured: rest.status === 'connected',
       }));
       return reply.send({ data: safe });
     } catch (err) {

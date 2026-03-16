@@ -205,6 +205,7 @@ function CoreMemorySection({ agentId }: { agentId: string }) {
 interface ProviderInfo {
   id: string;
   name: string;
+  status?: string;
   models: string[];
 }
 
@@ -486,7 +487,7 @@ export function AgentEditModal({
                 {(() => {
                   const availableModels = form.providerPreference
                     ? providers.find((p) => p.id === form.providerPreference)?.models ?? []
-                    : providers.flatMap((p) => p.models);
+                    : providers.filter((p) => p.status === 'connected').flatMap((p) => p.models);
                   return (
                     <select
                       value={form.modelPreference ?? ''}
