@@ -59,8 +59,8 @@ No artificial command blocklists. Instead, agents have **Operational Awareness**
 
 ```bash
 # Prerequisites: Node.js 22+, pnpm
-git clone https://github.com/danilocaffaro/superclaw-pure.git
-cd superclaw-pure
+git clone https://github.com/danilocaffaro/hiveclaw.git
+cd hiveclaw
 pnpm install
 pnpm build
 pnpm start
@@ -69,7 +69,7 @@ pnpm start
 
 ### Windows
 
-Download the self-contained bundle from [danilocaffaro.github.io/superclaw-pure](https://danilocaffaro.github.io/superclaw-pure/) — includes Node.js, no installation needed. Just unzip and run `start.bat`.
+Download the self-contained bundle from [danilocaffaro.github.io/hiveclaw](https://danilocaffaro.github.io/hiveclaw/) — includes Node.js, no installation needed. Just unzip and run `start.bat`.
 
 ## First Run
 
@@ -82,7 +82,7 @@ Download the self-contained bundle from [danilocaffaro.github.io/superclaw-pure]
 ## Architecture
 
 ```
-superclaw-pure/
+hiveclaw/
 ├── apps/
 │   ├── server/     # Fastify + better-sqlite3 (port 4070)
 │   ├── web/        # Next.js static export (SPA)
