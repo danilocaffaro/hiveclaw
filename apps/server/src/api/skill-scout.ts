@@ -18,7 +18,7 @@ import { logger } from '../lib/logger.js';
 import { runScoutNow, getScoutStatus } from '../engine/skill-scout-cron.js';
 import type Database from 'better-sqlite3';
 
-const SKILLS_DIR = join(homedir(), '.hiveclaw', 'skills');
+const SKILLS_DIR = join(homedir(), '.hiveclaw', 'workspace', 'skills');
 
 export function registerSkillScoutRoutes(app: FastifyInstance, db: Database.Database): void {
 

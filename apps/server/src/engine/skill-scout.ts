@@ -45,8 +45,8 @@ export interface SkillRecommendation {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const SKILLS_DIR = join(homedir(), '.hiveclaw', 'skills');
-const AUDIT_SCRIPT = join(homedir(), '.hiveclaw', 'skills', 'self-learning', 'scripts', 'audit-skill.sh');
+const SKILLS_DIR = join(homedir(), '.hiveclaw', 'workspace', 'skills');
+const AUDIT_SCRIPT = join(homedir(), '.hiveclaw', 'workspace', 'skills', 'self-learning', 'scripts', 'audit-skill.sh');
 
 // ─── Gemini Search ───────────────────────────────────────────────────────────
 
