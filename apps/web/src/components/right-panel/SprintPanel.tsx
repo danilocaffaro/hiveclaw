@@ -54,9 +54,14 @@ function SprintPanel() {
     try {
       const res = await fetch('/api/backlog');
       const d = await res.json() as { data: { columns: Columns } };
-      setColumns(d.data.columns);
-    } catch { /* ignore */ }
-    finally { setLoading(false); }
+      if (d?.data?.columns) {
+        setColumns(d.data.columns);
+      }
+    } catch (e) {
+      console.error('[SprintPanel] load error:', e);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { void load(); }, [load]);
