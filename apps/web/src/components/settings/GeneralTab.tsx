@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SectionTitle, SettingRow, Toggle } from './shared';
 
 // ─── General Tab (B068: App config only — no agent/engine config here) ────────
@@ -46,6 +46,53 @@ const RESPONSE_STYLES = [
   { value: 'detailed', label: 'Detailed', desc: 'Thorough explanations' },
 ] as const;
 
+// ─── Update Banner ────────────────────────────────────────────────────────────
+function UpdateBanner() {
+  const [update, setUpdate] = useState<{ available: boolean; latest: string; url: string } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/update')
+      .then(r => r.json())
+      .then(d => { if (d.data?.available) setUpdate(d.data); })
+      .catch(() => {});
+  }, []);
+
+  if (!update) return null;
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: '12px 16px', marginBottom: 16,
+      borderRadius: 'var(--radius-lg)',
+      background: 'rgba(59, 130, 246, 0.1)',
+      border: '1px solid rgba(59, 130, 246, 0.3)',
+    }}>
+      <span style={{ fontSize: 20 }}>🆕</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+          Update available: v{update.latest}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 2 }}>
+          You're running an older version. Update to get the latest features and fixes.
+        </div>
+      </div>
+      <a
+        href={update.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          padding: '6px 14px', borderRadius: 'var(--radius-md)',
+          background: 'var(--accent)', color: '#fff',
+          fontSize: 12, fontWeight: 600, textDecoration: 'none',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        View Release
+      </a>
+    </div>
+  );
+}
+
 export default function GeneralTab() {
   const [config, setConfig] = useState<AppConfig>(() => {
     if (typeof window === 'undefined') return DEFAULTS;
@@ -89,6 +136,7 @@ export default function GeneralTab() {
 
   return (
     <div>
+      <UpdateBanner />
       <SectionTitle
         title="General"
         desc="Application preferences. Agent config is in the Agents tab → per-agent settings."

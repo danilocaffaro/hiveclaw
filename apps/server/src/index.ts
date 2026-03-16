@@ -78,7 +78,8 @@ import { getAuthUser } from './api/auth.js';
 
 const PORT = parseInt(process.env.PORT ?? process.env.HIVECLAW_PORT ?? process.env.SUPERCLAW_PORT ?? String(DEFAULT_PORT), 10);
 const HOST = process.env.HIVECLAW_HOST ?? process.env.SUPERCLAW_HOST ?? DEFAULT_HOST;
-const VERSION = '0.1.0';
+import { getVersion } from './lib/version.js';
+const VERSION = getVersion();
 
 async function main() {
   // ─── Initialize SQLite ──────────────────────────────────────────────────
@@ -178,6 +179,7 @@ async function main() {
     '/api/files/upload',
     '/api/health',
     '/api/version',
+    '/api/update',
     '/api/preview/',
     '/api/agents/status/stream',
     // NOTE: /api/engine/ is intentionally NOT here — rewriteUrl strips /api prefix
@@ -460,6 +462,9 @@ async function main() {
 
     // Start weekly skill discovery cron (Sprint 78)
     startSkillScoutCron(db);
+
+    // Check for updates (non-blocking, fires after startup)
+    import('./lib/update-checker.js').then(m => m.checkForUpdate()).catch(() => {});
   } catch (err) {
     app.log.error(err);
     process.exit(1);

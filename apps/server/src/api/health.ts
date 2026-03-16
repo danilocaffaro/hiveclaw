@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { getWatchdog } from '../engine/self-watchdog.js';
 import { getVersionInfo } from '../lib/version.js';
 import { getDb } from '../db/schema.js';
+import { checkForUpdate, getCachedUpdate } from '../lib/update-checker.js';
 
 export function registerHealthRoutes(app: FastifyInstance) {
   app.get('/healthz', async () => {
@@ -42,6 +43,9 @@ export function registerHealthRoutes(app: FastifyInstance) {
       dbStats.schemaVersion = sv?.version ?? 0;
     } catch { /* non-fatal */ }
 
+    // Include update info if cached
+    const update = getCachedUpdate();
+
     return {
       version,
       commit,
@@ -56,11 +60,19 @@ export function registerHealthRoutes(app: FastifyInstance) {
         heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
       },
       db: dbStats,
+      ...(update?.available ? { update: { latest: update.latest, url: update.url } } : {}),
     };
   });
 
   // GET /api/version — lightweight version info
   app.get('/api/version', async () => {
     return { data: getVersionInfo() };
+  });
+
+  // GET /api/update — check for updates (returns cached or fresh)
+  app.get('/api/update', async (req) => {
+    const force = (req.query as Record<string, string>).force === 'true';
+    const info = await checkForUpdate(force);
+    return { data: info };
   });
 }
