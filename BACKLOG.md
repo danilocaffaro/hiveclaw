@@ -77,7 +77,7 @@
 
 ---
 
-### Batch R4 — Multi-User Foundation (8h)
+### Batch R4 — Multi-User Foundation (8h) ✅ DONE (commit `341ff45`)
 > **Goal:** Other humans can access your HiveClaw. Auth + invite basics.
 
 | Step | Item | Deliverable | Time |
@@ -92,7 +92,7 @@
 
 ---
 
-### Batch R5 — Invite UX + Management (4h)
+### Batch R5 — Invite UX + Management (4h) ✅ DONE (commit `5841e66`)
 > **Goal:** TC2-quality invite experience. Owner can manage users.
 
 | Step | Item | Deliverable | Time |
