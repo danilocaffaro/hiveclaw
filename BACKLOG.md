@@ -48,7 +48,7 @@
 
 ---
 
-### Batch R2 — Foundation Cleanup (6h)
+### Batch R2 — Foundation Cleanup (6h) ✅ DONE (commit `07703c2`)
 > **Goal:** Codebase health before big features.
 
 | Step | Item | Deliverable | Time |
@@ -63,7 +63,7 @@
 
 ---
 
-### Batch R3 — Update System (4h)
+### Batch R3 — Update System (4h) ✅ DONE (commit `18a7189`, release v0.2.0)
 > **Goal:** Users know when there's an update and can act on it.
 
 | Step | Item | Deliverable | Time |
