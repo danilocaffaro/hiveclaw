@@ -278,14 +278,20 @@ export function registerSessionRoutes(app: FastifyInstance) {
     const { content, agent_id, sender: senderBody } = req.body ?? {};
 
     // Sprint C: Resolve sender identity
+    // R15: If request was authenticated via agent bearer token, use agent identity
+    const agentAuth = (req as unknown as Record<string, unknown>).agentAuth as
+      { id: string; name: string; emoji: string; type: string } | undefined;
+
     // If sender field provided (e.g., from external agent or identified client), use it.
-    // Otherwise default to human sender.
-    const sender = {
-      id: senderBody?.id ?? 'user',
-      name: senderBody?.name ?? '',
-      emoji: senderBody?.emoji ?? '',
-      type: senderBody?.type ?? 'human',
-    };
+    // Agent bearer token overrides any sender field in body.
+    const sender = agentAuth
+      ? { id: agentAuth.id, name: agentAuth.name, emoji: agentAuth.emoji, type: 'agent' }
+      : {
+          id: senderBody?.id ?? 'user',
+          name: senderBody?.name ?? '',
+          emoji: senderBody?.emoji ?? '',
+          type: senderBody?.type ?? 'human',
+        };
 
     if (!content || typeof content !== 'string' || content.trim() === '') {
       return reply.status(400).send({

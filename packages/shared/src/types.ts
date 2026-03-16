@@ -18,6 +18,7 @@ export interface Agent {
   maxTokens: number;
   status: 'active' | 'idle' | 'busy' | 'error' | 'offline';
   color: string;
+  apiToken?: string;
   createdAt: string;
   updatedAt: string;
 }

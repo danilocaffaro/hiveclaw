@@ -307,6 +307,30 @@ async function main() {
         url.endsWith('.woff2')
       )) return;
 
+      // R15: Agent bearer token auth — hc-agent-* tokens
+      const authHeader = req.headers['authorization'] as string | undefined;
+      if (authHeader?.startsWith('Bearer hc-agent-')) {
+        const token = authHeader.slice(7); // strip "Bearer "
+        const agent = agents.getByToken(token);
+        if (agent) {
+          // Attach agent identity to request for sender_type resolution
+          (req as unknown as Record<string, unknown>).agentAuth = {
+            id: agent.id,
+            name: agent.name,
+            emoji: agent.emoji,
+            type: 'agent',
+          };
+          // Also grant owner-level access for API permissions
+          const owner = getOwner();
+          if (owner) (req as unknown as Record<string, unknown>).authUser = owner;
+          return;
+        }
+        // Invalid agent token — reject
+        return reply.status(401).send({
+          error: { code: 'INVALID_TOKEN', message: 'Invalid agent bearer token' },
+        });
+      }
+
       // Try API key auth first
       const user = getAuthUser(req, userRepo);
       if (user) return;

@@ -1,4 +1,5 @@
 import { v4 as uuid } from 'uuid';
+import { randomBytes } from 'crypto';
 import type Database from 'better-sqlite3';
 import type { Agent, AgentCreateInput } from '@hiveclaw/shared';
 import { sanitizeText } from '../utils/sanitize.js';
@@ -8,6 +9,7 @@ interface AgentRow {
   system_prompt: string; skills: string; model_preference: string | null;
   provider_preference: string | null; fallback_providers: string;
   temperature: number; max_tokens: number | null; status: string; color: string | null;
+  api_token: string | null;
   created_at: string; updated_at: string;
 }
 
@@ -85,6 +87,34 @@ export class AgentRepository {
     return result.changes > 0;
   }
 
+  // ── R15: Agent Bearer Token Management ────────────────────────────────────
+
+  /** Generate a new API token for an agent: hc-agent-{shortId}-{random} */
+  generateToken(id: string): string | null {
+    const agent = this.getById(id);
+    if (!agent) return null;
+    const shortId = id.slice(0, 8);
+    const random = randomBytes(16).toString('hex');
+    const token = `hc-agent-${shortId}-${random}`;
+    this.db.prepare('UPDATE agents SET api_token = ?, updated_at = ? WHERE id = ?')
+      .run(token, new Date().toISOString(), id);
+    return token;
+  }
+
+  /** Revoke (clear) an agent's API token */
+  revokeToken(id: string): boolean {
+    const result = this.db.prepare('UPDATE agents SET api_token = NULL, updated_at = ? WHERE id = ?')
+      .run(new Date().toISOString(), id);
+    return result.changes > 0;
+  }
+
+  /** Look up an agent by its bearer token. Returns null if not found or token is null. */
+  getByToken(token: string): Agent | null {
+    if (!token || !token.startsWith('hc-agent-')) return null;
+    const row = this.db.prepare('SELECT * FROM agents WHERE api_token = ?').get(token) as AgentRow | undefined;
+    return row ? this.toAgent(row) : null;
+  }
+
   private toAgent(row: AgentRow): Agent {
     return {
       id: row.id,
@@ -101,6 +131,7 @@ export class AgentRepository {
       maxTokens: row.max_tokens ?? 4096,
       status: row.status as Agent['status'],
       color: row.color ?? '',
+      apiToken: row.api_token ?? undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

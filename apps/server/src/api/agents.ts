@@ -380,5 +380,46 @@ export function registerAgentRoutes(app: FastifyInstance, injectedAgents?: Agent
       const results = memoryRepo.search(q.trim(), limitNum);
       return { data: results };
     });
+
+  // ── R15: Agent Bearer Token Management ──────────────────────────────────
+
+  // POST /agents/:id/token — Generate a new bearer token
+  app.post<{ Params: { id: string } }>('/agents/:id/token', async (req, reply) => {
+    const token = agents().generateToken(req.params.id);
+    if (!token) {
+      return reply.status(404).send({
+        error: { code: 'NOT_FOUND', message: `Agent not found: ${req.params.id}` },
+      });
+    }
+    logger.info('[AgentAuth] Token generated for agent %s', req.params.id.slice(0, 8));
+    return { data: { token } };
+  });
+
+  // DELETE /agents/:id/token — Revoke bearer token
+  app.delete<{ Params: { id: string } }>('/agents/:id/token', async (req, reply) => {
+    const revoked = agents().revokeToken(req.params.id);
+    if (!revoked) {
+      return reply.status(404).send({
+        error: { code: 'NOT_FOUND', message: `Agent not found: ${req.params.id}` },
+      });
+    }
+    logger.info('[AgentAuth] Token revoked for agent %s', req.params.id.slice(0, 8));
+    return { data: { revoked: true } };
+  });
+
+  // GET /agents/:id/token — Check if agent has a token (returns masked)
+  app.get<{ Params: { id: string } }>('/agents/:id/token', async (req, reply) => {
+    const agent = agents().getById(req.params.id);
+    if (!agent) {
+      return reply.status(404).send({
+        error: { code: 'NOT_FOUND', message: `Agent not found: ${req.params.id}` },
+      });
+    }
+    const hasToken = !!(agent.apiToken);
+    const masked = agent.apiToken
+      ? agent.apiToken.slice(0, 18) + '...' + agent.apiToken.slice(-4)
+      : null;
+    return { data: { hasToken, masked } };
+  });
   }
 }
