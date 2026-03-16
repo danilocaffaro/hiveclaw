@@ -111,6 +111,7 @@ function getNextRunDelay(cron: string): number {
 }
 
 async function executeAutomation(db: Database.Database, auto: Automation): Promise<void> {
+  logger.info('[automation] Executing "%s" (agent_id=%s, action=%s)', auto.name, auto.agent_id, auto.action_type);
   const config = JSON.parse(auto.action_config || '{}');
 
   try {
@@ -132,9 +133,11 @@ async function executeAutomation(db: Database.Database, auto: Automation): Promi
       // Store the user message
       const msgId = randomUUID();
       const message = config.message || config.prompt || `Automation: ${auto.name}`;
+      // Store as JSON content block (same format as session-manager.ts saveMessage)
+      const contentJson = JSON.stringify([{ type: 'text', text: message }]);
       db.prepare(
         "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, 'user', ?, datetime('now'))"
-      ).run(msgId, session.id, message);
+      ).run(msgId, session.id, contentJson);
 
       // Actually trigger the agent to respond (R9 fix: was dead-letter before)
       const agentRow = db.prepare("SELECT * FROM agents WHERE id = ?").get(auto.agent_id) as Record<string, unknown> | undefined;
@@ -144,8 +147,8 @@ async function executeAutomation(db: Database.Database, auto: Automation): Promi
           name: String(agentRow.name || ''),
           emoji: String(agentRow.emoji || '🤖'),
           systemPrompt: String(agentRow.system_prompt || ''),
-          providerId: String(agentRow.provider_id || ''),
-          modelId: String(agentRow.model_id || ''),
+          providerId: String(agentRow.provider_preference || agentRow.provider_id || ''),
+          modelId: String(agentRow.model_preference || agentRow.model_id || ''),
           temperature: Number(agentRow.temperature ?? 0.7),
           maxTokens: Number(agentRow.max_tokens ?? 4096),
           tools: JSON.parse(String(agentRow.tools || '[]')),
@@ -153,11 +156,13 @@ async function executeAutomation(db: Database.Database, auto: Automation): Promi
         };
         // Consume the SSE stream to completion (fire-and-forget — no client to stream to)
         try {
+          logger.info('[automation] Running agent %s (provider=%s model=%s)', agentConfig.name, agentConfig.providerId, agentConfig.modelId);
           for await (const _event of runAgent(session.id, message, agentConfig, { skipPersistUserMessage: true })) {
             // Events consumed silently — agent response is persisted in DB by agent-runner
           }
+          logger.info('[automation] Agent %s completed for "%s"', agentConfig.name, auto.name);
         } catch (runErr) {
-          logger.error({ err: runErr, autoId: auto.id }, '[automation] Agent run failed');
+          logger.error({ err: runErr, autoId: auto.id }, '[automation] Agent run failed for "%s"', auto.name);
         }
       }
 
@@ -356,7 +361,10 @@ export function registerAutomationRoutes(app: FastifyInstance, db: Database.Data
     const auto = db.prepare('SELECT * FROM automations WHERE id = ?').get(req.params.id) as Automation | undefined;
     if (!auto) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Automation not found' } });
 
-    await executeAutomation(db, auto);
+    // Fire-and-forget: don't await (automation runs in background)
+    void executeAutomation(db, auto).catch(err => {
+      logger.error({ err, autoId: auto.id }, '[automation] Unhandled execution error');
+    });
     return { data: { success: true, message: `Automation "${auto.name}" triggered` } };
   });
 }
