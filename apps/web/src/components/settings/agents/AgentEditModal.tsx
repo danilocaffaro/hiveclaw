@@ -1,9 +1,206 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { AgentRow } from './types';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? '/api';
+
+// ── Core Memory Block Editor ─────────────────────────────────────────────────
+interface CoreBlock {
+  block_name: string;
+  content: string;
+  max_tokens: number;
+}
+
+const CORE_BLOCK_META: Record<string, { icon: string; label: string; desc: string }> = {
+  persona: { icon: '🎭', label: 'Persona', desc: 'Identity, role, communication style' },
+  human: { icon: '👤', label: 'Human', desc: 'User profile, preferences, safety laws' },
+  project: { icon: '📁', label: 'Project', desc: 'Repo, stack, conventions, team' },
+  scratchpad: { icon: '📝', label: 'Scratchpad', desc: 'Current state, notes, decisions' },
+};
+
+function CoreMemorySection({ agentId }: { agentId: string }) {
+  const [blocks, setBlocks] = useState<CoreBlock[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<string>('');
+  const [saving, setSaving] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<{ block: string; ok: boolean } | null>(null);
+
+  const loadBlocks = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/memory/agents/${agentId}/core`);
+      const json = await res.json();
+      setBlocks(json.data ?? []);
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, [agentId]);
+
+  useEffect(() => { loadBlocks(); }, [loadBlocks]);
+
+  const handleExpand = (blockName: string) => {
+    if (expanded === blockName) {
+      setExpanded(null);
+      return;
+    }
+    setExpanded(blockName);
+    const block = blocks.find((b) => b.block_name === blockName);
+    setEditDraft(block?.content ?? '');
+    setSaveStatus(null);
+  };
+
+  const handleSave = async (blockName: string) => {
+    setSaving(blockName);
+    setSaveStatus(null);
+    try {
+      const res = await fetch(`${API}/memory/agents/${agentId}/core/${blockName}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: editDraft }),
+      });
+      if (res.ok) {
+        setBlocks((prev) =>
+          prev.map((b) => b.block_name === blockName ? { ...b, content: editDraft } : b)
+        );
+        setSaveStatus({ block: blockName, ok: true });
+        // If this was a new block not in the list, add it
+        if (!blocks.find((b) => b.block_name === blockName)) {
+          setBlocks((prev) => [...prev, { block_name: blockName, content: editDraft, max_tokens: 500 }]);
+        }
+      } else {
+        setSaveStatus({ block: blockName, ok: false });
+      }
+    } catch {
+      setSaveStatus({ block: blockName, ok: false });
+    }
+    setSaving(null);
+  };
+
+  // Ensure all 4 standard blocks appear (even if empty)
+  const blockNames = ['persona', 'human', 'project', 'scratchpad'];
+  const blockMap = new Map(blocks.map((b) => [b.block_name, b]));
+
+  if (loading) {
+    return (
+      <div style={{ padding: '12px 0', fontSize: 12, color: 'var(--text-muted)' }}>
+        ⏳ Loading core memory…
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {blockNames.map((name) => {
+          const block = blockMap.get(name);
+          const meta = CORE_BLOCK_META[name] ?? { icon: '📄', label: name, desc: '' };
+          const isExpanded = expanded === name;
+          const hasContent = !!block?.content;
+
+          return (
+            <div key={name}>
+              {/* Block header (clickable) */}
+              <button
+                onClick={() => handleExpand(name)}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '8px 10px', borderRadius: 'var(--radius-md)',
+                  background: isExpanded ? 'var(--surface-hover)' : 'transparent',
+                  border: `1px solid ${isExpanded ? 'var(--coral)' : 'var(--border)'}`,
+                  cursor: 'pointer', textAlign: 'left',
+                  transition: 'all 150ms',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isExpanded) e.currentTarget.style.background = 'var(--surface-hover)';
+                }}
+                onMouseLeave={(e) => {
+                  if (!isExpanded) e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <span style={{ fontSize: 16 }}>{meta.icon}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{meta.label}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>{meta.desc}</div>
+                </div>
+                <span style={{
+                  fontSize: 10, padding: '2px 6px', borderRadius: 4,
+                  background: hasContent ? 'color-mix(in srgb, var(--green) 15%, transparent)' : 'color-mix(in srgb, var(--text-muted) 10%, transparent)',
+                  color: hasContent ? 'var(--green)' : 'var(--text-muted)',
+                  fontWeight: 500,
+                }}>
+                  {hasContent ? `${block!.content.length} chars` : 'empty'}
+                </span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 150ms' }}>
+                  ▼
+                </span>
+              </button>
+
+              {/* Expanded editor */}
+              {isExpanded && (
+                <div style={{
+                  padding: '10px 12px', marginTop: 4,
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--input-bg)',
+                  border: '1px solid var(--border)',
+                }}>
+                  <textarea
+                    value={editDraft}
+                    onChange={(e) => setEditDraft(e.target.value)}
+                    rows={8}
+                    placeholder={`Enter ${meta.label.toLowerCase()} content…`}
+                    style={{
+                      width: '100%', padding: '8px', boxSizing: 'border-box',
+                      borderRadius: 'var(--radius-md)', background: 'var(--surface)',
+                      border: '1px solid var(--border)', color: 'var(--text)',
+                      fontSize: 12, lineHeight: 1.6, fontFamily: 'var(--font-mono)',
+                      resize: 'vertical', minHeight: 100, outline: 'none',
+                      transition: 'border-color 150ms',
+                    }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--coral)'; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; }}
+                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                    <button
+                      onClick={() => handleSave(name)}
+                      disabled={saving === name}
+                      style={{
+                        padding: '5px 14px', borderRadius: 'var(--radius-md)',
+                        background: saving === name ? 'var(--surface-hover)' : 'var(--coral)',
+                        border: 'none', color: saving === name ? 'var(--text-muted)' : '#fff',
+                        fontSize: 11, fontWeight: 600, cursor: saving === name ? 'not-allowed' : 'pointer',
+                        transition: 'all 150ms',
+                      }}
+                    >
+                      {saving === name ? 'Saving…' : 'Save Block'}
+                    </button>
+                    <button
+                      onClick={() => setExpanded(null)}
+                      style={{
+                        padding: '5px 14px', borderRadius: 'var(--radius-md)',
+                        background: 'transparent', border: '1px solid var(--border)',
+                        color: 'var(--text-muted)', fontSize: 11, cursor: 'pointer',
+                      }}
+                    >
+                      Close
+                    </button>
+                    {saveStatus?.block === name && (
+                      <span style={{
+                        fontSize: 11, color: saveStatus.ok ? 'var(--green)' : 'var(--coral)',
+                        fontWeight: 500,
+                      }}>
+                        {saveStatus.ok ? '✅ Saved' : '❌ Failed'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 interface ProviderInfo {
   id: string;
@@ -312,6 +509,24 @@ export function AgentEditModal({
                   );
                 })()}
               </div>
+            </div>
+
+            {/* ── Core Memory Blocks ─────────────────────────────────────── */}
+            <div style={{
+              marginTop: 16, padding: 14, borderRadius: 'var(--radius-lg)',
+              background: 'var(--surface)', border: '1px solid var(--border)',
+            }}>
+              <div style={{
+                fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)',
+                textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10,
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}>
+                <span>🧠</span> Core Memory (Identity)
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
+                Persistent knowledge injected into every prompt — who this agent is, who the user is, project context, and working notes.
+              </div>
+              <CoreMemorySection agentId={agent.id} />
             </div>
           </div>
 
