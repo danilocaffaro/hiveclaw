@@ -33,7 +33,8 @@ export function registerConfigRoutes(app: FastifyInstance, db?: Database.Databas
   const users = db ? new UserRepository(db) : null;
   // Get app config (native — no bridge needed)
   app.get('/config', async () => {
-    return { data: { engine: 'native', version: '0.1.0' } };
+    const { getVersion } = await import('../lib/version.js');
+    return { data: { engine: 'native', version: getVersion() } };
   });
 
   // List available models (from DB providers)

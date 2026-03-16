@@ -625,6 +625,23 @@ export function initDatabase(): Database.Database {
     // Non-fatal — FTS backfill can be retried
   }
 
+  // ── Schema versioning (R2) ────────────────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS schema_version (
+      id INTEGER PRIMARY KEY CHECK(id = 1),
+      version INTEGER NOT NULL DEFAULT 1,
+      applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  // Current schema version: bump when adding migrations
+  const CURRENT_SCHEMA = 2;
+  const sv = db.prepare("SELECT version FROM schema_version WHERE id=1").get() as { version: number } | undefined;
+  if (!sv) {
+    db.prepare("INSERT INTO schema_version (id, version, applied_at) VALUES (1, ?, datetime('now'))").run(CURRENT_SCHEMA);
+  } else if (sv.version < CURRENT_SCHEMA) {
+    db.prepare("UPDATE schema_version SET version=?, applied_at=datetime('now') WHERE id=1").run(CURRENT_SCHEMA);
+  }
+
   // No default agent seed — the setup wizard creates the first agent
   // This ensures a 100% virgin setup experience
 

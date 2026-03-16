@@ -1,23 +1,26 @@
 import type { FastifyInstance } from 'fastify';
 import { getWatchdog } from '../engine/self-watchdog.js';
-
-const VERSION = '0.1.0';
+import { getVersionInfo } from '../lib/version.js';
+import { getDb } from '../db/schema.js';
 
 export function registerHealthRoutes(app: FastifyInstance) {
   app.get('/healthz', async () => {
+    const { version } = getVersionInfo();
     return {
       status: 'ok',
-      version: VERSION,
+      version,
       engine: 'native',
     };
   });
 
   app.get('/status', async () => {
+    const { version, commit } = getVersionInfo();
     const watchdog = getWatchdog();
     const snapshot = watchdog.getSnapshot();
     return {
       status: 'ok',
-      version: VERSION,
+      version,
+      commit,
       uptime: process.uptime(),
       memory: process.memoryUsage(),
       engine: { type: 'native' },
@@ -26,12 +29,38 @@ export function registerHealthRoutes(app: FastifyInstance) {
   });
 
   app.get('/api/health', async () => {
+    const { version, commit, buildDate } = getVersionInfo();
+
+    // DB stats (quick, cached)
+    let dbStats = { agents: 0, sessions: 0, messages: 0, schemaVersion: 0 };
+    try {
+      const db = getDb();
+      dbStats.agents = (db.prepare("SELECT COUNT(*) as c FROM agents").get() as { c: number }).c;
+      dbStats.sessions = (db.prepare("SELECT COUNT(*) as c FROM sessions").get() as { c: number }).c;
+      dbStats.messages = (db.prepare("SELECT COUNT(*) as c FROM messages").get() as { c: number }).c;
+      const sv = db.prepare("SELECT version FROM schema_version WHERE id=1").get() as { version: number } | undefined;
+      dbStats.schemaVersion = sv?.version ?? 0;
+    } catch { /* non-fatal */ }
+
     return {
-      version: VERSION,
-      buildTime: new Date().toISOString().slice(0, 10),
+      version,
+      commit,
+      buildDate,
       nodeVersion: process.version,
+      platform: process.platform,
+      arch: process.arch,
       engine: 'native',
       uptime: Math.floor(process.uptime()),
+      memory: {
+        rss: Math.round(process.memoryUsage().rss / 1024 / 1024),
+        heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      },
+      db: dbStats,
     };
+  });
+
+  // GET /api/version — lightweight version info
+  app.get('/api/version', async () => {
+    return { data: getVersionInfo() };
   });
 }

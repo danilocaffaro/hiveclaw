@@ -152,7 +152,7 @@ class MCPServerConnection {
     await this.sendRequest('initialize', {
       protocolVersion: '2024-11-05',
       capabilities: { tools: {} },
-      clientInfo: { name: 'hiveclaw', version: '0.1.0' },
+      clientInfo: { name: 'hiveclaw', version: '0.2.0' },
     });
 
     // Send initialized notification

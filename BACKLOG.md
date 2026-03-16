@@ -10,9 +10,11 @@
 
 | # | Bug | Severidade | Est. | Batch |
 |---|-----|-----------|------|-------|
-| B12 | Messages via API não aparecem na UI (SSE miss) | Medium | 2h | R1 |
-| B13 | Squad runner self-reply bug | Medium | 1h | R1 |
-| B14 | User bubble text não selecionável/copiável | High | 1h | R1 |
+| B12 | Messages via API não aparecem na UI (SSE miss) | Medium | ✅ NOT A BUG | R1 |
+| B13 | Squad runner self-reply bug | Medium | ✅ FIXED | R1 |
+| B14 | User bubble text não selecionável/copiável | High | ✅ FIXED | R1 |
+| B15 | Skills path mismatch (skills dir empty) | High | ✅ FIXED `4119c02` | R1 |
+| B16 | Skill Scout hard-coded to Gemini only | Medium | ✅ FIXED `bfb690d` | R1 |
 
 ---
 
@@ -222,7 +224,7 @@ Week 4 (Apr 6-12):
 | Agent templates | Low effort, low urgency |
 | Presentation API (reveal.js) | Wow factor, later |
 | Starter Kit + Skill Intelligence | Big scope, post-v1.0 |
-| Rename GitHub repo superclaw-pure → hiveclaw | Cosmetic, do when ready |
+| Rename GitHub repo superclaw-pure → hiveclaw | ✅ DONE (`288a557`) |
 
 ---
 

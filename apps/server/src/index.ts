@@ -177,6 +177,7 @@ async function main() {
     '/api/console/',
     '/api/files/upload',
     '/api/health',
+    '/api/version',
     '/api/preview/',
     '/api/agents/status/stream',
     // NOTE: /api/engine/ is intentionally NOT here — rewriteUrl strips /api prefix

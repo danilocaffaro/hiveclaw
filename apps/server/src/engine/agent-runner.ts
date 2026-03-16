@@ -760,8 +760,9 @@ function backgroundMemoryExtract(
           // Negative patterns: "I never", "I don't like", "I hate", "please never", "I dislike"
           // These are stored as type 'correction' (aversion) rather than 'preference' so the
           // agent treats them as constraints to avoid, not things to repeat.
-          if (/(?:i prefer|i like|i always|i never|i want|favorite|please always|please never|don't like|i hate|i love|i dislike)\b/i.test(lo)) {
-            const isNegated = /(?:i never|don't like|i hate|please never|i dislike|i don't want|never want|avoid|i can't stand)\b/i.test(lo);
+          // Sprint BugFix: Added PT-BR patterns for i18n support
+          if (/(?:i prefer|i like|i always|i never|i want|favorite|please always|please never|don't like|i hate|i love|i dislike|eu prefiro|eu gosto|eu sempre|eu nunca|eu quero|favorito|por favor sempre|por favor nunca|não gosto|eu odeio|eu amo|eu adoro|eu detesto|prefiro)\b/i.test(lo)) {
+            const isNegated = /(?:i never|don't like|i hate|please never|i dislike|i don't want|never want|avoid|i can't stand|eu nunca|não gosto|eu odeio|por favor nunca|eu detesto|não quero|nunca quero|evitar|eu não suporto)\b/i.test(lo);
             const key = `pref_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
             if (isNegated) {
               // Store as correction/aversion — prefix value so LLM context is unambiguous
@@ -776,8 +777,8 @@ function backgroundMemoryExtract(
             extractedCount.preferences++;
           }
 
-          // Corrections
-          if (/(?:actually|no,? that's wrong|correction|that's incorrect|not right|you're wrong|i meant)\b/i.test(lo)) {
+          // Corrections (EN + PT-BR)
+          if (/(?:actually|no,? that's wrong|correction|that's incorrect|not right|you're wrong|i meant|na verdade|está errado|isso está errado|correção|isso não está certo|não está certo|você está errado|eu quis dizer|errado|tá errado)\b/i.test(lo)) {
             const key = `corr_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
             repo.set(agentId, key, line.trim().slice(0, 300), 'correction', 1.0, undefined, {
               source: 'auto_extract', tags: ['from_user'],
@@ -785,8 +786,8 @@ function backgroundMemoryExtract(
             extractedCount.corrections++;
           }
 
-          // Goals
-          if (/(?:i want to|my goal|i need to|aiming for|objective is|target is|mission is)\b/i.test(lo) && lo.length < 300) {
+          // Goals (EN + PT-BR)
+          if (/(?:i want to|my goal|i need to|aiming for|objective is|target is|mission is|eu quero|meu objetivo|eu preciso|mirando em|objetivo é|meta é|missão é|minha meta|quero conseguir)\b/i.test(lo) && lo.length < 300) {
             const key = `goal_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
             repo.set(agentId, key, line.trim().slice(0, 300), 'goal', 0.85, undefined, {
               source: 'auto_extract', tags: ['from_user'],
@@ -794,8 +795,8 @@ function backgroundMemoryExtract(
             extractedCount.goals++;
           }
 
-          // Named entities
-          const nameMatch = line.match(/(?:my name is|i'm called|i am|call me)\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?)/i);
+          // Named entities (EN + PT-BR)
+          const nameMatch = line.match(/(?:my name is|i'm called|i am|call me|meu nome é|me chamo|eu sou o|eu sou a|pode me chamar de|me chamam de)\s+([A-Z\u00C0-\u017F][a-zA-Z\u00C0-\u017F]+(?:\s+[A-Z\u00C0-\u017F][a-zA-Z\u00C0-\u017F]+)?)/i);
           if (nameMatch) {
             repo.set(agentId, `entity_user_name`, nameMatch[1].trim(), 'entity', 1.0, undefined, {
               source: 'auto_extract', tags: ['from_user'],
@@ -810,8 +811,8 @@ function backgroundMemoryExtract(
         for (const line of assistantResponse.split(/[.\n]+/).filter(l => l.trim().length > 15)) {
           const lo = line.toLowerCase().trim();
 
-          // Decisions (from assistant response = confirmed decisions)
-          if (/(?:decided to|will use|chosen approach|going with|opted for|confirmed|agreed on)\b/i.test(lo) && lo.length < 300) {
+          // Decisions (from assistant response = confirmed decisions) (EN + PT-BR)
+          if (/(?:decided to|will use|chosen approach|going with|opted for|confirmed|agreed on|decidi usar|vou usar|abordagem escolhida|optei por|confirmado|concordamos|decidimos|vamos com|escolhi)\b/i.test(lo) && lo.length < 300) {
             const key = `decision_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
             repo.set(agentId, key, line.trim().slice(0, 300), 'decision', 0.85, undefined, {
               source: 'auto_extract', tags: ['from_assistant'],
