@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HiveClaw — Your AI team, self-hosted</title>
+<meta name="description" content="HiveClaw is the open-source, self-hosted AI platform with agents that know themselves and you. Core Memory identity system, multi-agent squads, 10-layer eidetic memory, zero cloud dependency.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐾</text></svg>">
+<style>
+/* ─── Reset & Base ─── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0a0a0f;
+  --bg2: #12121a;
+  --bg3: #1a1a28;
+  --accent: #7c5cff;
+  --accent2: #00d4aa;
+  --accent3: #ff6b6b;
+  --text: #e8e8f0;
+  --text2: #9898b0;
+  --text3: #6868a0;
+  --radius: 16px;
+  --max-w: 1200px;
+}
+html { scroll-behavior: smooth; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+a { color: var(--accent); text-decoration: none; transition: opacity .2s; }
+a:hover { opacity: .85; }
+
+/* ─── Utility ─── */
+.container { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+.tag {
+  display: inline-block; padding: 4px 12px; border-radius: 100px;
+  font-size: 12px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase;
+}
+.tag--accent { background: rgba(124,92,255,.15); color: var(--accent); border: 1px solid rgba(124,92,255,.3); }
+.tag--green { background: rgba(0,212,170,.12); color: var(--accent2); border: 1px solid rgba(0,212,170,.3); }
+.tag--red { background: rgba(255,107,107,.12); color: var(--accent3); border: 1px solid rgba(255,107,107,.3); }
+
+/* ─── Nav ─── */
+nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  background: rgba(10,10,15,.85); backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+nav .inner {
+  max-width: var(--max-w); margin: 0 auto; padding: 0 24px;
+  display: flex; align-items: center; justify-content: space-between; height: 64px;
+}
+nav .logo { font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+nav .logo span { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+nav .links { display: flex; gap: 32px; align-items: center; }
+nav .links a { color: var(--text2); font-size: 14px; font-weight: 500; }
+nav .links a:hover { color: var(--text); }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px; padding: 10px 24px;
+  border-radius: 10px; font-weight: 600; font-size: 14px; transition: all .2s;
+  border: none; cursor: pointer; text-decoration: none;
+}
+.btn--primary {
+  background: linear-gradient(135deg, var(--accent), #5a3de6);
+  color: #fff; box-shadow: 0 4px 20px rgba(124,92,255,.3);
+}
+.btn--primary:hover { transform: translateY(-1px); box-shadow: 0 6px 30px rgba(124,92,255,.45); opacity: 1; }
+.btn--outline {
+  background: transparent; color: var(--text);
+  border: 1px solid rgba(255,255,255,.15);
+}
+.btn--outline:hover { border-color: rgba(255,255,255,.3); background: rgba(255,255,255,.04); opacity: 1; }
+.btn--lg { padding: 14px 32px; font-size: 16px; border-radius: 12px; }
+.btn--github { background: #24292e; color: #fff; }
+.btn--github:hover { background: #2f363d; opacity: 1; }
+
+/* ─── Hero ─── */
+.hero {
+  padding: 160px 0 100px; text-align: center; position: relative;
+}
+.hero::before {
+  content: ''; position: absolute; top: -100px; left: 50%; transform: translateX(-50%);
+  width: 800px; height: 800px;
+  background: radial-gradient(circle, rgba(124,92,255,.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+.hero .badge {
+  display: inline-flex; align-items: center; gap: 8px; padding: 6px 16px 6px 8px;
+  border-radius: 100px; background: rgba(0,212,170,.08); border: 1px solid rgba(0,212,170,.2);
+  font-size: 13px; color: var(--accent2); margin-bottom: 24px;
+}
+.hero .badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent2); animation: pulse 2s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+.hero h1 {
+  font-size: clamp(40px, 6vw, 72px); font-weight: 800; line-height: 1.08;
+  letter-spacing: -2px; max-width: 800px; margin: 0 auto 24px;
+}
+.hero h1 .gradient { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.hero .sub {
+  font-size: clamp(16px, 2vw, 20px); color: var(--text2); max-width: 600px;
+  margin: 0 auto 40px; line-height: 1.6;
+}
+.hero .actions { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+.hero .stats {
+  display: flex; gap: 48px; justify-content: center; margin-top: 60px; flex-wrap: wrap;
+}
+.hero .stat { text-align: center; }
+.hero .stat .num { font-size: 32px; font-weight: 800; color: var(--text); }
+.hero .stat .label { font-size: 13px; color: var(--text3); margin-top: 4px; }
+
+/* ─── Terminal preview ─── */
+.terminal-wrap { max-width: 700px; margin: 60px auto 0; perspective: 1000px; }
+.terminal {
+  background: var(--bg2); border: 1px solid rgba(255,255,255,.08); border-radius: var(--radius);
+  overflow: hidden; transform: rotateX(2deg); box-shadow: 0 30px 80px rgba(0,0,0,.5);
+}
+.terminal .bar { display: flex; gap: 6px; padding: 12px 16px; background: rgba(0,0,0,.3); }
+.terminal .bar span { width: 12px; height: 12px; border-radius: 50%; }
+.terminal .bar span:nth-child(1) { background: #ff5f57; }
+.terminal .bar span:nth-child(2) { background: #ffbd2e; }
+.terminal .bar span:nth-child(3) { background: #28ca41; }
+.terminal pre {
+  padding: 20px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 14px;
+  line-height: 1.7; color: var(--text2); overflow-x: auto;
+}
+.terminal .cmd { color: var(--accent2); }
+.terminal .comment { color: var(--text3); }
+.terminal .output { color: var(--text); }
+
+/* ─── Problems ─── */
+.problems { padding: 120px 0; }
+.problems h2 { font-size: 36px; font-weight: 700; text-align: center; margin-bottom: 16px; }
+.problems .intro { text-align: center; color: var(--text2); max-width: 600px; margin: 0 auto 64px; font-size: 18px; }
+.problem-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; }
+.problem-card {
+  background: var(--bg2); border: 1px solid rgba(255,255,255,.06); border-radius: var(--radius);
+  padding: 32px; transition: border-color .3s;
+}
+.problem-card:hover { border-color: rgba(124,92,255,.3); }
+.problem-card .icon { font-size: 32px; margin-bottom: 16px; }
+.problem-card h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+.problem-card .pain { color: var(--accent3); font-size: 14px; font-weight: 500; margin-bottom: 12px; }
+.problem-card p { color: var(--text2); font-size: 14px; line-height: 1.6; }
+
+/* ─── Features ─── */
+.features { padding: 120px 0; background: var(--bg2); }
+.features h2 { font-size: 36px; font-weight: 700; text-align: center; margin-bottom: 64px; }
+.feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 32px; }
+.feature {
+  padding: 32px; border-radius: var(--radius);
+  background: linear-gradient(135deg, rgba(124,92,255,.04), rgba(0,212,170,.02));
+  border: 1px solid rgba(255,255,255,.06);
+}
+.feature .emoji { font-size: 40px; margin-bottom: 16px; display: block; }
+.feature h3 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+.feature .highlight { color: var(--accent2); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 12px; }
+.feature p { color: var(--text2); font-size: 15px; line-height: 1.6; }
+
+/* ─── Memory visualization ─── */
+.memory-section { padding: 120px 0; }
+.memory-section h2 { font-size: 36px; font-weight: 700; text-align: center; margin-bottom: 16px; }
+.memory-section .intro { text-align: center; color: var(--text2); max-width: 650px; margin: 0 auto 64px; font-size: 18px; }
+.memory-layers {
+  display: flex; flex-direction: column; gap: 4px; max-width: 700px; margin: 0 auto;
+}
+.memory-layer {
+  display: flex; align-items: center; gap: 16px; padding: 20px 24px;
+  background: var(--bg2); border-radius: 12px; border-left: 4px solid;
+  transition: transform .2s;
+}
+.memory-layer:hover { transform: translateX(8px); }
+.memory-layer:nth-child(1) { border-color: #ff6b6b; }
+.memory-layer:nth-child(2) { border-color: #ffa94d; }
+.memory-layer:nth-child(3) { border-color: #ffd43b; }
+.memory-layer:nth-child(4) { border-color: #69db7c; }
+.memory-layer:nth-child(5) { border-color: #748ffc; }
+.memory-layer:nth-child(6) { border-color: #da77f2; }
+.memory-layer .layer-id { font-size: 12px; font-weight: 700; color: var(--text3); min-width: 24px; }
+.memory-layer .layer-name { font-weight: 600; font-size: 15px; }
+.memory-layer .layer-desc { color: var(--text2); font-size: 13px; margin-left: auto; }
+
+/* ─── Comparison ─── */
+.comparison { padding: 120px 0; background: var(--bg2); }
+.comparison h2 { font-size: 36px; font-weight: 700; text-align: center; margin-bottom: 16px; }
+.comparison .intro { text-align: center; color: var(--text2); max-width: 600px; margin: 0 auto 48px; font-size: 18px; }
+.comp-table { width: 100%; border-collapse: collapse; max-width: 900px; margin: 0 auto; }
+.comp-table th, .comp-table td { padding: 14px 20px; text-align: left; font-size: 14px; }
+.comp-table th { color: var(--text3); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.comp-table td { border-bottom: 1px solid rgba(255,255,255,.04); color: var(--text2); }
+.comp-table td:first-child { color: var(--text); font-weight: 500; }
+.comp-table .highlight-col { background: rgba(124,92,255,.06); color: var(--text) !important; }
+.comp-table .check { color: var(--accent2); font-weight: 700; }
+.comp-table .cross { color: var(--text3); }
+.comp-table .partial { color: #ffa94d; }
+.comp-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* ─── Install ─── */
+.install { padding: 120px 0; text-align: center; }
+.install h2 { font-size: 36px; font-weight: 700; margin-bottom: 16px; }
+.install .sub { color: var(--text2); font-size: 18px; margin-bottom: 48px; }
+.install-steps { display: flex; gap: 32px; justify-content: center; flex-wrap: wrap; max-width: 800px; margin: 0 auto 48px; }
+.install-step {
+  flex: 1; min-width: 220px; padding: 24px; background: var(--bg2);
+  border: 1px solid rgba(255,255,255,.06); border-radius: var(--radius); text-align: left;
+}
+.install-step .step-num { font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 8px; }
+.install-step h4 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+.install-step code {
+  display: block; padding: 8px 12px; background: rgba(0,0,0,.3); border-radius: 8px;
+  font-family: 'SF Mono', monospace; font-size: 13px; color: var(--accent2);
+  word-break: break-all;
+}
+
+/* ─── CTA ─── */
+.cta { padding: 120px 0; text-align: center; position: relative; }
+.cta::before {
+  content: ''; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+  width: 800px; height: 500px;
+  background: radial-gradient(circle, rgba(124,92,255,.1) 0%, transparent 70%);
+  pointer-events: none;
+}
+.cta h2 { font-size: 40px; font-weight: 800; margin-bottom: 16px; }
+.cta p { color: var(--text2); font-size: 18px; margin-bottom: 40px; }
+.cta .actions { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+
+/* ─── Footer ─── */
+footer {
+  padding: 40px 0; border-top: 1px solid rgba(255,255,255,.06);
+  text-align: center; color: var(--text3); font-size: 13px;
+}
+footer a { color: var(--text2); }
+
+/* ─── Responsive ─── */
+@media (max-width: 768px) {
+  nav .links a:not(.btn) { display: none; }
+  .hero { padding: 120px 0 60px; }
+  .hero .stats { gap: 24px; }
+  .comp-table { font-size: 12px; }
+  .comp-table th, .comp-table td { padding: 10px 12px; }
+  .memory-layer .layer-desc { display: none; }
+}
+
+/* ─── Animate on scroll ─── */
+.fade-up {
+  opacity: 0; transform: translateY(30px);
+  transition: opacity .6s ease, transform .6s ease;
+}
+.fade-up.visible { opacity: 1; transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) { .fade-up { opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="inner">
+    <div class="logo">🐾 <span>HiveClaw</span></div>
+    <div class="links">
+      <a href="#problems">Why</a>
+      <a href="#features">Features</a>
+      <a href="#comparison">Compare</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/danilocaffaro/hiveclaw-pure" class="btn btn--outline" target="_blank">⭐ GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="container">
+    <div class="badge"><span class="dot"></span> v1.0 — Open Source</div>
+    <h1>Not a chatbot.<br><span class="gradient">An AI team.</span></h1>
+    <p class="sub">HiveClaw gives you a squad of specialized AI agents with persistent memory, multi-channel reach, and zero cloud dependency. Self-hosted. Private. Yours.</p>
+    <div class="actions">
+      <a href="#install" class="btn btn--primary btn--lg">Get Started — Free</a>
+      <a href="https://github.com/danilocaffaro/hiveclaw-pure" class="btn btn--github btn--lg" target="_blank">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        View on GitHub
+      </a>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="num">229</div><div class="label">Tests passing</div></div>
+      <div class="stat"><div class="num">0</div><div class="label">Cloud dependencies</div></div>
+      <div class="stat"><div class="num">10</div><div class="label">Memory layers</div></div>
+      <div class="stat"><div class="num">8</div><div class="label">AI providers</div></div>
+    </div>
+
+    <!-- Terminal -->
+    <div class="terminal-wrap fade-up">
+      <div class="terminal">
+        <div class="bar"><span></span><span></span><span></span></div>
+        <pre><span class="comment"># Install in 60 seconds</span>
+<span class="cmd">$ git clone https://github.com/danilocaffaro/hiveclaw-pure</span>
+<span class="cmd">$ cd hiveclaw-pure && npm install && npm run build</span>
+<span class="cmd">$ npm start</span>
+
+<span class="output">🐾 HiveClaw v1.0.0</span>
+<span class="output">   Engine: native (sqlite + FTS5 + sqlite-vec)</span>
+<span class="output">   Memory: 10-layer eidetic (Core Identity + Total Recall™)</span>
+<span class="output">   Agents: 0 configured — visit setup wizard</span>
+<span class="output">   Server: http://localhost:4070</span>
+<span class="output">   Ready in 1.2s ⚡</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PROBLEMS -->
+<section class="problems" id="problems">
+  <div class="container">
+    <span class="tag tag--red">The problem</span>
+    <h2 style="margin-top:16px">AI tools today are broken.</h2>
+    <p class="intro">You're paying for chatbots that forget everything, can't work together, and send your data to someone else's cloud.</p>
+
+    <div class="problem-grid">
+      <div class="problem-card fade-up">
+        <div class="icon">🧠</div>
+        <h3>Amnesia by design</h3>
+        <div class="pain">ChatGPT forgets everything every conversation</div>
+        <p>You explain the same context over and over. Your AI has no idea what you discussed yesterday, let alone last month. Every conversation starts from zero.</p>
+      </div>
+      <div class="problem-card fade-up">
+        <div class="icon">🤖</div>
+        <h3>One bot, one trick</h3>
+        <div class="pain">You can't have specialists collaborate</div>
+        <p>You want a writer, a coder, and a researcher working together on a project. Instead you get one generic assistant that's mediocre at everything.</p>
+      </div>
+      <div class="problem-card fade-up">
+        <div class="icon">🔒</div>
+        <h3>Their cloud, their rules</h3>
+        <div class="pain">Your data, your conversations, their servers</div>
+        <p>Every message, every document, every personal detail — stored on someone else's infrastructure. Model changes, price hikes, shutdowns? You have zero control.</p>
+      </div>
+      <div class="problem-card fade-up">
+        <div class="icon">📱</div>
+        <h3>Disconnected from your life</h3>
+        <div class="pain">AI lives in a browser tab, not in your workflow</div>
+        <p>Your AI can't send you a Telegram message, reply to Discord, or interact with the tools you actually use. It sits behind a chat window, waiting.</p>
+      </div>
+      <div class="problem-card fade-up">
+        <div class="icon">💸</div>
+        <h3>Vendor lock-in</h3>
+        <div class="pain">Switch providers = lose everything</div>
+        <p>Memory, preferences, agents — all tied to one provider. Want to use a different model? Start over. Want to export your data? Good luck.</p>
+      </div>
+      <div class="problem-card fade-up">
+        <div class="icon">🎛️</div>
+        <h3>No real customization</h3>
+        <div class="pain">"Custom instructions" is not customization</div>
+        <p>You want agents with specific roles, knowledge, and tools. What you get is a text box for "custom instructions" that barely affects behavior.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features" id="features">
+  <div class="container">
+    <span class="tag tag--accent">The solution</span>
+    <h2 style="margin-top:16px">Everything AI should be.</h2>
+
+    <div class="feature-grid">
+      <div class="feature fade-up">
+        <span class="emoji">🎭</span>
+        <div class="highlight">Agent Identity System</div>
+        <h3>Agents that know themselves — and you</h3>
+        <p>Every agent has persistent Core Memory: four identity blocks (Persona, Human, Context, Scratchpad) injected into every prompt. Your agents learn who you are, what you work on, and how you think — and they remember it forever. Not just a system prompt. A soul.</p>
+      </div>
+      <div class="feature fade-up">
+        <span class="emoji">👥</span>
+        <div class="highlight">Multi-Agent Squads</div>
+        <h3>A team, not a chatbot</h3>
+        <p>Create specialized agents — writer, analyst, coder, researcher — and put them in squads. They collaborate with @mention routing, sequential/round-robin/debate/specialist strategies, and build on each other's work.</p>
+      </div>
+      <div class="feature fade-up">
+        <span class="emoji">🧠</span>
+        <div class="highlight">10-Layer Eidetic Memory</div>
+        <h3>Total Recall™</h3>
+        <p>Not just "remembers your name." Ten layers: core identity → session buffer → smart compaction → working memory → episodic recall → knowledge graph → FTS5 archive → vector search → hybrid RRF fusion → session consolidation. Your agents get <em>smarter</em> with every conversation, forever.</p>
+      </div>
+      <div class="feature fade-up">
+        <span class="emoji">🛡️</span>
+        <div class="highlight">Smart Agents, Not Restricted</div>
+        <h3>Intelligence over handcuffs</h3>
+        <p>No artificial command blocklists. Instead, agents have Operational Awareness — they understand their environment, know what's safe, and make intelligent decisions. Like giving someone training instead of restrictions. Your agents have full power with the wisdom to use it right.</p>
+      </div>
+      <div class="feature fade-up">
+        <span class="emoji">🔍</span>
+        <div class="highlight">Hybrid Search (FTS5 + Vector)</div>
+        <h3>Find anything, instantly</h3>
+        <p>Full-text search meets vector similarity, fused via Reciprocal Rank Fusion. Your agents find relevant context from thousands of conversations in milliseconds — keyword hits <em>and</em> semantic matches.</p>
+      </div>
+      <div class="feature fade-up">
+        <span class="emoji">📡</span>
+        <div class="highlight">Multi-Channel Reach</div>
+        <h3>Meet users where they are</h3>
+        <p>Bidirectional integration with Telegram, Discord, Slack, and webhooks. Inbound messages auto-route to the right agent, get a response, and reply — all in the background. Your AI isn't trapped in a tab.</p>
+      </div>
+      <div class="feature fade-up">
+        <span class="emoji">🔄</span>
+        <div class="highlight">Provider Freedom</div>
+        <h3>Any model, any time</h3>
+        <p>OpenAI, Anthropic, Google, Ollama, or any OpenAI-compatible endpoint. Quality-aware routing picks the best model for each task. Switch providers without losing a single memory.</p>
+      </div>
+      <div class="feature fade-up">
+        <span class="emoji">🛡️</span>
+        <div class="highlight">Security-Hardened</div>
+        <h3>Battle-tested, not theoretical</h3>
+        <p>Workspace sandboxing, path traversal protection, operational awareness, circuit breakers, loop detection, encrypted credential vault. Security through intelligence, not blocklists.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MEMORY -->
+<section class="memory-section">
+  <div class="container">
+    <span class="tag tag--green">Innovation</span>
+    <h2 style="margin-top:16px">10-layer memory that never forgets.</h2>
+    <p class="intro">Most AI tools have context windows. We built a cognitive architecture.</p>
+
+    <div class="memory-layers">
+      <div class="memory-layer fade-up">
+        <span class="layer-id">L1</span>
+        <span class="layer-name">🎭 Core Identity</span>
+        <span class="layer-desc">Persona, Human, Context, Scratchpad — always in prompt</span>
+      </div>
+      <div class="memory-layer fade-up">
+        <span class="layer-id">L2</span>
+        <span class="layer-name">🔴 Session Buffer</span>
+        <span class="layer-desc">Active conversation window (4K–200K tokens)</span>
+      </div>
+      <div class="memory-layer fade-up">
+        <span class="layer-id">L3</span>
+        <span class="layer-name">🟠 Smart Compaction</span>
+        <span class="layer-desc">LLM-summarized session overflow</span>
+      </div>
+      <div class="memory-layer fade-up">
+        <span class="layer-id">L4</span>
+        <span class="layer-name">🟡 Working Memory</span>
+        <span class="layer-desc">Structured task state across sessions</span>
+      </div>
+      <div class="memory-layer fade-up">
+        <span class="layer-id">L5</span>
+        <span class="layer-name">🟢 Episodic Recall</span>
+        <span class="layer-desc">Time-stamped events & consolidated insights</span>
+      </div>
+      <div class="memory-layer fade-up">
+        <span class="layer-id">L6</span>
+        <span class="layer-name">🔵 Knowledge Graph</span>
+        <span class="layer-desc">Facts, decisions, goals, entities with typed edges</span>
+      </div>
+      <div class="memory-layer fade-up">
+        <span class="layer-id">L7</span>
+        <span class="layer-name">🔵 FTS5 Archive</span>
+        <span class="layer-desc">Full-text search across all history</span>
+      </div>
+      <div class="memory-layer fade-up">
+        <span class="layer-id">L8</span>
+        <span class="layer-name">🟣 Vector Search</span>
+        <span class="layer-desc">Semantic similarity via sqlite-vec embeddings</span>
+      </div>
+      <div class="memory-layer fade-up">
+        <span class="layer-id">L9</span>
+        <span class="layer-name">🟣 Hybrid RRF Fusion</span>
+        <span class="layer-desc">Best of FTS5 + vector via Reciprocal Rank Fusion</span>
+      </div>
+      <div class="memory-layer fade-up">
+        <span class="layer-id">L10</span>
+        <span class="layer-name">🪩 Visual Memory</span>
+        <span class="layer-desc">Describe-then-store image recall</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- COMPARISON -->
+<section class="comparison" id="comparison">
+  <div class="container">
+    <span class="tag tag--accent">Honest comparison</span>
+    <h2 style="margin-top:16px">How we stack up.</h2>
+    <p class="intro">17 features, 6 platforms. Based on real code audits, not marketing pages.</p>
+
+    <div class="comp-scroll">
+      <table class="comp-table">
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th class="highlight-col">HiveClaw</th>
+            <th>OpenClaw</th>
+            <th>PicoClaw</th>
+            <th>Open WebUI</th>
+            <th>Jan.ai</th>
+            <th>ChatGPT</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Multi-agent squads</td>
+            <td class="highlight-col"><span class="check">✓ 4 strategies</span></td>
+            <td><span class="partial">~ Chat groups</span></td>
+            <td><span class="partial">~ Subagent spawn</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="partial">~ GPTs (isolated)</span></td>
+          </tr>
+          <tr>
+            <td>Agent collaboration protocols</td>
+            <td class="highlight-col"><span class="check">✓ ARCHER + NEXUS + AGECON</span></td>
+            <td><span class="partial">~ ARCHER (prompt-only)</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+          </tr>
+          <tr>
+            <td>Agent Identity (Core Memory)</td>
+            <td class="highlight-col"><span class="check">✓ 4 blocks per agent</span></td>
+            <td><span class="partial">~ SOUL.md file</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="partial">~ Basic memory</span></td>
+          </tr>
+          <tr>
+            <td>Persistent memory</td>
+            <td class="highlight-col"><span class="check">✓ 10 layers + Core Identity</span></td>
+            <td><span class="partial">~ MEMORY.md flat file</span></td>
+            <td><span class="partial">~ Workspace files</span></td>
+            <td><span class="partial">~ RAG only</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="partial">~ Basic</span></td>
+          </tr>
+          <tr>
+            <td>Hybrid search (FTS + vector)</td>
+            <td class="highlight-col"><span class="check">✓ RRF fusion</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="partial">~ Vector only</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+          </tr>
+          <tr>
+            <td>Loop detection</td>
+            <td class="highlight-col"><span class="check">✓ Jaccard + tool dedup</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+          </tr>
+          <tr>
+            <td>Smart model routing</td>
+            <td class="highlight-col"><span class="check">✓ Quality-aware 3-tier</span></td>
+            <td><span class="partial">~ Model aliases</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+          </tr>
+          <tr>
+            <td>Multi-channel (Telegram, Discord…)</td>
+            <td class="highlight-col"><span class="check">✓ Bidirectional</span></td>
+            <td><span class="check">✓ Bidirectional</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+          </tr>
+          <tr>
+            <td>Web UI</td>
+            <td class="highlight-col"><span class="check">✓ Full (PWA + desktop)</span></td>
+            <td><span class="cross">✗ CLI only</span></td>
+            <td><span class="cross">✗ CLI only</span></td>
+            <td><span class="check">✓ Full</span></td>
+            <td><span class="check">✓ Electron</span></td>
+            <td><span class="check">✓ Web + mobile</span></td>
+          </tr>
+          <tr>
+            <td>Self-hosted</td>
+            <td class="highlight-col"><span class="check">✓</span></td>
+            <td><span class="check">✓</span></td>
+            <td><span class="check">✓</span></td>
+            <td><span class="check">✓</span></td>
+            <td><span class="check">✓</span></td>
+            <td><span class="cross">✗ Cloud only</span></td>
+          </tr>
+          <tr>
+            <td>Any LLM provider</td>
+            <td class="highlight-col"><span class="check">✓ Quality routing</span></td>
+            <td><span class="check">✓ Multi-provider</span></td>
+            <td><span class="partial">~ OpenAI-compat</span></td>
+            <td><span class="check">✓</span></td>
+            <td><span class="partial">~ Limited</span></td>
+            <td><span class="cross">✗ OpenAI only</span></td>
+          </tr>
+          <tr>
+            <td>Credential vault (encrypted)</td>
+            <td class="highlight-col"><span class="check">✓ AES-256-GCM</span></td>
+            <td><span class="cross">✗ Plaintext JSON</span></td>
+            <td><span class="partial">~ Env vars</span></td>
+            <td><span class="partial">~ Basic</span></td>
+            <td><span class="partial">~ Config file</span></td>
+            <td><span class="cross">N/A</span></td>
+          </tr>
+          <tr>
+            <td>Circuit breaker</td>
+            <td class="highlight-col"><span class="check">✓ 3-strike + cooldown</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+          </tr>
+          <tr>
+            <td>Visual memory</td>
+            <td class="highlight-col"><span class="check">✓ Describe-then-store</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+            <td><span class="cross">✗</span></td>
+          </tr>
+          <tr>
+            <td>Setup experience</td>
+            <td class="highlight-col"><span class="check">✓ 4-screen wizard</span></td>
+            <td><span class="cross">✗ Manual JSON</span></td>
+            <td><span class="check">✓ onboard CLI</span></td>
+            <td><span class="partial">~ Docker compose</span></td>
+            <td><span class="check">✓ Download & run</span></td>
+            <td><span class="check">✓ Sign up</span></td>
+          </tr>
+          <tr>
+            <td>Zero external deps</td>
+            <td class="highlight-col"><span class="check">✓ SQLite only</span></td>
+            <td><span class="check">✓</span></td>
+            <td><span class="check">✓</span></td>
+            <td><span class="cross">✗ Redis, etc.</span></td>
+            <td><span class="check">✓</span></td>
+            <td><span class="cross">✗</span></td>
+          </tr>
+          <tr>
+            <td>Test suite</td>
+            <td class="highlight-col"><span class="check">✓ 229+ tests</span></td>
+            <td><span class="partial">~ Unknown</span></td>
+            <td><span class="partial">~ Unknown</span></td>
+            <td><span class="partial">~ Community</span></td>
+            <td><span class="partial">~ Unknown</span></td>
+            <td><span class="cross">Closed</span></td>
+          </tr>
+          <tr>
+            <td>Price</td>
+            <td class="highlight-col"><span class="check">Free forever</span></td>
+            <td><span class="check">Free</span></td>
+            <td><span class="check">Free</span></td>
+            <td><span class="check">Free</span></td>
+            <td><span class="check">Free</span></td>
+            <td><span class="partial">$20+/mo</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- INSTALL -->
+<section class="install" id="install">
+  <div class="container">
+    <span class="tag tag--green">Get started</span>
+    <h2 style="margin-top:16px">Running in 60 seconds.</h2>
+    <p class="sub">Node.js 18+ required. No Docker needed (but we have that too).</p>
+
+    <div class="install-steps">
+      <div class="install-step fade-up">
+        <div class="step-num">STEP 1</div>
+        <h4>Clone</h4>
+        <code>git clone https://github.com/danilocaffaro/hiveclaw-pure.git</code>
+      </div>
+      <div class="install-step fade-up">
+        <div class="step-num">STEP 2</div>
+        <h4>Install & Build</h4>
+        <code>cd hiveclaw-pure<br>npm install && npm run build</code>
+      </div>
+      <div class="install-step fade-up">
+        <div class="step-num">STEP 3</div>
+        <h4>Launch</h4>
+        <code>npm start<br><span style="color: var(--text3)"># → localhost:4070 🐾</span></code>
+      </div>
+    </div>
+
+    <div style="margin-bottom: 32px;">
+      <p style="color: var(--text3); font-size: 14px; margin-bottom: 16px;">Or with Docker:</p>
+      <div style="display: inline-block; text-align: left; background: var(--bg2); border: 1px solid rgba(255,255,255,.06); border-radius: 12px; padding: 16px 24px;">
+        <code style="font-family: 'SF Mono', monospace; font-size: 14px; color: var(--accent2);">docker run -p 4070:4070 -v hiveclaw-data:/data ghcr.io/danilocaffaro/hiveclaw-pure</code>
+      </div>
+    </div>
+
+    <div class="actions">
+      <a href="https://github.com/danilocaffaro/hiveclaw-pure" class="btn btn--primary btn--lg" target="_blank">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        Clone from GitHub
+      </a>
+      <a href="https://github.com/danilocaffaro/hiveclaw-pure/releases/tag/v1.0.0" class="btn btn--outline btn--lg" target="_blank">📦 Download v1.0.0</a>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta">
+  <div class="container">
+    <h2>Your AI. Your data.<br>Your rules.</h2>
+    <p>Join the builders who chose sovereignty over convenience.</p>
+    <div class="actions">
+      <a href="https://github.com/danilocaffaro/hiveclaw-pure" class="btn btn--primary btn--lg">⭐ Star on GitHub</a>
+      <a href="https://github.com/danilocaffaro/hiveclaw-pure/discussions" class="btn btn--outline btn--lg" target="_blank">💬 Community</a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="container">
+    <p>Built with 🐾 by the HiveClaw team — São Paulo, Brazil</p>
+    <p style="margin-top:8px">
+      <a href="https://github.com/danilocaffaro/hiveclaw-pure">GitHub</a> ·
+      <a href="https://github.com/danilocaffaro/hiveclaw-pure/blob/main/LICENSE">MIT License</a> ·
+      <a href="https://github.com/danilocaffaro/hiveclaw-pure/blob/main/CHANGELOG.md">Changelog</a>
+    </p>
+  </div>
+</footer>
+
+<!-- Scroll animation -->
+<script>
+// Make all elements visible immediately, then re-hide for scroll animation
+document.querySelectorAll('.fade-up').forEach(el => el.classList.add('visible'));
+// After paint, set up scroll-triggered re-animation
+requestAnimationFrame(() => {
+  requestAnimationFrame(() => {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+    }, { threshold: 0.1, rootMargin: '0px 0px -20px 0px' });
+    document.querySelectorAll('.fade-up').forEach(el => {
+      // Only re-animate if below fold
+      const rect = el.getBoundingClientRect();
+      if (rect.top > window.innerHeight) {
+        el.classList.remove('visible');
+        observer.observe(el);
+      }
+    });
+  });
+});
+</script>
+
+</body>
+</html>
