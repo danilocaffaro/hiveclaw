@@ -26,7 +26,7 @@ interface Automation {
   trigger_type: 'cron' | 'event' | 'webhook';
   trigger_config: string;
   agent_id: string | null;
-  action_type: 'send_message' | 'run_workflow' | 'http_request';
+  action_type: 'send_message' | 'run_workflow' | 'http_request' | 'webhook_call';
   action_config: string;
   last_run_at: string | null;
   last_run_status: string | null;
@@ -169,6 +169,46 @@ async function executeAutomation(db: Database.Database, auto: Automation): Promi
       logger.info('[automation] Executed "%s" → message to agent %s', auto.name, auto.agent_id);
     }
 
+    // ─── Outbound Webhook Action (R19.4) ────────────────────────────────────
+    if (auto.action_type === 'webhook_call') {
+      const url = config.url;
+      if (!url) {
+        throw new Error('webhook_call action requires a url in action_config');
+      }
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(config.headers || {}),
+      };
+
+      // Build the outbound payload — include automation context
+      const payload = config.body
+        ? (typeof config.body === 'string' ? config.body : JSON.stringify(config.body))
+        : JSON.stringify({
+            automation: { id: auto.id, name: auto.name },
+            agent_id: auto.agent_id,
+            trigger_type: auto.trigger_type,
+            timestamp: new Date().toISOString(),
+            message: config.message || config.prompt || null,
+          });
+
+      logger.info('[automation] Outbound webhook to %s for "%s"', url, auto.name);
+
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: payload,
+        signal: AbortSignal.timeout(30_000), // 30s timeout
+      });
+
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => '');
+        throw new Error(`Webhook returned ${resp.status}: ${body.slice(0, 200)}`);
+      }
+
+      logger.info('[automation] Outbound webhook OK (%d) for "%s"', resp.status, auto.name);
+    }
+
     // Update status
     db.prepare(
       "UPDATE automations SET last_run_at = datetime('now'), last_run_status = 'success', run_count = run_count + 1 WHERE id = ?"
@@ -282,7 +322,7 @@ export function registerAutomationRoutes(app: FastifyInstance, db: Database.Data
     if (!validTriggers.includes(triggerType)) {
       return reply.status(400).send({ error: { code: 'VALIDATION', message: `triggerType must be one of: ${validTriggers.join(', ')}` } });
     }
-    const validActions = ['send_message', 'run_workflow', 'http_request'];
+    const validActions = ['send_message', 'run_workflow', 'http_request', 'webhook_call'];
     if (!validActions.includes(actionType)) {
       return reply.status(400).send({ error: { code: 'VALIDATION', message: `actionType must be one of: ${validActions.join(', ')}` } });
     }

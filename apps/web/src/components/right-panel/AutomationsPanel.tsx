@@ -37,6 +37,7 @@ const CRON_PRESETS = [
 ];
 
 type TriggerType = 'cron' | 'webhook';
+type ActionType = 'send_message' | 'webhook_call';
 
 export default function AutomationsPanel() {
   const [automations, setAutomations] = useState<Automation[]>([]);
@@ -57,6 +58,7 @@ export default function AutomationsPanel() {
   const [cron, setCron] = useState('0 9 * * *');
   const [agentId, setAgentId] = useState('');
   const [message, setMessage] = useState('');
+  const [actionType, setActionType] = useState<ActionType>('send_message');
   const [saving, setSaving] = useState(false);
 
   // Webhook outbound fields
@@ -93,10 +95,10 @@ export default function AutomationsPanel() {
   }, [rspAgentId, agentId]);
 
   const createAutomation = async () => {
-    if (!name.trim() || !agentId) return;
+    if (!name.trim()) return;
+    if (actionType === 'send_message' && (!agentId || !message.trim())) return;
+    if (actionType === 'webhook_call' && !webhookUrl.trim()) return;
     if (triggerType === 'cron' && !cron) return;
-    if (triggerType === 'cron' && !message.trim()) return;
-    if (triggerType === 'webhook' && !message.trim()) return;
 
     setSaving(true);
     try {
@@ -104,15 +106,23 @@ export default function AutomationsPanel() {
         name: name.trim(),
         description: description.trim(),
         triggerType,
-        agentId,
-        actionType: 'send_message',
-        actionConfig: { message: message.trim() },
+        agentId: agentId || undefined,
+        actionType,
       };
 
       if (triggerType === 'cron') {
         body.triggerConfig = { cron };
       } else {
         body.triggerConfig = {};
+      }
+
+      if (actionType === 'send_message') {
+        body.actionConfig = { message: message.trim() };
+      } else if (actionType === 'webhook_call') {
+        body.actionConfig = {
+          url: webhookUrl.trim(),
+          message: message.trim() || undefined,
+        };
       }
 
       const res = await fetch('/api/automations', {
@@ -123,7 +133,7 @@ export default function AutomationsPanel() {
       if (res.ok) {
         setShowCreate(false);
         setName(''); setDescription(''); setCron('0 9 * * *'); setAgentId(rspAgentId ?? ''); setMessage('');
-        setTriggerType('cron'); setWebhookUrl('');
+        setTriggerType('cron'); setActionType('send_message'); setWebhookUrl('');
         await load();
       }
     } catch { /* ignore */ }
@@ -262,17 +272,42 @@ export default function AutomationsPanel() {
           )}
 
           <div style={s.fld}>
-            <label style={s.flabel}>Agent</label>
-            <select style={s.select} value={agentId} onChange={e => setAgentId(e.target.value)}>
-              <option value="">— Select agent —</option>
-              {agents.map(a => (
-                <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>
-              ))}
+            <label style={s.flabel}>Action</label>
+            <select style={s.select} value={actionType} onChange={e => setActionType(e.target.value as ActionType)}>
+              <option value="send_message">✉️ Send message to agent</option>
+              <option value="webhook_call">🔗 Call external webhook (n8n/Zapier/Make)</option>
             </select>
           </div>
 
+          {actionType === 'webhook_call' && (
+            <div style={s.fld}>
+              <label style={s.flabel}>Webhook URL</label>
+              <input
+                style={s.input}
+                value={webhookUrl}
+                onChange={e => setWebhookUrl(e.target.value)}
+                placeholder="https://your-n8n.example.com/webhook/..."
+              />
+              <div style={{ fontSize: 10, color: 'var(--fg-muted)', marginTop: 2 }}>
+                HiveClaw will POST JSON to this URL when the automation fires.
+              </div>
+            </div>
+          )}
+
+          {actionType === 'send_message' && (
+            <div style={s.fld}>
+              <label style={s.flabel}>Agent</label>
+              <select style={s.select} value={agentId} onChange={e => setAgentId(e.target.value)}>
+                <option value="">— Select agent —</option>
+                {agents.map(a => (
+                  <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div style={s.fld}>
-            <label style={s.flabel}>Message / Prompt</label>
+            <label style={s.flabel}>{actionType === 'webhook_call' ? 'Payload message (optional)' : 'Message / Prompt'}</label>
             <textarea
               style={{ ...s.input, height: 70, resize: 'vertical' } as React.CSSProperties}
               value={message}
@@ -284,8 +319,8 @@ export default function AutomationsPanel() {
           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
             <button
               onClick={createAutomation}
-              disabled={saving || !name || !agentId || !message}
-              style={{ ...s.addBtn, opacity: (!name || !agentId || !message) ? 0.5 : 1 }}
+              disabled={saving || !name || (actionType === 'send_message' && (!agentId || !message)) || (actionType === 'webhook_call' && !webhookUrl)}
+              style={{ ...s.addBtn, opacity: (!name || (actionType === 'send_message' && (!agentId || !message)) || (actionType === 'webhook_call' && !webhookUrl)) ? 0.5 : 1 }}
             >
               {saving ? 'Saving…' : '✓ Create'}
             </button>
@@ -355,8 +390,11 @@ export default function AutomationsPanel() {
                       🔗 Copy URL
                     </span>
                   )}
-                  <span>🤖 {agentName(auto.agent_id)}</span>
-                  <span>✉️ {(auto.action_config.message ?? auto.action_config.prompt ?? '').slice(0, 40)}</span>
+                  {auto.agent_id && <span>🤖 {agentName(auto.agent_id)}</span>}
+                  {auto.action_type === 'webhook_call' && (
+                    <span title={auto.action_config.url ?? ''}>📤 → {(auto.action_config.url ?? '').replace(/^https?:\/\//, '').slice(0, 30)}</span>
+                  )}
+                  {auto.action_config.message && <span>✉️ {(auto.action_config.message ?? auto.action_config.prompt ?? '').slice(0, 40)}</span>}
                 </div>
                 <div style={{ ...s.sub, marginTop: 4, display: 'flex', gap: 12 }}>
                   <span>Last run: {formatDate(auto.last_run_at)}</span>
