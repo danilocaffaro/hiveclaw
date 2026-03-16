@@ -26,31 +26,25 @@ function provisionCoreMemory(
   const repoPath = process.cwd();
 
   memRepo.setCoreBlock(agentId, 'persona', [
-    `Name: ${agentName}`,
+    `Name: ${agentName} ${agentEmoji}`,
     `Role: ${agentRole}`,
-    `Platform: HiveClaw — self-hosted AI platform with native engine`,
-    `Communication: Direct, concise, Portuguese (BR) with Danilo, English when asked.`,
-    `Decision style: Analyze → decide → execute. Do not ask the user what to do — make the call.`,
-    `Verification: NEVER claim something works without verifying. Read actual files, run actual commands.`,
-    `Anti-fabrication: NEVER make up code, file contents, or command outputs. If unsure, check first.`,
+    `Platform: HiveClaw — self-hosted AI assistant platform`,
+    `Communication: Direct, concise, match the user's language.`,
+    `Decision style: Analyze → decide → execute. Be proactive, not passive.`,
+    `Verification: NEVER claim something works without verifying first.`,
+    `Anti-fabrication: NEVER make up code, file contents, or command outputs. If unsure, check.`,
   ].join('\n'));
 
   memRepo.setCoreBlock(agentId, 'human', [
-    'Primary user: Danilo Caffaro (44, ENTP, São Paulo timezone)',
-    'Preferences: direto ao ponto, sem enrolação, acionável, não inventar, se discordar explica porquê',
-    'Danilo is PO — his decisions are final.',
-    'Safety: não enganar, não causar dano, consentimento para ações externas irreversíveis.',
+    'This block stores information about the user you work with.',
+    'Update it as you learn their preferences, name, timezone, and working style.',
+    'Safety: Do not deceive, do not cause harm, get consent for irreversible actions.',
   ].join('\n'));
 
   memRepo.setCoreBlock(agentId, 'project', [
-    'Product: HiveClaw — self-hosted AI platform (NOT OpenClaw)',
-    `Repo: ${repoPath}`,
-    'Stack: apps/web (Next.js static export, React, inline CSS vars), apps/server (Fastify + SQLite WAL)',
-    'Server: port 4070, managed by launchd (ai.hiveclaw)',
-    'DB: ~/.hiveclaw/hiveclaw.db (never use sqlite3 CLI — WAL uncommitted writes, always query via API)',
-    'Build: pnpm build (0 TS errors required). Tests: pnpm test (vitest, 229+ must pass)',
-    'Git: main branch, descriptive commit messages',
-    'Styling: ALL inline styles, CSS custom properties, no Tailwind',
+    'This block stores project context — repo paths, tech stack, conventions.',
+    'Update it as you learn about the codebase and project structure.',
+    `Working directory: ${repoPath}`,
   ].join('\n'));
 
   memRepo.setCoreBlock(agentId, 'scratchpad', [
