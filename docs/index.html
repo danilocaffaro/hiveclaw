@@ -272,7 +272,7 @@ footer a { color: var(--text2); }
 <!-- HERO -->
 <section class="hero">
   <div class="container">
-    <div class="badge"><span class="dot"></span> v1.0 — Open Source</div>
+    <div class="badge"><span class="dot"></span> v1.0.0 — Open Source</div>
     <h1>Not a chatbot.<br><span class="gradient">An AI team.</span></h1>
     <p class="sub">HiveClaw gives you a squad of specialized AI agents with persistent memory, multi-channel reach, and zero cloud dependency. Self-hosted. Private. Yours.</p>
     <div class="actions">
@@ -283,8 +283,8 @@ footer a { color: var(--text2); }
       </a>
     </div>
     <div class="stats">
-      <div class="stat"><div class="num">229</div><div class="label">Tests passing</div></div>
-      <div class="stat"><div class="num">0</div><div class="label">Cloud dependencies</div></div>
+      <div class="stat"><div class="num">240</div><div class="label">Tests passing</div></div>
+      <div class="stat"><div class="num">19</div><div class="label">Agent tools</div></div>
       <div class="stat"><div class="num">10</div><div class="label">Memory layers</div></div>
       <div class="stat"><div class="num">8</div><div class="label">AI providers</div></div>
     </div>
@@ -294,9 +294,9 @@ footer a { color: var(--text2); }
       <div class="terminal">
         <div class="bar"><span></span><span></span><span></span></div>
         <pre><span class="comment"># Install in 60 seconds</span>
-<span class="cmd">$ git clone https://github.com/danilocaffaro/hiveclaw-pure</span>
-<span class="cmd">$ cd hiveclaw-pure && npm install && npm run build</span>
-<span class="cmd">$ npm start</span>
+<span class="cmd">$ git clone https://github.com/danilocaffaro/hiveclaw</span>
+<span class="cmd">$ cd hiveclaw && pnpm install && pnpm build</span>
+<span class="cmd">$ NODE_ENV=production node apps/server/dist/index.js</span>
 
 <span class="output">🐾 HiveClaw v1.0.0</span>
 <span class="output">   Engine: native (sqlite + FTS5 + sqlite-vec)</span>
