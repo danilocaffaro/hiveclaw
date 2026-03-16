@@ -5,6 +5,7 @@
 
 import type { Tool, ToolInput, ToolOutput, ToolDefinition, ToolContext } from './types.js';
 import { getBrowserPool } from '../browser-pool.js';
+import { validateUrl } from '../../lib/url-security.js';
 
 export class BrowserTool implements Tool {
   readonly definition: ToolDefinition = {
@@ -50,6 +51,13 @@ export class BrowserTool implements Tool {
         case 'navigate': {
           const url = input['url'] as string | undefined;
           if (!url) return { success: false, error: 'url required for navigate' };
+
+          // S1: SSRF protection
+          try {
+            validateUrl(url);
+          } catch (err) {
+            return { success: false, error: (err as Error).message };
+          }
 
           if (!sessionId) {
             const session = await pool.createSession(url);

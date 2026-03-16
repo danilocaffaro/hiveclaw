@@ -1,4 +1,5 @@
 import type { Tool, ToolInput, ToolOutput, ToolDefinition } from './types.js';
+import { validateUrl } from '../../lib/url-security.js';
 
 const DEFAULT_MAX_CHARS = 50_000;
 
@@ -64,6 +65,13 @@ export class WebFetchTool implements Tool {
 
     if (!url) {
       return { success: false, error: 'url is required' };
+    }
+
+    // S1: SSRF protection
+    try {
+      validateUrl(url);
+    } catch (err) {
+      return { success: false, error: (err as Error).message };
     }
 
     try {

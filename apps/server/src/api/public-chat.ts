@@ -12,6 +12,7 @@ import {
   DEFAULT_SYSTEM_PROMPT,
 } from '../config/defaults.js';
 import type Database from 'better-sqlite3';
+import { LRUCache } from 'lru-cache';
 
 // ─── B054: Public Chat + Shared Links API ────────────────────────────────────
 //
@@ -20,8 +21,13 @@ import type Database from 'better-sqlite3';
 // used here and in the now-deleted squad-bridge-runner.ts. They are inlined
 // below so public chat keeps working while the dead file is removed.
 
-// Simple in-memory conversation store for public chats
-const publicChatHistory = new Map<string, Array<{ role: string; content: string }>>();
+// S1: Public chat history with LRU cache (max 1000 conversations, 1h TTL)
+// Prevents DoS via unbounded memory growth
+const publicChatHistory = new LRUCache<string, Array<{ role: string; content: string }>>({
+  max: 1000,
+  ttl: 1000 * 60 * 60, // 1 hour
+  updateAgeOnGet: true,
+});
 
 // ─── Inlined from native-session-runner.ts (deprecated) ───────────────────────
 

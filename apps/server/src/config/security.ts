@@ -196,9 +196,9 @@ export const PUBLIC_ROUTES: string[] = [
   '/public/',
   '/shared-links',
 
-  // SSE (auth checked at connection level if needed)
-  '/sse',
-  '/agents/status/stream',
+  // S1: Removed /sse from public routes — requires auth now
+  // '/sse', // REMOVED: SSE endpoint must be authenticated
+  '/agents/status/stream', // Keep: lightweight polling endpoint
 
   // Channel webhooks (inbound from Telegram/Discord/Slack — no API key, platform-verified)
   // Only the /webhook suffix — managed via isPublicRoute regex check below
