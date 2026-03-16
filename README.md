@@ -40,6 +40,12 @@ Not just chat history — a full cognitive architecture:
 ### 🛡️ Smart Agents, Not Restricted Agents
 No artificial command blocklists. Instead, agents have **Operational Awareness** — they understand their environment, know what's safe to do, and make intelligent decisions. Like giving someone training instead of handcuffs.
 
+### 🔬 Self-Learning Skills
+When an agent hits a capability gap, it doesn't just fail — it **creates a new skill on the spot**. Detects the gap, searches the workspace and web for solutions, rewrites them clean-room, runs a 12-point security audit, and installs the hardened version. Your agents evolve.
+
+### 🔭 Skill Scout (Auto-Discovery)
+Every week, a Gemini-powered scout searches GitHub, npm, and the AI ecosystem for trending agent skills. It recreates them from scratch (never installs third-party code), audits for security, and presents them in the UI as recommendations. Your agent platform stays current without you lifting a finger.
+
 ## Features
 
 - 🤖 **Multi-Agent** — Create specialized agents with custom personas, skills, and core memory
