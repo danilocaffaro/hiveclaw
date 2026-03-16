@@ -313,6 +313,25 @@ export function initDatabase(): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_wrs_run ON workflow_run_steps(run_id);
     CREATE INDEX IF NOT EXISTS idx_workflow_runs_workflow ON workflow_runs(workflow_id);
 
+    -- R6: Automations — scheduled/triggered agent actions
+    CREATE TABLE IF NOT EXISTS automations (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      enabled INTEGER DEFAULT 1,
+      trigger_type TEXT NOT NULL DEFAULT 'cron' CHECK(trigger_type IN ('cron','event','webhook')),
+      trigger_config TEXT NOT NULL DEFAULT '{}',
+      agent_id TEXT,
+      action_type TEXT NOT NULL DEFAULT 'send_message' CHECK(action_type IN ('send_message','run_workflow','http_request')),
+      action_config TEXT NOT NULL DEFAULT '{}',
+      last_run_at DATETIME,
+      last_run_status TEXT,
+      run_count INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_automations_enabled ON automations(enabled);
+
     CREATE TABLE IF NOT EXISTS squad_members (
       squad_id TEXT NOT NULL REFERENCES squads(id) ON DELETE CASCADE,
       agent_id TEXT NOT NULL,
@@ -649,7 +668,7 @@ export function initDatabase(): Database.Database {
     )
   `);
   // Current schema version: bump when adding migrations
-  const CURRENT_SCHEMA = 3;
+  const CURRENT_SCHEMA = 4;
   const sv = db.prepare("SELECT version FROM schema_version WHERE id=1").get() as { version: number } | undefined;
   if (!sv) {
     db.prepare("INSERT INTO schema_version (id, version, applied_at) VALUES (1, ?, datetime('now'))").run(CURRENT_SCHEMA);

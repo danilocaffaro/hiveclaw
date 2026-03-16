@@ -47,6 +47,7 @@ import { registerPresentationRoutes } from './api/presentations.js';
 import { registerMarketplaceRoutes } from './api/marketplace.js';
 import { registerAuthRoutes } from './api/auth.js';
 import { registerInviteRoutes } from './api/invites.js';
+import { registerAutomationRoutes, startCronScheduler } from './api/automations.js';
 import { registerFinetuneRoutes } from './api/finetune.js';
 import { registerCredentialRoutes } from './api/credentials.js';
 import { CredentialRepository } from './db/credentials.js';
@@ -183,6 +184,8 @@ async function main() {
     '/api/update',
     '/api/invites',
     '/api/invites/',
+    '/api/automations',
+    '/api/automations/',
     '/api/preview/',
     '/api/agents/status/stream',
     // NOTE: /api/engine/ is intentionally NOT here — rewriteUrl strips /api prefix
@@ -434,6 +437,7 @@ async function main() {
   registerMarketplaceRoutes(app, db);
   registerAuthRoutes(app, db);
   registerInviteRoutes(app, db);
+  registerAutomationRoutes(app, db);
   registerFinetuneRoutes(app, finetuneDatasets, finetuneJobs);
   registerConsoleRoutes(app);
   registerCredentialRoutes(app, credentialRepo);
@@ -466,6 +470,9 @@ async function main() {
 
     // Start weekly skill discovery cron (Sprint 78)
     startSkillScoutCron(db);
+
+    // Start automation cron scheduler (R6)
+    startCronScheduler(db);
 
     // Check for updates (non-blocking, fires after startup)
     import('./lib/update-checker.js').then(m => m.checkForUpdate()).catch(() => {});

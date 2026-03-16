@@ -4,4 +4,5 @@ export { default as PreviewPanel } from './PreviewPanel';
 export { default as BrowserPanel } from './BrowserPanel';
 export { default as SprintPanel } from './SprintPanel';
 export { default as FlowsPanel } from './FlowsPanel';
+export { default as AutomationsPanel } from './AutomationsPanel';
 export { default as ConsolePanel } from './ConsolePanel';

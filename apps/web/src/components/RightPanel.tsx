@@ -4,7 +4,7 @@ import { useUIStore } from '@/stores/ui-store';
 import { useFileStore } from '@/stores/file-store';
 import { useAgentStore } from '@/stores/agent-store';
 import { useRSPStore, selectActiveAgentId } from '@/stores/rsp-store';
-import { PanelTabs, CodePanel, PreviewPanel, BrowserPanel, SprintPanel, FlowsPanel, ConsolePanel } from './right-panel';
+import { PanelTabs, CodePanel, PreviewPanel, BrowserPanel, SprintPanel, FlowsPanel, AutomationsPanel, ConsolePanel } from './right-panel';
 import AgentTabBar from './right-panel/AgentTabBar';
 import MemoryPanel from './MemoryPanel';
 
@@ -112,7 +112,7 @@ export default function RightPanel({ mobileOverlay = false }: RightPanelProps) {
             {rightPanelTab === 'preview' && <PreviewPanel />}
             {rightPanelTab === 'browser' && <BrowserPanel />}
             {rightPanelTab === 'sprint'  && <SprintPanel />}
-            {rightPanelTab === 'flows'   && <FlowsPanel />}
+            {rightPanelTab === 'flows'   && <AutomationsPanel />}
             {rightPanelTab === 'console' && <ConsolePanel />}
             {rightPanelTab === 'memory'  && <MemoryPanel />}
           </>
