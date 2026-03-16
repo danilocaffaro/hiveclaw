@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 interface Activity {
   id: string;
   timestamp: string;
-  type: 'tool.start' | 'tool.finish' | 'message.start' | 'message.done' | 'squad.start' | 'squad.end' | 'info';
+  type: 'tool.start' | 'tool.finish' | 'message.start' | 'message.finish' | 'squad.start' | 'squad.end' | 'info';
   agentName?: string;
   agentEmoji?: string;
   toolName?: string;
@@ -74,7 +74,8 @@ export default function AgentActivityPanel({ sessionId }: { sessionId?: string }
     if (!sessionId) return;
 
     // Connect to session SSE stream for live activity
-    const url = `/api/sessions/${sessionId}/stream`;
+    // Server endpoint: /sessions/:id/events (rewriteUrl strips /api prefix)
+    const url = `/api/sessions/${sessionId}/events`;
     const es = new EventSource(url);
     esRef.current = es;
 
@@ -117,10 +118,10 @@ export default function AgentActivityPanel({ sessionId }: { sessionId?: string }
       } catch { /* ignore */ }
     });
 
-    es.addEventListener('message.done', (e) => {
+    es.addEventListener('message.finish', (e) => {
       try {
         const d = JSON.parse(e.data);
-        addActivity({ type: 'message.done', agentName: d.agentName, agentEmoji: d.agentEmoji, status: 'done' });
+        addActivity({ type: 'message.finish', agentName: d.agentName, agentEmoji: d.agentEmoji, status: 'done' });
       } catch { /* ignore */ }
     });
 
@@ -138,7 +139,7 @@ export default function AgentActivityPanel({ sessionId }: { sessionId?: string }
 
   const filtered = activities.filter(a => {
     if (filter === 'tools') return a.type === 'tool.start' || a.type === 'tool.finish';
-    if (filter === 'messages') return a.type === 'message.start' || a.type === 'message.done';
+    if (filter === 'messages') return a.type === 'message.start' || a.type === 'message.finish';
     return true;
   });
 
@@ -169,7 +170,7 @@ export default function AgentActivityPanel({ sessionId }: { sessionId?: string }
   function rowIcon(act: Activity): string {
     if (act.type === 'tool.start' || act.type === 'tool.finish') return toolIcon(act.toolName ?? '');
     if (act.type === 'message.start') return '💬';
-    if (act.type === 'message.done') return '✅';
+    if (act.type === 'message.finish') return '✅';
     if (act.type === 'squad.start') return '🚀';
     if (act.type === 'squad.end') return '🏁';
     return '•';
@@ -234,7 +235,7 @@ export default function AgentActivityPanel({ sessionId }: { sessionId?: string }
                   </>
                 )}
                 {act.type === 'message.start' && <div style={s.toolName}>Generating response…</div>}
-                {act.type === 'message.done' && <div style={s.toolName}>Response complete</div>}
+                {act.type === 'message.finish' && <div style={s.toolName}>Response complete</div>}
                 {act.type === 'squad.start' && <div style={s.toolName}>Squad started</div>}
                 {act.type === 'squad.end' && <div style={s.toolName}>Squad finished</div>}
               </div>

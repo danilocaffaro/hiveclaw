@@ -385,12 +385,20 @@ export async function* runSquad(
       if (squadTaskIds[rrTaskIdx]) squadUpdateTask(squadTaskIds[rrTaskIdx], 'done');
       break;
     }
-    case 'specialist':
+    case 'specialist': {
+      // R9: Track specialist task — mark all as doing, done when complete
+      for (const tid of squadTaskIds) squadUpdateTask(tid, 'doing');
       yield* runSpecialist(sessionId, message, config);
+      for (const tid of squadTaskIds) squadUpdateTask(tid, 'done');
       break;
-    case 'debate':
+    }
+    case 'debate': {
+      // R9: Track debate tasks — all agents participate simultaneously
+      for (const tid of squadTaskIds) squadUpdateTask(tid, 'doing');
       yield* runDebate(sessionId, message, config);
+      for (const tid of squadTaskIds) squadUpdateTask(tid, 'done');
       break;
+    }
     case 'sequential': {
       // R7: Sequential = each agent gets its task tracked
       yield* runSequential(sessionId, message, config);

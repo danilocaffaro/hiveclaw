@@ -16,6 +16,7 @@ import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import type Database from 'better-sqlite3';
 import { logger } from '../lib/logger.js';
+import { runAgent, type AgentConfig } from '../engine/agent-runner.js';
 
 interface Automation {
   id: string;
@@ -109,12 +110,37 @@ async function executeAutomation(db: Database.Database, auto: Automation): Promi
         session = { id: sid };
       }
 
-      // Store the message (the agent runner will pick it up)
+      // Store the user message
       const msgId = randomUUID();
       const message = config.message || config.prompt || `Automation: ${auto.name}`;
       db.prepare(
         "INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, 'user', ?, datetime('now'))"
       ).run(msgId, session.id, message);
+
+      // Actually trigger the agent to respond (R9 fix: was dead-letter before)
+      const agentRow = db.prepare("SELECT * FROM agents WHERE id = ?").get(auto.agent_id) as Record<string, unknown> | undefined;
+      if (agentRow) {
+        const agentConfig: AgentConfig = {
+          id: String(agentRow.id),
+          name: String(agentRow.name || ''),
+          emoji: String(agentRow.emoji || '🤖'),
+          systemPrompt: String(agentRow.system_prompt || ''),
+          providerId: String(agentRow.provider_id || ''),
+          modelId: String(agentRow.model_id || ''),
+          temperature: Number(agentRow.temperature ?? 0.7),
+          maxTokens: Number(agentRow.max_tokens ?? 4096),
+          tools: JSON.parse(String(agentRow.tools || '[]')),
+          maxToolIterations: agentRow.max_tool_iterations ? Number(agentRow.max_tool_iterations) : undefined,
+        };
+        // Consume the SSE stream to completion (fire-and-forget — no client to stream to)
+        try {
+          for await (const _event of runAgent(session.id, message, agentConfig, { skipPersistUserMessage: true })) {
+            // Events consumed silently — agent response is persisted in DB by agent-runner
+          }
+        } catch (runErr) {
+          logger.error({ err: runErr, autoId: auto.id }, '[automation] Agent run failed');
+        }
+      }
 
       logger.info('[automation] Executed "%s" → message to agent %s', auto.name, auto.agent_id);
     }
@@ -221,6 +247,15 @@ export function registerAutomationRoutes(app: FastifyInstance, db: Database.Data
 
     if (!name) return reply.status(400).send({ error: { code: 'VALIDATION', message: 'name is required' } });
     if (!triggerType) return reply.status(400).send({ error: { code: 'VALIDATION', message: 'triggerType is required' } });
+
+    const validTriggers = ['cron', 'event', 'webhook'];
+    if (!validTriggers.includes(triggerType)) {
+      return reply.status(400).send({ error: { code: 'VALIDATION', message: `triggerType must be one of: ${validTriggers.join(', ')}` } });
+    }
+    const validActions = ['send_message', 'run_workflow', 'http_request'];
+    if (!validActions.includes(actionType)) {
+      return reply.status(400).send({ error: { code: 'VALIDATION', message: `actionType must be one of: ${validActions.join(', ')}` } });
+    }
 
     const id = randomUUID();
     db.prepare(`
