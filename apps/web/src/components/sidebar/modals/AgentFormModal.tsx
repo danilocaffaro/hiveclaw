@@ -1,10 +1,132 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAgentStore } from '@/stores/agent-store';
 import type { Agent, AgentCreateInput } from '@/stores/agent-store';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? '/api';
+
+// ── Compact Core Memory Editor (for edit mode) ──────────────────────────────
+const CORE_BLOCKS = [
+  { key: 'persona', icon: '🎭', label: 'Persona' },
+  { key: 'human', icon: '👤', label: 'Human' },
+  { key: 'project', icon: '📁', label: 'Project' },
+  { key: 'scratchpad', icon: '📝', label: 'Scratchpad' },
+] as const;
+
+function CoreMemoryCompact({ agentId }: { agentId: string }) {
+  const [blocks, setBlocks] = useState<Record<string, string>>({});
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/memory/agents/${agentId}/core`);
+      const json = await res.json();
+      const map: Record<string, string> = {};
+      for (const b of (json.data ?? [])) map[b.block_name] = b.content;
+      setBlocks(map);
+    } catch { /* */ }
+    setLoaded(true);
+  }, [agentId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const toggle = (key: string) => {
+    if (expanded === key) { setExpanded(null); return; }
+    setExpanded(key);
+    setDraft(blocks[key] ?? '');
+  };
+
+  const save = async (key: string) => {
+    setSaving(true);
+    try {
+      await fetch(`${API}/memory/agents/${agentId}/core/${key}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: draft }),
+      });
+      setBlocks((prev) => ({ ...prev, [key]: draft }));
+    } catch { /* */ }
+    setSaving(false);
+  };
+
+  if (!loaded) return <div style={{ fontSize: 11, color: 'var(--text-muted)', padding: 8 }}>Loading…</div>;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {CORE_BLOCKS.map(({ key, icon, label }) => {
+        const has = !!blocks[key];
+        const isOpen = expanded === key;
+        return (
+          <div key={key}>
+            <button
+              onClick={() => toggle(key)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 10px', borderRadius: 6, textAlign: 'left',
+                background: isOpen ? 'var(--surface-hover)' : 'transparent',
+                border: `1px solid ${isOpen ? 'var(--coral)' : 'var(--border)'}`,
+                cursor: 'pointer', transition: 'all 150ms',
+              }}
+            >
+              <span style={{ fontSize: 13 }}>{icon}</span>
+              <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: 'var(--text)' }}>{label}</span>
+              <span style={{
+                fontSize: 9, padding: '1px 5px', borderRadius: 3,
+                background: has ? 'color-mix(in srgb, var(--green) 15%, transparent)' : 'var(--surface)',
+                color: has ? 'var(--green)' : 'var(--text-muted)',
+              }}>
+                {has ? `${blocks[key].length}c` : '—'}
+              </span>
+            </button>
+            {isOpen && (
+              <div style={{ padding: '8px 0' }}>
+                <textarea
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  rows={5}
+                  placeholder={`${label} content…`}
+                  style={{
+                    width: '100%', padding: 8, boxSizing: 'border-box', borderRadius: 6,
+                    background: 'var(--input-bg)', border: '1px solid var(--border)',
+                    color: 'var(--text)', fontSize: 12, fontFamily: 'var(--font-mono)',
+                    resize: 'vertical', minHeight: 60, outline: 'none',
+                  }}
+                />
+                <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                  <button
+                    onClick={() => save(key)}
+                    disabled={saving}
+                    style={{
+                      padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                      background: saving ? 'var(--surface-hover)' : 'var(--coral)',
+                      color: saving ? 'var(--text-muted)' : '#fff',
+                      border: 'none', cursor: saving ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {saving ? 'Saving…' : 'Save'}
+                  </button>
+                  <button
+                    onClick={() => setExpanded(null)}
+                    style={{
+                      padding: '4px 12px', borderRadius: 6, fontSize: 11,
+                      background: 'transparent', border: '1px solid var(--border)',
+                      color: 'var(--text-muted)', cursor: 'pointer',
+                    }}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 interface AgentFormModalProps {
   agent?: Agent | null;
@@ -461,6 +583,26 @@ export function AgentFormModal({ agent, onClose, onSaved }: AgentFormModalProps)
                 ))}
               </div>
             </div>
+
+            {/* Core Memory (edit mode only — blocks exist after agent creation) */}
+            {isEdit && agent && (
+              <div style={{
+                marginBottom: 20, padding: 14, borderRadius: 10,
+                background: 'var(--surface)', border: '1px solid var(--border)',
+              }}>
+                <div style={{
+                  fontSize: 11, fontWeight: 600, color: 'var(--text-muted)',
+                  textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6,
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}>
+                  <span>🧠</span> Core Memory
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
+                  Persistent identity blocks — injected into every prompt.
+                </div>
+                <CoreMemoryCompact agentId={agent.id} />
+              </div>
+            )}
 
             {/* Error */}
             {error && (
