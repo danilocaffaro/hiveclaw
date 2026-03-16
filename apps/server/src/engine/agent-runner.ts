@@ -259,6 +259,23 @@ Read their responses before duplicating work. Use @mentions to delegate or reque
   const runtimeContext = `\n\n## Runtime\n${runtimeLine}${toolsList}${honesty}${operationalAwareness}`;
   systemPrompt = systemPrompt + runtimeContext;
 
+  // R7.2: Inject active task context if this session has tasks
+  try {
+    const db = (await import('../db/index.js')).initDatabase();
+    const activeTasks = db.prepare(
+      "SELECT title, status, assigned_agent_id FROM tasks WHERE session_id = ? AND status NOT IN ('done') ORDER BY sort_order LIMIT 10"
+    ).all(sessionId) as Array<{ title: string; status: string; assigned_agent_id: string | null }>;
+
+    if (activeTasks.length > 0) {
+      const taskLines = activeTasks.map(t => {
+        const isMe = t.assigned_agent_id === agentConfig.id;
+        const statusIcon = t.status === 'doing' ? '▶' : '○';
+        return `${statusIcon} [${t.status.toUpperCase()}]${isMe ? ' ← YOUR TASK' : ''}: ${t.title}`;
+      }).join('\n');
+      systemPrompt += `\n\n## Active Squad Tasks\n${taskLines}`;
+    }
+  } catch { /* non-fatal */ }
+
   // ── 3. Build messages array ─────────────────────────────────────────────────
   // Re-read messages after potential compaction
   const freshMessages = sessionManager.getMessages(sessionId);

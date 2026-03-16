@@ -39,6 +39,43 @@ import { ExternalAgentRepository } from '../db/external-agents.js';
 import { initDatabase } from '../db/index.js';
 import { ENABLE_MESSAGE_BUS } from '../config/defaults.js';
 
+// ─── R7: Squad → Task auto-tracking ──────────────────────────────────────────
+
+function squadCreateTasks(
+  sessionId: string,
+  squadId: string,
+  agents: Array<{ id: string; name: string; emoji?: string }>,
+  prompt: string,
+): string[] {
+  try {
+    const db = initDatabase();
+    const ids: string[] = [];
+    for (let i = 0; i < agents.length; i++) {
+      const a = agents[i];
+      const taskId = `task_sq_${Date.now()}_${i}`;
+      const title = `${a.emoji ?? '🤖'} ${a.name}: ${prompt.slice(0, 60)}${prompt.length > 60 ? '…' : ''}`;
+      db.prepare(`
+        INSERT OR IGNORE INTO tasks (id, session_id, squad_id, title, status, assigned_agent_id, sort_order, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'todo', ?, ?, datetime('now'), datetime('now'))
+      `).run(taskId, sessionId, squadId, title, a.id, i);
+      ids.push(taskId);
+    }
+    return ids;
+  } catch { return []; }
+}
+
+function squadUpdateTask(
+  taskId: string,
+  status: 'todo' | 'doing' | 'review' | 'done',
+): void {
+  try {
+    const db = initDatabase();
+    db.prepare(
+      "UPDATE tasks SET status = ?, updated_at = datetime('now') WHERE id = ?"
+    ).run(status, taskId);
+  } catch { /* non-fatal */ }
+}
+
 // ─── ARCHER v2 helpers ────────────────────────────────────────────────────────
 
 /** Map an AgentConfig to the SquadAgent shape expected by archer-router */
@@ -320,6 +357,14 @@ export async function* runSquad(
     logger.error('[SquadRunner] Failed to persist user message: %s', (err as Error).message);
   }
 
+  // R7: Auto-create tasks for each agent in this squad run
+  const squadTaskIds = squadCreateTasks(
+    sessionId,
+    config.id ?? 'unknown',
+    config.agents,
+    message,
+  );
+
   // Publish squad start to message bus
   const bus = getMessageBus();
   bus.publish({
@@ -331,18 +376,28 @@ export async function* runSquad(
   });
 
   switch (config.routingStrategy) {
-    case 'round-robin':
+    case 'round-robin': {
+      // R7: Mark current agent task as 'doing', others remain 'todo'
+      const rrAgent = config.agents[0];
+      const rrTaskIdx = config.agents.findIndex(a => a.id === rrAgent?.id);
+      if (squadTaskIds[rrTaskIdx]) squadUpdateTask(squadTaskIds[rrTaskIdx], 'doing');
       yield* runRoundRobin(sessionId, message, config);
+      if (squadTaskIds[rrTaskIdx]) squadUpdateTask(squadTaskIds[rrTaskIdx], 'done');
       break;
+    }
     case 'specialist':
       yield* runSpecialist(sessionId, message, config);
       break;
     case 'debate':
       yield* runDebate(sessionId, message, config);
       break;
-    case 'sequential':
+    case 'sequential': {
+      // R7: Sequential = each agent gets its task tracked
       yield* runSequential(sessionId, message, config);
+      // Mark all as done after sequential completes
+      for (const tid of squadTaskIds) squadUpdateTask(tid, 'done');
       break;
+    }
     default: {
       // Fallback: treat unknown strategies as round-robin
       const strategy = (config as SquadConfig).routingStrategy;
