@@ -106,7 +106,7 @@
 
 ---
 
-### Batch R6 — Automation Engine (8h)
+### Batch R6 — Automation Engine (8h) ✅ DONE (commit `1abede2`)
 > **Goal:** Agents have scheduled tasks, crons, heartbeats — visible in UI.
 
 | Step | Item | Deliverable | Time |
@@ -121,7 +121,7 @@
 
 ---
 
-### Batch R7 — Squad Intelligence (6h)
+### Batch R7 — Squad Intelligence (6h) ✅ DONE (commit `e8e831b`)
 > **Goal:** Tasks and squad runner work together. Agents coordinate via tasks.
 
 | Step | Item | Deliverable | Time |
@@ -135,7 +135,7 @@
 
 ---
 
-### Batch R8 — RSP Browser + Agent Visibility (6h)
+### Batch R8 — RSP Browser + Agent Visibility (6h) ✅ DONE
 > **Goal:** See what agents are doing. Browser that actually works.
 
 | Step | Item | Deliverable | Time |

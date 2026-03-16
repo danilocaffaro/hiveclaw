@@ -213,8 +213,8 @@ function BrowserPanel() {
         }}>Navigate</button>
       </div>
 
-      {/* Screenshot/Content Area */}
-      <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+      {/* Content Area — iframe first, screenshot fallback */}
+      <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         {activeTab.loading && (
           <div style={{
             position: 'absolute', inset: 0, display: 'flex',
@@ -227,12 +227,29 @@ function BrowserPanel() {
             </div>
           </div>
         )}
-        {activeTab.imageUrl ? (
-          <img
-            src={activeTab.imageUrl}
-            alt="Browser screenshot"
-            style={{ width: '100%', display: 'block' }}
+        {activeTab.url && activeTab.url.startsWith('https://') && !activeTab.imageUrl ? (
+          // Iframe mode — sandboxed, interactive
+          <iframe
+            key={activeTab.url}
+            src={activeTab.url}
+            title={activeTab.title}
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+            onLoad={() => updateTab(activeTab.id, { loading: false })}
+            onError={() => {
+              // Iframe blocked → fall back to screenshot
+              navigate(activeTab.url);
+            }}
           />
+        ) : activeTab.imageUrl ? (
+          // Screenshot fallback
+          <div style={{ overflow: 'auto', height: '100%' }}>
+            <img
+              src={activeTab.imageUrl}
+              alt="Browser screenshot"
+              style={{ width: '100%', display: 'block' }}
+            />
+          </div>
         ) : (
           <div style={{ textAlign: 'center', padding: 40 }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>🔭</div>
@@ -240,10 +257,11 @@ function BrowserPanel() {
               Agent Browser
             </p>
             <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 16 }}>
-              Navigate to any URL and the agent will capture a screenshot
+              Navigate to any HTTPS URL — loads interactively.<br />
+              Cross-origin blocked sites fall back to screenshot.
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6, justifyContent: 'center' }}>
-              {['https://github.com', 'https://google.com', 'https://wikipedia.org'].map(u => (
+              {['https://github.com', 'https://wikipedia.org', 'https://hacker-news.firebaseio.com'].map(u => (
                 <button key={u} onClick={() => { setInputUrl(u); navigate(u); }} style={{
                   padding: '4px 10px', borderRadius: 6,
                   background: 'var(--surface-hover)', border: '1px solid var(--border)',

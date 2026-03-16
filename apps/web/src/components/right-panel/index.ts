@@ -6,3 +6,4 @@ export { default as SprintPanel } from './SprintPanel';
 export { default as FlowsPanel } from './FlowsPanel';
 export { default as AutomationsPanel } from './AutomationsPanel';
 export { default as ConsolePanel } from './ConsolePanel';
+export { default as AgentActivityPanel } from './AgentActivityPanel';

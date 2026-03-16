@@ -4,7 +4,8 @@ import { useUIStore } from '@/stores/ui-store';
 import { useFileStore } from '@/stores/file-store';
 import { useAgentStore } from '@/stores/agent-store';
 import { useRSPStore, selectActiveAgentId } from '@/stores/rsp-store';
-import { PanelTabs, CodePanel, PreviewPanel, BrowserPanel, SprintPanel, FlowsPanel, AutomationsPanel, ConsolePanel } from './right-panel';
+import { useSessionStore } from '@/stores/session-store';
+import { PanelTabs, CodePanel, PreviewPanel, BrowserPanel, SprintPanel, FlowsPanel, AutomationsPanel, ConsolePanel, AgentActivityPanel } from './right-panel';
 import AgentTabBar from './right-panel/AgentTabBar';
 import MemoryPanel from './MemoryPanel';
 
@@ -37,6 +38,7 @@ export default function RightPanel({ mobileOverlay = false }: RightPanelProps) {
   const agents = useAgentStore((s) => s.agents);
   const activeAgent = rspAgentId ? agents.find((a) => a.id === rspAgentId) : null;
   const isExternal = activeAgent?.isExternal ?? false;
+  const activeSessionId = useSessionStore((s) => s.activeSessionId);
 
   const statusFileName = fileSelectedPath
     ? (fileSelectedPath.split('/').pop() ?? fileSelectedPath)
@@ -113,7 +115,7 @@ export default function RightPanel({ mobileOverlay = false }: RightPanelProps) {
             {rightPanelTab === 'browser' && <BrowserPanel />}
             {rightPanelTab === 'sprint'  && <SprintPanel />}
             {rightPanelTab === 'flows'   && <AutomationsPanel />}
-            {rightPanelTab === 'console' && <ConsolePanel />}
+            {rightPanelTab === 'console' && <AgentActivityPanel sessionId={activeSessionId ?? undefined} />}
             {rightPanelTab === 'memory'  && <MemoryPanel />}
           </>
         )}
