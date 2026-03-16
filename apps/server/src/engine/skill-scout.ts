@@ -1,21 +1,26 @@
 /**
  * engine/skill-scout.ts — Weekly Skill Discovery Engine
  *
- * Uses Gemini + Google Search Grounding to discover trending AI agent skills,
- * then RECREATES them from scratch (clean-room, no third-party code installed).
+ * Discovers trending AI agent skills and recreates them from scratch
+ * (clean-room, no third-party code installed).
+ *
+ * Provider strategy (works with ANY configured provider):
+ *   - Discovery: GitHub API (no LLM needed) + LLM enrichment via chatComplete
+ *   - Recreation: chatComplete (uses user's configured provider/model)
+ *   - Bonus: If GEMINI_API_KEY is set, uses Gemini Search Grounding for richer discovery
  *
  * Flow:
- *   1. Gemini searches the web for trending AI agent skills
+ *   1. Discover trending skills (GitHub API + optional Gemini grounding)
  *   2. Filter out skills already installed
- *   3. For each new skill: LLM recreates it from scratch
+ *   3. For each new skill: LLM recreates it from scratch via chatComplete
  *   4. audit-skill.sh runs (mandatory — 0 vulns required)
- *   5. Skill installed to ~/.hiveclaw/skills/
+ *   5. Skill installed to ~/.hiveclaw/workspace/skills/
  *   6. Saved to DB as recommended_skills with status 'ready'
  *   7. UI shows in Settings → Skills → ✨ Recommended
  *
  * NEVER installs third-party code. Always clean-room rewrite.
  *
- * Sprint 78 — Clark 🐙
+ * Sprint 78 — Clark 🐙 | Refactored — Alice 🐕
  */
 
 import { existsSync, mkdirSync, writeFileSync, readdirSync } from 'fs';
@@ -23,6 +28,7 @@ import { join } from 'path';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
 import { logger } from '../lib/logger.js';
+import { getProviderRouter } from './providers/index.js';
 import type Database from 'better-sqlite3';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -32,10 +38,10 @@ export interface SkillRecommendation {
   slug: string;
   name: string;
   description: string;
-  why: string;           // Why it's useful
+  why: string;
   category: string;
   tags: string[];
-  sources: string[];     // URLs found by Gemini
+  sources: string[];
   status: 'discovering' | 'creating' | 'auditing' | 'ready' | 'failed';
   error?: string;
   created_at: string;
@@ -48,11 +54,77 @@ export interface SkillRecommendation {
 const SKILLS_DIR = join(homedir(), '.hiveclaw', 'workspace', 'skills');
 const AUDIT_SCRIPT = join(homedir(), '.hiveclaw', 'workspace', 'skills', 'self-learning', 'scripts', 'audit-skill.sh');
 
-// ─── Gemini Search ───────────────────────────────────────────────────────────
+// ─── GitHub Discovery (no LLM required) ─────────────────────────────────────
 
-async function searchWithGemini(query: string, apiKey: string): Promise<string> {
+interface GitHubRepo {
+  name: string;
+  full_name: string;
+  description: string;
+  html_url: string;
+  stargazers_count: number;
+  topics: string[];
+}
+
+async function discoverFromGitHub(): Promise<Array<{
+  slug: string; name: string; description: string;
+  why: string; category: string; tags: string[]; sources: string[]
+}>> {
+  const topics = ['ai-agent-skill', 'mcp-tool', 'llm-tool', 'agent-skill', 'ai-agent-tool'];
+  const allRepos: GitHubRepo[] = [];
+
+  for (const topic of topics) {
+    try {
+      const response = await fetch(
+        `https://api.github.com/search/repositories?q=topic:${topic}&sort=stars&order=desc&per_page=5`,
+        {
+          headers: { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'HiveClaw-SkillScout' },
+          signal: AbortSignal.timeout(15000)
+        }
+      );
+      if (response.ok) {
+        const data = await response.json() as { items?: GitHubRepo[] };
+        allRepos.push(...(data.items ?? []));
+      }
+    } catch (err) {
+      logger.debug({ err, topic }, '[skill-scout] GitHub topic search failed');
+    }
+  }
+
+  // Deduplicate by full_name
+  const seen = new Set<string>();
+  const unique = allRepos.filter(r => {
+    if (seen.has(r.full_name)) return false;
+    seen.add(r.full_name);
+    return true;
+  });
+
+  // Convert to skill concepts
+  return unique.slice(0, 8).map(repo => ({
+    slug: repo.name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').slice(0, 40),
+    name: repo.name.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+    description: repo.description || `AI agent skill based on ${repo.name}`,
+    why: `Popular on GitHub (${repo.stargazers_count} stars). Topics: ${repo.topics.join(', ')}`,
+    category: 'automation' as string,
+    tags: repo.topics.slice(0, 5),
+    sources: [repo.html_url]
+  }));
+}
+
+// ─── Gemini Search Grounding (bonus — requires GEMINI_API_KEY) ───────────────
+
+async function discoverWithGemini(apiKey: string, installedList: string): Promise<Array<{
+  slug: string; name: string; description: string;
+  why: string; category: string; tags: string[]; sources: string[]
+}>> {
   const payload = {
-    contents: [{ parts: [{ text: query }] }],
+    contents: [{ parts: [{ text:
+      `What are the most useful and trending skills/capabilities for AI agents in ${new Date().toISOString().slice(0, 7)}? ` +
+      `Search GitHub trending repos tagged with ai-agent, mcp-tool, llm-tool, agent-skill. ` +
+      `Also search npm for packages tagged agent-skill, ai-tool, mcp-server. ` +
+      `Return a JSON array of 5-8 skills NOT in this list: [${installedList}]. ` +
+      `Format: [{"slug":"skill-name","name":"Skill Name","description":"what it does","why":"why useful for AI agents","category":"productivity|coding|search|media|data|automation","tags":["tag1","tag2"],"sources":["url1"]}]` +
+      `Return ONLY the JSON array, no markdown.`
+    }] }],
     tools: [{ google_search: {} }],
     generationConfig: { temperature: 0.7, maxOutputTokens: 4096 }
   };
@@ -75,14 +147,15 @@ async function searchWithGemini(query: string, apiKey: string): Promise<string> 
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
   };
 
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  const jsonMatch = text.match(/\[[\s\S]*\]/);
+  return jsonMatch ? JSON.parse(jsonMatch[0]) : [];
 }
 
-// ─── LLM Skill Recreation ────────────────────────────────────────────────────
+// ─── LLM Skill Recreation (uses ANY configured provider) ─────────────────────
 
 async function recreateSkillWithLLM(
-  skillConcept: { slug: string; name: string; description: string; why: string },
-  apiKey: string
+  skillConcept: { slug: string; name: string; description: string; why: string }
 ): Promise<string> {
   const prompt = `You are an expert AI agent developer. Create a complete, production-ready skill for an AI agent platform.
 
@@ -125,30 +198,27 @@ set -euo pipefail
 
 Create ONLY the SKILL.md content. Make it complete and production-ready. Focus on security and correctness.`;
 
-  const payload = {
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.3, maxOutputTokens: 8192 }
-  };
-
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(60000)
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Gemini API error: ${response.status} ${response.statusText}`);
+  const router = getProviderRouter();
+  const providers = router.list();
+  if (providers.length === 0) {
+    throw new Error('No LLM providers configured — cannot recreate skill');
   }
 
-  const data = await response.json() as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
-  };
+  // Use all available providers as fallback chain
+  const fallbackChain = providers.map(p => p.id);
+  let content = '';
 
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  for await (const chunk of router.chatWithFallback(
+    [{ role: 'user', content: prompt }],
+    { temperature: 0.3, maxTokens: 8192 },
+    fallbackChain
+  )) {
+    if (chunk.type === 'text' && chunk.text) content += chunk.text;
+    if (chunk.type === 'error') throw new Error(String(chunk.text ?? 'LLM error'));
+  }
+
+  if (!content) throw new Error('LLM returned empty content');
+  return content;
 }
 
 // ─── Skill Discovery ─────────────────────────────────────────────────────────
@@ -175,13 +245,11 @@ function installSkill(slug: string, content: string): void {
   while ((match = scriptRegex.exec(content)) !== null) {
     const scriptName = match[1];
     const scriptContent = match[2];
-    // Sanitize script name
     if (!/^[a-zA-Z0-9_-]+\.sh$/.test(scriptName)) continue;
     const scriptsDir = join(skillDir, 'scripts');
     mkdirSync(scriptsDir, { recursive: true });
     const scriptPath = join(scriptsDir, scriptName);
     writeFileSync(scriptPath, scriptContent, 'utf-8');
-    // chmod +x is only needed on Unix — Windows ignores file permissions
     if (process.platform !== 'win32') {
       execSync(`chmod +x "${scriptPath}"`);
     }
@@ -192,11 +260,9 @@ function auditSkill(slug: string): { passed: boolean; issues: string[] } {
   const skillDir = join(SKILLS_DIR, slug);
 
   if (!existsSync(AUDIT_SCRIPT)) {
-    // Basic audit if audit-skill.sh not available (or on Windows)
     return { passed: true, issues: [] };
   }
 
-  // Audit script requires bash — skip on Windows
   if (process.platform === 'win32') {
     logger.warn({ slug }, 'Skill audit skipped on Windows — audit-skill.sh requires bash');
     return { passed: true, issues: [] };
@@ -225,67 +291,61 @@ export async function runSkillScout(db: Database.Database): Promise<{
   created: number;
   failed: number;
 }> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    logger.warn('[skill-scout] GEMINI_API_KEY not set — skipping skill discovery');
-    return { discovered: 0, created: 0, failed: 0 };
-  }
-
-  logger.info('[skill-scout] Starting weekly skill discovery...');
+  logger.info('[skill-scout] Starting skill discovery...');
 
   const installedSlugs = getInstalledSlugs();
   const installedList = installedSlugs.join(', ');
 
-  // Step 1: Gemini discovers trending skills
-  let discoveryText = '';
-  try {
-    discoveryText = await searchWithGemini(
-      `What are the most useful and trending skills/capabilities for AI agents in ${new Date().toISOString().slice(0, 7)}? ` +
-      `Search GitHub trending repos tagged with ai-agent, mcp-tool, llm-tool, agent-skill. ` +
-      `Also search npm for packages tagged agent-skill, ai-tool, mcp-server. ` +
-      `Return a JSON array of 5-8 skills NOT in this list: [${installedList}]. ` +
-      `Format: [{"slug":"skill-name","name":"Skill Name","description":"what it does","why":"why useful for AI agents","category":"productivity|coding|search|media|data|automation","tags":["tag1","tag2"],"sources":["url1"]}]` +
-      `Return ONLY the JSON array, no markdown.`,
-      apiKey
-    );
-  } catch (err) {
-    logger.error({ err }, '[skill-scout] Gemini discovery failed');
-    return { discovered: 0, created: 0, failed: 0 };
-  }
-
-  // Parse discovered skills
+  // Step 1: Discover skills
+  // Strategy: GitHub API (always works) + Gemini grounding (bonus if GEMINI_API_KEY set)
   let skills: Array<{
     slug: string; name: string; description: string;
     why: string; category: string; tags: string[]; sources: string[]
   }> = [];
 
-  try {
-    // Extract JSON from response (may have markdown around it)
-    const jsonMatch = discoveryText.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      skills = JSON.parse(jsonMatch[0]);
+  const geminiKey = process.env.GEMINI_API_KEY;
+
+  if (geminiKey) {
+    // Best path: Gemini with Google Search Grounding
+    try {
+      logger.info('[skill-scout] Using Gemini Search Grounding for discovery');
+      skills = await discoverWithGemini(geminiKey, installedList);
+    } catch (err) {
+      logger.warn({ err }, '[skill-scout] Gemini discovery failed, falling back to GitHub');
     }
-  } catch (err) {
-    logger.error({ err }, '[skill-scout] Failed to parse Gemini response');
-    return { discovered: 0, created: 0, failed: 0 };
   }
 
-  // Filter already installed
+  if (skills.length === 0) {
+    // Fallback: GitHub API (no API key needed)
+    try {
+      logger.info('[skill-scout] Using GitHub API for discovery');
+      skills = await discoverFromGitHub();
+    } catch (err) {
+      logger.error({ err }, '[skill-scout] GitHub discovery also failed');
+      return { discovered: 0, created: 0, failed: 0 };
+    }
+  }
+
+  // Filter already installed + sanitize
   skills = skills.filter(s => {
-    // Sanitize slug
     if (!/^[a-z0-9-]+$/.test(s.slug)) return false;
     return !installedSlugs.includes(s.slug);
   });
 
+  if (skills.length === 0) {
+    logger.info('[skill-scout] No new skills to create');
+    return { discovered: 0, created: 0, failed: 0 };
+  }
+
   logger.info(`[skill-scout] Discovered ${skills.length} new skills to create`);
 
+  // Step 2: Recreate each skill via chatComplete (uses ANY configured provider)
   let created = 0;
   let failed = 0;
 
   for (const skill of skills) {
     const recId = `rec_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
-    // Save to DB as 'creating'
     try {
       db.prepare(`
         INSERT OR REPLACE INTO recommended_skills
@@ -302,11 +362,11 @@ export async function runSkillScout(db: Database.Database): Promise<{
       continue;
     }
 
-    // Step 2: Recreate skill from scratch (clean-room)
+    // Recreate skill from scratch (clean-room) using user's LLM provider
     let skillContent = '';
     try {
       db.prepare(`UPDATE recommended_skills SET status='creating' WHERE id=?`).run(recId);
-      skillContent = await recreateSkillWithLLM(skill, apiKey);
+      skillContent = await recreateSkillWithLLM(skill);
     } catch (err) {
       logger.error({ err, slug: skill.slug }, '[skill-scout] Skill recreation failed');
       db.prepare(`UPDATE recommended_skills SET status='failed', error=? WHERE id=?`)
@@ -315,7 +375,7 @@ export async function runSkillScout(db: Database.Database): Promise<{
       continue;
     }
 
-    // Step 3: Install skill files
+    // Install skill files
     try {
       db.prepare(`UPDATE recommended_skills SET status='auditing' WHERE id=?`).run(recId);
       installSkill(skill.slug, skillContent);
@@ -327,7 +387,7 @@ export async function runSkillScout(db: Database.Database): Promise<{
       continue;
     }
 
-    // Step 4: Security audit (mandatory)
+    // Security audit (mandatory)
     const audit = auditSkill(skill.slug);
     if (!audit.passed) {
       logger.warn({ slug: skill.slug, issues: audit.issues }, '[skill-scout] Skill failed audit — removing');
@@ -340,7 +400,7 @@ export async function runSkillScout(db: Database.Database): Promise<{
       continue;
     }
 
-    // Step 5: Mark as ready
+    // Mark as ready
     db.prepare(`UPDATE recommended_skills SET status='ready' WHERE id=?`).run(recId);
     logger.info(`[skill-scout] ✅ Skill '${skill.slug}' created and ready`);
     created++;
