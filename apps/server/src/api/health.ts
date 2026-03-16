@@ -43,6 +43,14 @@ export function registerHealthRoutes(app: FastifyInstance) {
       dbStats.schemaVersion = sv?.version ?? 0;
     } catch { /* non-fatal */ }
 
+    // Provider status — query directly from DB
+    let providers: Array<{ id: string; name: string; enabled: boolean }> = [];
+    try {
+      const db = getDb();
+      providers = (db.prepare('SELECT id, name, enabled FROM providers ORDER BY name').all() as Array<{ id: string; name: string; enabled: number }>)
+        .map(p => ({ id: p.id, name: p.name, enabled: !!p.enabled }));
+    } catch { /* non-fatal */ }
+
     // Include update info if cached
     const update = getCachedUpdate();
 
@@ -60,6 +68,8 @@ export function registerHealthRoutes(app: FastifyInstance) {
         heapUsed: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
       },
       db: dbStats,
+      providers,
+      tools: 19, // screenshot, web_search, mac_control added in R14.5
       ...(update?.available ? { update: { latest: update.latest, url: update.url } } : {}),
     };
   });

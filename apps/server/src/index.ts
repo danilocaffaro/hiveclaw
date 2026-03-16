@@ -73,6 +73,7 @@ import { WorkflowEngine, seedBuiltinWorkflows } from './engine/workflow-engine.j
 import { getMessageBus } from './engine/message-bus.js';
 import { getEngineService } from './engine/engine-service.js';
 import { logger } from './lib/logger.js';
+import { rotateAllLogs } from './lib/log-rotation.js';
 
 import { DEFAULT_PORT, DEFAULT_HOST, DEV_CORS_ORIGINS } from './config/defaults.js';
 import { SECURITY_HEADERS, isPublicRoute, SSE_MAX_CONNECTIONS_PER_IP, SSE_MAX_TOTAL_CONNECTIONS } from './config/security.js';
@@ -482,6 +483,9 @@ async function main() {
   registerSkillScoutRoutes(app, db);
 
   // ─── Start ────────────────────────────────────────────────────────────
+  // R16: Rotate log files before startup (keeps them < 10MB each)
+  rotateAllLogs();
+
   try {
     await app.listen({ port: PORT, host: HOST });
     console.log('');
