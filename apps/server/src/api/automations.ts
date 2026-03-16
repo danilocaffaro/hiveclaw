@@ -39,12 +39,12 @@ interface Automation {
 const cronTimers = new Map<string, ReturnType<typeof setInterval>>();
 
 function parseCronToMs(cron: string): number | null {
-  // Simple cron parser for common patterns
-  // Full cron support would use a library; this handles the most useful cases
+  // Cron parser for common patterns — returns interval in ms
+  // Supports: */N (every N min/hour), fixed time, weekday filtering
   const parts = cron.trim().split(/\s+/);
   if (parts.length < 5) return null;
 
-  const [min, hour] = parts;
+  const [min, hour, , , dow] = parts;
 
   // Every N minutes: */N * * * *
   const everyMinMatch = min.match(/^\*\/(\d+)$/);
@@ -58,16 +58,35 @@ function parseCronToMs(cron: string): number | null {
     return parseInt(everyHourMatch[1]) * 3600 * 1000;
   }
 
-  // Daily at specific time: M H * * *
+  // Daily/weekday at specific time: M H * * * or M H * * 1-5
   const fixedMin = parseInt(min);
   const fixedHour = parseInt(hour);
   if (!isNaN(fixedMin) && !isNaN(fixedHour) && parts[2] === '*' && parts[3] === '*') {
-    // Run daily — use 24h interval, align to next occurrence
+    // Run daily — use 24h interval (weekday filtering happens at execution time)
     return 24 * 3600 * 1000;
   }
 
-  // Default: run every hour for unrecognized patterns
-  return 3600 * 1000;
+  // Unrecognized pattern — log warning and return null (don't silently default)
+  logger.warn('[cron] Unrecognized cron pattern "%s" — skipping schedule', cron);
+  return null;
+}
+
+/** Parse day-of-week from cron field. Returns null (any day) or Set of 0-6 (Sun-Sat). */
+function parseDowFilter(cron: string): Set<number> | null {
+  const parts = cron.trim().split(/\s+/);
+  const dow = parts[4] ?? '*';
+  if (dow === '*') return null; // any day
+
+  const days = new Set<number>();
+  for (const segment of dow.split(',')) {
+    const range = segment.match(/^(\d)-(\d)$/);
+    if (range) {
+      for (let d = parseInt(range[1]); d <= parseInt(range[2]); d++) days.add(d);
+    } else if (/^\d$/.test(segment)) {
+      days.add(parseInt(segment));
+    }
+  }
+  return days.size > 0 ? days : null;
 }
 
 function getNextRunDelay(cron: string): number {
@@ -183,11 +202,17 @@ function scheduleCron(db: Database.Database, auto: Automation): void {
   const intervalMs = parseCronToMs(cron);
   if (!intervalMs) return;
 
+  const dowFilter = parseDowFilter(cron);
   const firstDelay = getNextRunDelay(cron);
+
+  const shouldRunToday = (): boolean => {
+    if (!dowFilter) return true;
+    return dowFilter.has(new Date().getDay());
+  };
 
   // Schedule first run, then repeat
   const timeout = setTimeout(() => {
-    void executeAutomation(db, auto);
+    if (shouldRunToday()) void executeAutomation(db, auto);
 
     const interval = setInterval(() => {
       // Re-check if still enabled
@@ -197,7 +222,7 @@ function scheduleCron(db: Database.Database, auto: Automation): void {
         cronTimers.delete(auto.id);
         return;
       }
-      void executeAutomation(db, auto);
+      if (shouldRunToday()) void executeAutomation(db, auto);
     }, intervalMs);
 
     cronTimers.set(auto.id, interval);

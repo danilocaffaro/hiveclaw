@@ -51,10 +51,10 @@ export default function AgentActivityPanel({ sessionId }: { sessionId?: string }
   const [filter, setFilter] = useState<'all' | 'tools' | 'messages'>('all');
   const scrollRef = useRef<HTMLDivElement>(null);
   const esRef = useRef<EventSource | null>(null);
-  let actCounter = 0;
+  const actCounterRef = useRef(0);
 
   const addActivity = useCallback((act: Omit<Activity, 'id' | 'timestamp'>) => {
-    const id = `act_${Date.now()}_${++actCounter}`;
+    const id = `act_${Date.now()}_${++actCounterRef.current}`;
     const timestamp = new Date().toISOString();
     setActivities(prev => [...prev.slice(-200), { id, timestamp, ...act }]);
   }, []);
