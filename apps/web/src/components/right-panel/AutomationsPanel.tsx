@@ -264,9 +264,20 @@ export default function AutomationsPanel() {
           )}
 
           {triggerType === 'webhook' && (
-            <div style={{ ...s.card, background: 'var(--surface)', border: '1px dashed var(--border)', padding: 10, marginBottom: 12 }}>
-              <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>
-                🔗 A webhook URL will be generated after creation. Use it in n8n, Zapier, or any HTTP client.
+            <div style={{ ...s.card, background: 'var(--surface)', border: '1px dashed var(--border)', padding: 12, marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>🔗 How webhooks work</div>
+              <div style={{ fontSize: 11, color: 'var(--fg-muted)', lineHeight: 1.5 }}>
+                After creating, you&apos;ll get a unique URL like:<br />
+                <code style={{ fontSize: 10, background: 'var(--input-bg)', padding: '2px 4px', borderRadius: 3 }}>
+                  POST {typeof window !== 'undefined' ? window.location.origin : ''}/api/automations/{'<id>'}/webhook
+                </code>
+                <br /><br />
+                <strong>n8n:</strong> Add HTTP Request node → POST → paste the URL<br />
+                <strong>Zapier:</strong> Use &quot;Webhooks by Zapier&quot; → POST → paste the URL<br />
+                <strong>Make:</strong> Add HTTP module → POST → paste the URL<br />
+                <strong>curl:</strong> <code style={{ fontSize: 10, background: 'var(--input-bg)', padding: '2px 4px', borderRadius: 3 }}>curl -X POST {'<url>'} -H &quot;Content-Type: application/json&quot;</code>
+                <br /><br />
+                <em>Tip:</em> Pass <code style={{ fontSize: 10 }}>{`{"message": "custom prompt"}`}</code> in the body to override the default prompt.
               </div>
             </div>
           )}
@@ -288,8 +299,11 @@ export default function AutomationsPanel() {
                 onChange={e => setWebhookUrl(e.target.value)}
                 placeholder="https://your-n8n.example.com/webhook/..."
               />
-              <div style={{ fontSize: 10, color: 'var(--fg-muted)', marginTop: 2 }}>
-                HiveClaw will POST JSON to this URL when the automation fires.
+              <div style={{ fontSize: 10, color: 'var(--fg-muted)', marginTop: 4, lineHeight: 1.4 }}>
+                HiveClaw will POST JSON to this URL when the automation fires.<br />
+                <strong>n8n:</strong> Create a Webhook node → copy its URL → paste here<br />
+                <strong>Zapier:</strong> Create a Zap with &quot;Catch Hook&quot; trigger → paste URL<br />
+                <strong>Make:</strong> Create a scenario with Custom Webhook → paste URL
               </div>
             </div>
           )}
