@@ -128,6 +128,69 @@ function CoreMemoryCompact({ agentId }: { agentId: string }) {
   );
 }
 
+function CoreMemoryCreateForm({ drafts, onUpdate }: {
+  drafts: Record<string, string>;
+  onUpdate: (key: string, value: string) => void;
+}) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {CORE_BLOCKS.map(({ key, icon, label }) => {
+        const value = drafts[key] ?? '';
+        const isOpen = expanded === key;
+        const placeholder = key === 'human'
+          ? 'Who are you? Name, preferences, timezone, working style…'
+          : key === 'project'
+            ? 'What project is this for? Repo, stack, conventions…'
+            : key === 'persona'
+              ? 'Auto-filled from Name/Role above. Add personality, communication style…'
+              : 'Working notes, current tasks, decisions…';
+        return (
+          <div key={key}>
+            <button
+              onClick={() => setExpanded(isOpen ? null : key)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 10px', borderRadius: 6, textAlign: 'left',
+                background: isOpen ? 'var(--surface-hover)' : 'transparent',
+                border: `1px solid ${isOpen ? 'var(--coral)' : 'var(--border)'}`,
+                cursor: 'pointer', transition: 'all 150ms',
+              }}
+            >
+              <span style={{ fontSize: 13 }}>{icon}</span>
+              <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: 'var(--text)' }}>{label}</span>
+              <span style={{
+                fontSize: 9, padding: '1px 5px', borderRadius: 3,
+                background: value ? 'color-mix(in srgb, var(--green) 15%, transparent)' : 'var(--surface)',
+                color: value ? 'var(--green)' : 'var(--text-muted)',
+              }}>
+                {value ? `${value.length}c` : 'optional'}
+              </span>
+            </button>
+            {isOpen && (
+              <div style={{ padding: '8px 0' }}>
+                <textarea
+                  value={value}
+                  onChange={(e) => onUpdate(key, e.target.value)}
+                  rows={4}
+                  placeholder={placeholder}
+                  style={{
+                    width: '100%', padding: 8, boxSizing: 'border-box', borderRadius: 6,
+                    background: 'var(--input-bg)', border: '1px solid var(--border)',
+                    color: 'var(--text)', fontSize: 12, fontFamily: 'var(--font-mono)',
+                    resize: 'vertical', minHeight: 60, outline: 'none',
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 interface AgentFormModalProps {
   agent?: Agent | null;
   onClose: () => void;
@@ -222,6 +285,10 @@ export function AgentFormModal({ agent, onClose, onSaved }: AgentFormModalProps)
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // Core memory drafts for create mode (edit mode uses CoreMemoryCompact with live API)
+  const [coreDrafts, setCoreDrafts] = useState<Record<string, string>>({});
+  const updateCoreDraft = (key: string, value: string) => setCoreDrafts((p) => ({ ...p, [key]: value }));
+
   // Providers fetched from setup/status
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [loadingProviders, setLoadingProviders] = useState(true);
@@ -284,6 +351,15 @@ export function AgentFormModal({ agent, onClose, onSaved }: AgentFormModalProps)
         saved = await updateAgent(agent.id, payload);
       } else {
         saved = await createAgent(payload);
+        // Save any core memory drafts the user filled during creation
+        for (const [blockName, content] of Object.entries(coreDrafts)) {
+          if (content.trim()) {
+            await fetch(`${API}/memory/agents/${saved.id}/core/${blockName}`, {
+              method: 'PUT', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ content: content.trim() }),
+            }).catch(() => { /* best-effort */ });
+          }
+        }
       }
       onSaved?.(saved);
       onClose();
@@ -584,25 +660,29 @@ export function AgentFormModal({ agent, onClose, onSaved }: AgentFormModalProps)
               </div>
             </div>
 
-            {/* Core Memory (edit mode only — blocks exist after agent creation) */}
-            {isEdit && agent && (
+            {/* Core Memory */}
+            <div style={{
+              marginBottom: 20, padding: 14, borderRadius: 10,
+              background: 'var(--surface)', border: '1px solid var(--border)',
+            }}>
               <div style={{
-                marginBottom: 20, padding: 14, borderRadius: 10,
-                background: 'var(--surface)', border: '1px solid var(--border)',
+                fontSize: 11, fontWeight: 600, color: 'var(--text-muted)',
+                textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6,
+                display: 'flex', alignItems: 'center', gap: 6,
               }}>
-                <div style={{
-                  fontSize: 11, fontWeight: 600, color: 'var(--text-muted)',
-                  textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6,
-                  display: 'flex', alignItems: 'center', gap: 6,
-                }}>
-                  <span>🧠</span> Core Memory
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
-                  Persistent identity blocks — injected into every prompt.
-                </div>
-                <CoreMemoryCompact agentId={agent.id} />
+                <span>🧠</span> Core Memory
               </div>
-            )}
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
+                {isEdit
+                  ? 'Persistent identity blocks — injected into every prompt.'
+                  : 'Optional — tell your agent about yourself and your project. Injected into every prompt.'}
+              </div>
+              {isEdit && agent ? (
+                <CoreMemoryCompact agentId={agent.id} />
+              ) : (
+                <CoreMemoryCreateForm drafts={coreDrafts} onUpdate={updateCoreDraft} />
+              )}
+            </div>
 
             {/* Error */}
             {error && (
