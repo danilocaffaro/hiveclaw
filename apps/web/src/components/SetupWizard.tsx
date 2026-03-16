@@ -256,7 +256,7 @@ function CopilotAuthPanel({ onToken }: { onToken: (token: string) => void }) {
     setPollStatus('waiting');
     setErrorMsg('');
     try {
-      const res = await fetch('/setup/copilot/device-code', { method: 'POST' });
+      const res = await fetch(`${API}/setup/copilot/device-code`, { method: 'POST' });
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       const json = await res.json() as { data: { device_code: string; user_code: string; verification_uri: string; interval: number } };
       const { device_code, user_code, verification_uri, interval } = json.data;
@@ -271,7 +271,7 @@ function CopilotAuthPanel({ onToken }: { onToken: (token: string) => void }) {
       const pollInterval = Math.max((interval || 5) * 1000, 5000);
       pollRef.current = setInterval(async () => {
         try {
-          const pollRes = await fetch('/setup/copilot/poll', {
+          const pollRes = await fetch(`${API}/setup/copilot/poll`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ device_code }),
@@ -598,18 +598,21 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
   const PROVIDER_CARDS = [
     {
-      id: 'anthropic', name: 'Anthropic', icon: '🟣', desc: 'Claude Opus, Sonnet, Haiku',
-      hint: 'Two options: Claude Pro/Max subscription OR pay-per-use API key',
+      id: 'anthropic', name: 'Anthropic', icon: '🟣', desc: 'Claude Opus 4, Sonnet 4, Haiku 4.5',
+      hint: 'Two options: Console API key (pay-per-use) OR Claude Code OAuth token (subscription)',
       steps: [
-        '💡 Option A — Claude Pro/Max subscription (recommended if you already have one):',
-        'Go to claude.ai/settings → scroll to "API Key" or "OAuth Token"',
-        'Copy the token (starts with sk-ant-oat…) and paste below',
-        'This uses your existing subscription — no extra charges!',
-        '─────────────────────────',
-        '💳 Option B — Pay-per-use API key:',
+        '💳 Option A — Pay-per-use API key (recommended):',
         'Go to console.anthropic.com → Settings → API Keys → Create Key',
         'Copy the key (starts with sk-ant-api…) and paste below',
         'This is billed per usage (pay only for what you use)',
+        '─────────────────────────',
+        '💡 Option B — Claude Max/Pro subscription token:',
+        'Install Claude Code CLI: npm i -g @anthropic-ai/claude-code',
+        'Run "claude" in your terminal → complete the browser login',
+        'The OAuth token is saved in your OS keychain',
+        'macOS: run "security find-generic-password -s claude-code -w" to extract it',
+        'The token starts with sk-ant-oat… — paste it below',
+        'This uses your existing subscription — no extra charges!',
       ],
       url: 'https://console.anthropic.com/settings/keys',
     },

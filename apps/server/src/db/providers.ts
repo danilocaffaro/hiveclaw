@@ -221,6 +221,16 @@ export const DEFAULT_PROVIDERS: Array<Omit<ProviderConfig, 'status'> & { base_ur
     base_url: 'https://api.githubcopilot.com',
     models: [
       {
+        id: 'claude-opus-4',
+        name: 'Claude Opus 4',
+        provider: 'github-copilot',
+        contextWindow: 200000,
+        maxOutput: 32768,
+        costPerMInput: 0,
+        costPerMOutput: 0,
+        capabilities: ['text', 'vision', 'tools'],
+      },
+      {
         id: 'claude-sonnet-4',
         name: 'Claude Sonnet 4',
         provider: 'github-copilot',

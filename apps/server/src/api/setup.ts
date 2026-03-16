@@ -262,48 +262,66 @@ async function testProviderConnection(
         return { success: false, error: `GitHub authentication failed (${ghRes.status}): ${body.slice(0, 200)}` };
       }
 
-      // Exchange GitHub token for Copilot session token, then discover models
+      // Exchange GitHub token for Copilot session token — REQUIRED for chat to work
+      let copilotSessionToken: string | undefined;
       try {
         const tokenRes = await fetch('https://api.github.com/copilot_internal/v2/token', {
           headers: { Authorization: `token ${apiKey}`, 'Accept': 'application/json', 'User-Agent': 'HiveClaw/1.0' },
           signal: AbortSignal.timeout(10000),
         });
-        if (tokenRes.ok) {
-          const tokenData = await tokenRes.json() as { token?: string };
-          if (tokenData.token) {
-            const modelsRes = await fetch('https://api.githubcopilot.com/models', {
-              headers: {
-                Authorization: `Bearer ${tokenData.token}`,
-                'Accept': 'application/json',
-                'Editor-Version': 'vscode/1.96.0',
-                'Editor-Plugin-Version': 'copilot/1.0.0',
-                'Copilot-Integration-Id': 'vscode-chat',
-              },
-              signal: AbortSignal.timeout(10000),
-            });
-            if (modelsRes.ok) {
-              const modelsData = await modelsRes.json() as Array<{ id: string; name?: string }> | { data?: Array<{ id: string; name?: string }> };
-              const modelList = Array.isArray(modelsData) ? modelsData : (modelsData as { data?: Array<{ id: string }> }).data ?? [];
-              // Filter out embedding/non-chat models, deduplicate, and remove dated versions
-              const chatModels = [...new Set(
-                modelList
-                  .map(m => m.id)
-                  .filter(id =>
-                    !id.includes('embedding') &&
-                    !id.includes('ada-002') &&
-                    !/-\d{4}-\d{2}-\d{2}/.test(id) && // remove dated versions like gpt-4o-2024-08-06
-                    !id.includes('-0613') && // remove old dated suffix
-                    !id.includes('-0125') &&
-                    id !== 'gpt-3.5-turbo'  // too old
-                  )
-              )];
-              if (chatModels.length > 0) {
-                return { success: true, models: chatModels };
-              }
-            }
+        if (!tokenRes.ok) {
+          const body = await tokenRes.text();
+          console.error(`[copilot] Token exchange failed: ${tokenRes.status} ${body.slice(0, 200)}`);
+          return {
+            success: false,
+            error: tokenRes.status === 401 || tokenRes.status === 403
+              ? 'This GitHub token does not have Copilot access. Make sure you have an active GitHub Copilot subscription and use the Auto Login flow (not a regular GitHub PAT).'
+              : `Copilot token exchange failed (${tokenRes.status}): ${body.slice(0, 200)}`,
+          };
+        }
+        const tokenData = await tokenRes.json() as { token?: string };
+        copilotSessionToken = tokenData.token;
+        if (!copilotSessionToken) {
+          return { success: false, error: 'GitHub returned empty Copilot token. Make sure your Copilot subscription is active.' };
+        }
+      } catch (err) {
+        return { success: false, error: `Copilot token exchange failed: ${(err as Error).message}` };
+      }
+
+      // Discover available models using the Copilot session token
+      try {
+        const modelsRes = await fetch('https://api.githubcopilot.com/models', {
+          headers: {
+            Authorization: `Bearer ${copilotSessionToken}`,
+            'Accept': 'application/json',
+            'Editor-Version': 'vscode/1.96.0',
+            'Editor-Plugin-Version': 'copilot/1.0.0',
+            'Copilot-Integration-Id': 'vscode-chat',
+          },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (modelsRes.ok) {
+          const modelsData = await modelsRes.json() as Array<{ id: string; name?: string }> | { data?: Array<{ id: string; name?: string }> };
+          const modelList = Array.isArray(modelsData) ? modelsData : (modelsData as { data?: Array<{ id: string }> }).data ?? [];
+          // Filter out embedding/non-chat models, deduplicate, and remove dated versions
+          const chatModels = [...new Set(
+            modelList
+              .map(m => m.id)
+              .filter(id =>
+                !id.includes('embedding') &&
+                !id.includes('ada-002') &&
+                !/-\d{4}-\d{2}-\d{2}/.test(id) && // remove dated versions like gpt-4o-2024-08-06
+                !id.includes('-0613') && // remove old dated suffix
+                !id.includes('-0125') &&
+                id !== 'gpt-3.5-turbo'  // too old
+              )
+          )];
+          if (chatModels.length > 0) {
+            return { success: true, models: chatModels };
           }
         }
-      } catch { /* Fallback to defaults if model discovery fails */ }
+      } catch { /* Model discovery failed — use defaults */ }
+      // Token exchange succeeded but model discovery failed — still OK, use defaults
       return { success: true };
     }
 
@@ -395,7 +413,7 @@ async function pollCopilotToken(deviceCode: string): Promise<{
     error_description?: string;
   };
   if (data.access_token) {
-    // Exchange GitHub token for Copilot API token
+    // Verify the GitHub token has Copilot access
     try {
       const copilotRes = await fetch('https://api.github.com/copilot_internal/v2/token', {
         headers: {
@@ -405,15 +423,15 @@ async function pollCopilotToken(deviceCode: string): Promise<{
         signal: AbortSignal.timeout(10000),
       });
       if (copilotRes.ok) {
-        const copilotData = await copilotRes.json() as { token?: string; expires_at?: number };
-        if (copilotData.token) {
-          return { status: 'success', token: copilotData.token };
-        }
+        // Copilot access confirmed — return the GITHUB token (not the session token)
+        // The runtime will exchange it for a fresh Copilot session token each time
+        return { status: 'success', token: data.access_token };
       }
-      // Fallback: use the GitHub OAuth token directly
-      return { status: 'success', token: data.access_token };
-    } catch {
-      return { status: 'success', token: data.access_token };
+      console.error(`[copilot] Device Flow: token lacks Copilot access (${copilotRes.status})`);
+      return { status: 'error', error: 'GitHub token does not have Copilot access. Make sure your GitHub Copilot subscription is active.' };
+    } catch (err) {
+      console.error(`[copilot] Device Flow: Copilot verification failed:`, (err as Error).message);
+      return { status: 'error', error: `Copilot verification failed: ${(err as Error).message}` };
     }
   }
   if (data.error === 'authorization_pending') return { status: 'pending' };
@@ -613,8 +631,12 @@ export function registerSetupRoutes(
               resolvedApiKey = tokenData.token;
               if (tokenData.endpoints?.api) resolvedBaseUrl = tokenData.endpoints.api;
             }
+          } else {
+            throw new Error(`Copilot token exchange failed (${tokenRes.status}). Re-authenticate your GitHub Copilot provider.`);
           }
-        } catch { /* fall through */ }
+        } catch (err) {
+          throw new Error(`Copilot token exchange failed: ${(err as Error).message}`);
+        }
       }
 
       // Build extra headers for providers that need them

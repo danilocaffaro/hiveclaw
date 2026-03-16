@@ -129,6 +129,7 @@ export class ProviderRouter {
 
       // GitHub Copilot: exchange OAuth token for Copilot session token
       if (providerId === 'github-copilot' && chatOptions.apiKey) {
+        let copilotExchangeOk = false;
         try {
           const tokenRes = await fetch('https://api.github.com/copilot_internal/v2/token', {
             headers: {
@@ -152,12 +153,18 @@ export class ProviderRouter {
                 'Editor-Plugin-Version': 'copilot/1.0.0',
                 'Copilot-Integration-Id': 'vscode-chat',
               };
+              copilotExchangeOk = true;
             }
           } else {
             console.error(`[copilot] Token exchange failed: ${tokenRes.status} ${await tokenRes.text().catch(() => '')}`);
           }
         } catch (err) {
           console.error(`[copilot] Token exchange error:`, (err as Error).message);
+        }
+
+        if (!copilotExchangeOk) {
+          logger.warn(`[ProviderRouter] GitHub Copilot token exchange failed — skipping provider. Re-authenticate via Settings > Providers > GitHub Copilot.`);
+          continue; // skip to next provider in fallback chain
         }
       }
 
