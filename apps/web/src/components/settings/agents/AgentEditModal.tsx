@@ -15,7 +15,7 @@ interface CoreBlock {
 const CORE_BLOCK_META: Record<string, { icon: string; label: string; desc: string }> = {
   persona: { icon: '🎭', label: 'Persona', desc: 'Identity, role, communication style' },
   human: { icon: '👤', label: 'Human', desc: 'User profile, preferences, safety laws' },
-  project: { icon: '📁', label: 'Project', desc: 'Repo, stack, conventions, team' },
+  project: { icon: '📁', label: 'Context', desc: 'Business, project, codebase, or any working context' },
   scratchpad: { icon: '📝', label: 'Scratchpad', desc: 'Current state, notes, decisions' },
 };
 

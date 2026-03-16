@@ -42,8 +42,8 @@ function provisionCoreMemory(
   ].join('\n'));
 
   memRepo.setCoreBlock(agentId, 'project', [
-    'This block stores project context — repo paths, tech stack, conventions.',
-    'Update it as you learn about the codebase and project structure.',
+    'This block stores context about what you work on — a business, project, codebase, routine, or any domain.',
+    'Update it as you learn about the user\'s world.',
     `Working directory: ${repoPath}`,
   ].join('\n'));
 

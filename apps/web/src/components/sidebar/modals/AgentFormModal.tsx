@@ -10,7 +10,7 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? '/api';
 const CORE_BLOCKS = [
   { key: 'persona', icon: '🎭', label: 'Persona' },
   { key: 'human', icon: '👤', label: 'Human' },
-  { key: 'project', icon: '📁', label: 'Project' },
+  { key: 'project', icon: '📁', label: 'Context' },
   { key: 'scratchpad', icon: '📝', label: 'Scratchpad' },
 ] as const;
 
@@ -142,7 +142,7 @@ function CoreMemoryCreateForm({ drafts, onUpdate }: {
         const placeholder = key === 'human'
           ? 'Who are you? Name, preferences, timezone, working style…'
           : key === 'project'
-            ? 'What project is this for? Repo, stack, conventions…'
+            ? 'Context this agent works in — a business, project, codebase, routine, anything…'
             : key === 'persona'
               ? 'Auto-filled from Name/Role above. Add personality, communication style…'
               : 'Working notes, current tasks, decisions…';
