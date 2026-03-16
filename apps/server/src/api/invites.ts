@@ -44,6 +44,12 @@ export function registerInviteRoutes(app: FastifyInstance, db: Database.Database
     }
 
     const { role = 'member', allowedAgents = [], maxUses = 1, expiresInDays = 7 } = req.body ?? {};
+
+    // Validate role
+    const validRoles = ['admin', 'member', 'viewer'] as const;
+    if (!validRoles.includes(role as typeof validRoles[number])) {
+      return reply.status(400).send({ error: { code: 'VALIDATION', message: `role must be one of: ${validRoles.join(', ')}` } });
+    }
     const id = randomUUID();
     const code = randomBytes(16).toString('base64url');
     const expiresAt = new Date(Date.now() + expiresInDays * 86400000).toISOString();

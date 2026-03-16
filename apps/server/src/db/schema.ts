@@ -643,20 +643,45 @@ export function initDatabase(): Database.Database {
     }
   } catch { /* non-fatal — may already be synced */ }
 
-  // 8. Migrate: backfill FTS5 from existing messages (one-time)
+  // 8. Migrate: backfill/repair FTS5 index from messages
   try {
     const ftsCount = (db.prepare("SELECT COUNT(*) as cnt FROM messages_fts").get() as { cnt: number }).cnt;
-    if (ftsCount === 0) {
-      const msgCount = (db.prepare("SELECT COUNT(*) as cnt FROM messages").get() as { cnt: number }).cnt;
-      if (msgCount > 0) {
-        db.exec(`
+    const msgCount = (db.prepare("SELECT COUNT(*) as cnt FROM messages").get() as { cnt: number }).cnt;
+    // Rebuild FTS if empty, out of sync, or orphaned entries exist
+    if (msgCount > 0 && (ftsCount === 0 || ftsCount !== msgCount)) {
+      // Drop and recreate triggers to avoid conflicts during rebuild
+      db.exec('DROP TRIGGER IF EXISTS messages_fts_insert');
+      db.exec('DROP TRIGGER IF EXISTS messages_fts_delete');
+      db.exec('DROP TRIGGER IF EXISTS messages_fts_update');
+      db.exec('DELETE FROM messages_fts');
+      db.exec(`
+        INSERT INTO messages_fts(rowid, content, session_id, agent_id, role, created_at)
+        SELECT rowid, content, session_id, agent_id, role, created_at FROM messages
+      `);
+      // Recreate triggers
+      db.exec(`
+        CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
           INSERT INTO messages_fts(rowid, content, session_id, agent_id, role, created_at)
-          SELECT rowid, content, session_id, agent_id, role, created_at FROM messages
-        `);
-      }
+          VALUES (NEW.rowid, NEW.content, NEW.session_id, NEW.agent_id, NEW.role, NEW.created_at);
+        END
+      `);
+      db.exec(`
+        CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
+          INSERT INTO messages_fts(messages_fts, rowid, content, session_id, agent_id, role, created_at)
+          VALUES ('delete', OLD.rowid, OLD.content, OLD.session_id, OLD.agent_id, OLD.role, OLD.created_at);
+        END
+      `);
+      db.exec(`
+        CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE ON messages BEGIN
+          INSERT INTO messages_fts(messages_fts, rowid, content, session_id, agent_id, role, created_at)
+          VALUES ('delete', OLD.rowid, OLD.content, OLD.session_id, OLD.agent_id, OLD.role, OLD.created_at);
+          INSERT INTO messages_fts(rowid, content, session_id, agent_id, role, created_at)
+          VALUES (NEW.rowid, NEW.content, NEW.session_id, NEW.agent_id, NEW.role, NEW.created_at);
+        END
+      `);
     }
   } catch {
-    // Non-fatal — FTS backfill can be retried
+    // Non-fatal — FTS repair can be retried
   }
 
   // ── Schema versioning (R2) ────────────────────────────────────────────────
