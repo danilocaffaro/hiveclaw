@@ -1,5 +1,5 @@
 // ============================================================
-// Tool Registry — all 16 tools
+// Tool Registry — all 19 tools
 // ============================================================
 import type { Tool } from './types.js';
 
@@ -19,6 +19,9 @@ import { QuestionTool } from './question.js';
 import { DataAnalysisTool } from './data-analysis.js';
 import { BrowserTool } from './browser.js';
 import { CredentialTool } from './credential.js';
+import { ScreenshotTool } from './screenshot.js';
+import { WebSearchTool } from './web-search.js';
+import { MacControlTool } from './mac-control.js';
 
 export { BashTool } from './bash.js';
 export { EditTool } from './edit.js';
@@ -36,6 +39,9 @@ export { QuestionTool } from './question.js';
 export { DataAnalysisTool } from './data-analysis.js';
 export { BrowserTool } from './browser.js';
 export { CredentialTool } from './credential.js';
+export { ScreenshotTool } from './screenshot.js';
+export { WebSearchTool } from './web-search.js';
+export { MacControlTool } from './mac-control.js';
 
 export type { Tool, ToolInput, ToolOutput, ToolDefinition, ToolContext } from './types.js';
 export { formatToolResult } from './types.js';
@@ -61,6 +67,9 @@ export function getToolRegistry(): Map<string, Tool> {
     new DataAnalysisTool(),
     new BrowserTool(),
     new CredentialTool(),
+    new ScreenshotTool(),
+    new WebSearchTool(),
+    new MacControlTool(),
   ];
 
   const registry = new Map<string, Tool>();
