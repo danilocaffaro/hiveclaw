@@ -1,6 +1,6 @@
 # HiveClaw — Backlog & Execution Plan
 
-> **Atualizado:** 2026-03-15 20:06 BRT
+> **Atualizado:** 2026-03-16 18:45 BRT
 > **Princípio:** Small Batches CI/CD — cada batch é deployável, testável, e entrega valor isolado.
 > **Gate:** 0 TS errors + tests pass + QA visual antes de merge.
 
@@ -15,6 +15,7 @@
 | B14 | User bubble text não selecionável/copiável | High | ✅ FIXED | R1 |
 | B15 | Skills path mismatch (skills dir empty) | High | ✅ FIXED `4119c02` | R1 |
 | B16 | Skill Scout hard-coded to Gemini only | Medium | ✅ FIXED `bfb690d` | R1 |
+| B17 | SprintPanel error handling silencioso | Low | ✅ FIXED `7e277e9` | R18 |
 
 ---
 
@@ -22,6 +23,8 @@
 
 | # | Feature | Prioridade | Est. | Batch |
 |---|---------|-----------|------|-------|
+| **F21** | **Automations UX: filtro por agente + source of truth** | 🔴 High | 2h | **R19** |
+| **F22** | **n8n/Webhook integration — trigger type webhook** | 🔴 High | 5h | **R19** |
 | F15 | External user invite (modelo TC2) | 🔴 Critical | 12h | R4-R5 |
 | F16 | Update system (versão + releases + DB migrations) | 🔴 Critical | 10h | R3 |
 | F17 | RSP Browser funcional | 🟡 Medium | 6h | R6 |
@@ -208,6 +211,22 @@ Week 4 (Apr 6-12):
 | v0.4.0 | R6 | Automation engine |
 | v0.5.0 | R7-R8 | Squad tasks + agent visibility |
 | v1.0.0 | Post-QA | Feature-complete, QA-certified |
+
+---
+
+### Batch R19 — Automations Pro + n8n Integration (~7h) 🔴 NEXT
+> **Goal:** Automations tab = source of truth per agent. n8n/webhook integration.
+
+| Step | Item | Deliverable | Time |
+|------|------|-------------|------|
+| R19.1 | **Automations filter by agent** | When RSP has agent selected, filter automations to that agent. Toggle "All agents" / "This agent". Badge count on tab. | 1h |
+| R19.2 | **Webhook trigger type — backend** | `POST /api/automations/:id/webhook` endpoint. When called, executes the automation's action. Returns run result. Auth via automation-specific token or bearer. | 2h |
+| R19.3 | **Webhook trigger type — UI** | Dropdown option "Webhook" in trigger type. Shows generated URL + copy button. Regenerate token. Test button. | 1.5h |
+| R19.4 | **Outbound webhook action** | New action type `webhook_call`: automation can POST to external URL (n8n, Zapier, Make). Config: URL, headers, body template with variables. | 1.5h |
+| R19.5 | **n8n quick-start guide** | In-app help/docs: "Connect to n8n" with step-by-step. Template n8n workflow JSON for import. | 1h |
+
+**Deploy gate:** Create webhook automation → copy URL → call from curl/n8n → agent executes → visible in run history
+**Commit:** `feat: R19 — automations source of truth + n8n webhook integration`
 
 ---
 

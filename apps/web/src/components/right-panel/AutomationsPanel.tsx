@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRSPStore, selectActiveAgentId, selectIsSquadMode } from '@/stores/rsp-store';
 
 interface Automation {
   id: string;
@@ -8,10 +9,11 @@ interface Automation {
   description: string;
   enabled: boolean;
   trigger_type: 'cron' | 'event' | 'webhook';
-  trigger_config: { cron?: string; schedule?: string; event?: string };
+  trigger_config: { cron?: string; schedule?: string; event?: string; url?: string };
   agent_id: string | null;
-  action_type: 'send_message' | 'run_workflow' | 'http_request';
-  action_config: { message?: string; prompt?: string };
+  action_type: 'send_message' | 'run_workflow' | 'http_request' | 'webhook_call';
+  action_config: { message?: string; prompt?: string; url?: string; headers?: Record<string, string>; body?: string };
+  webhook_token?: string | null;
   last_run_at: string | null;
   last_run_status: string | null;
   run_count: number;
@@ -34,20 +36,40 @@ const CRON_PRESETS = [
   { label: 'Every Sunday 3am',   value: '0 3 * * 0' },
 ];
 
+type TriggerType = 'cron' | 'webhook';
+
 export default function AutomationsPanel() {
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [running, setRunning] = useState<string | null>(null);
+  const [filterAgent, setFilterAgent] = useState<'all' | 'current'>('current');
+
+  // RSP context
+  const rspAgentId = useRSPStore(selectActiveAgentId);
+  const isSquadMode = useRSPStore(selectIsSquadMode);
 
   // Create form state
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [triggerType, setTriggerType] = useState<TriggerType>('cron');
   const [cron, setCron] = useState('0 9 * * *');
   const [agentId, setAgentId] = useState('');
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Webhook outbound fields
+  const [webhookUrl, setWebhookUrl] = useState('');
+
+  // Filter automations by current RSP agent
+  const filteredAutomations = useMemo(() => {
+    if (filterAgent === 'all' || !rspAgentId) return automations;
+    return automations.filter(a => a.agent_id === rspAgentId);
+  }, [automations, filterAgent, rspAgentId]);
+
+  const totalCount = automations.length;
+  const filteredCount = filteredAutomations.length;
 
   const load = useCallback(async () => {
     try {
@@ -57,32 +79,51 @@ export default function AutomationsPanel() {
       ]);
       if (aRes.ok) { const { data } = await aRes.json(); setAutomations(data ?? []); }
       if (agRes.ok) { const { data } = await agRes.json(); setAgents(data ?? []); }
-    } catch { /* ignore */ }
+    } catch (e) {
+      console.error('[AutomationsPanel] load error:', e);
+    }
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
+  // Auto-select RSP agent in create form
+  useEffect(() => {
+    if (rspAgentId && !agentId) setAgentId(rspAgentId);
+  }, [rspAgentId, agentId]);
+
   const createAutomation = async () => {
-    if (!name.trim() || !cron || !agentId || !message.trim()) return;
+    if (!name.trim() || !agentId) return;
+    if (triggerType === 'cron' && !cron) return;
+    if (triggerType === 'cron' && !message.trim()) return;
+    if (triggerType === 'webhook' && !message.trim()) return;
+
     setSaving(true);
     try {
+      const body: Record<string, unknown> = {
+        name: name.trim(),
+        description: description.trim(),
+        triggerType,
+        agentId,
+        actionType: 'send_message',
+        actionConfig: { message: message.trim() },
+      };
+
+      if (triggerType === 'cron') {
+        body.triggerConfig = { cron };
+      } else {
+        body.triggerConfig = {};
+      }
+
       const res = await fetch('/api/automations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim(),
-          triggerType: 'cron',
-          triggerConfig: { cron },
-          agentId,
-          actionType: 'send_message',
-          actionConfig: { message: message.trim() },
-        }),
+        body: JSON.stringify(body),
       });
       if (res.ok) {
         setShowCreate(false);
-        setName(''); setDescription(''); setCron('0 9 * * *'); setAgentId(''); setMessage('');
+        setName(''); setDescription(''); setCron('0 9 * * *'); setAgentId(rspAgentId ?? ''); setMessage('');
+        setTriggerType('cron'); setWebhookUrl('');
         await load();
       }
     } catch { /* ignore */ }
@@ -98,8 +139,8 @@ export default function AutomationsPanel() {
     setAutomations(prev => prev.map(a => a.id === id ? { ...a, enabled: !current } : a));
   };
 
-  const deleteAuto = async (id: string, name: string) => {
-    if (!confirm(`Delete automation "${name}"?`)) return;
+  const deleteAuto = async (id: string, autoName: string) => {
+    if (!confirm(`Delete automation "${autoName}"?`)) return;
     await fetch(`/api/automations/${id}`, { method: 'DELETE' });
     setAutomations(prev => prev.filter(a => a.id !== id));
   };
@@ -108,6 +149,12 @@ export default function AutomationsPanel() {
     setRunning(id);
     await fetch(`/api/automations/${id}/run`, { method: 'POST' });
     setTimeout(() => { setRunning(null); load(); }, 1500);
+  };
+
+  const copyWebhookUrl = (auto: Automation) => {
+    const base = window.location.origin;
+    const url = `${base}/api/automations/${auto.id}/webhook`;
+    navigator.clipboard.writeText(url).catch(() => {});
   };
 
   const formatDate = (d: string | null) => {
@@ -121,9 +168,11 @@ export default function AutomationsPanel() {
     return a ? `${a.emoji} ${a.name}` : id.slice(0, 8);
   };
 
+  const currentAgentLabel = rspAgentId ? agentName(rspAgentId) : null;
+
   const s: Record<string, React.CSSProperties> = {
-    wrap: { padding: 16 },
-    header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+    wrap: { padding: 16, height: '100%', overflow: 'auto' },
+    header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
     title: { fontSize: 14, fontWeight: 700, color: 'var(--text)' },
     addBtn: { padding: '6px 12px', borderRadius: 'var(--radius-md)', background: 'var(--accent)', color: '#fff', fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer' },
     card: { padding: 14, borderRadius: 'var(--radius-lg)', background: 'var(--bg-card)', border: '1px solid var(--border)', marginBottom: 10 },
@@ -134,16 +183,46 @@ export default function AutomationsPanel() {
     select: { width: '100%', padding: '7px 10px', borderRadius: 'var(--radius-md)', background: 'var(--input-bg)', border: '1px solid var(--border)', color: 'var(--text)', fontSize: 12, cursor: 'pointer' },
     fld: { marginBottom: 12 },
     flabel: { fontSize: 11, fontWeight: 600, color: 'var(--fg-muted)', marginBottom: 4, display: 'block', textTransform: 'uppercase' as const, letterSpacing: '0.5px' },
+    filterBar: { display: 'flex', gap: 4, marginBottom: 12, fontSize: 11 },
+    filterBtn: { padding: '3px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, transition: 'all 0.15s' },
   };
 
   return (
     <div style={s.wrap}>
       <div style={s.header}>
-        <span style={s.title}>⚡ Automations</span>
+        <span style={s.title}>⚡ Automations ({filteredCount}{filterAgent === 'current' && totalCount !== filteredCount ? `/${totalCount}` : ''})</span>
         <button style={s.addBtn} onClick={() => setShowCreate(v => !v)}>
           {showCreate ? '✕ Cancel' : '+ New'}
         </button>
       </div>
+
+      {/* Agent filter bar */}
+      {rspAgentId && !isSquadMode && totalCount > 0 && (
+        <div style={s.filterBar}>
+          <button
+            onClick={() => setFilterAgent('current')}
+            style={{
+              ...s.filterBtn,
+              background: filterAgent === 'current' ? 'var(--accent)' : 'transparent',
+              color: filterAgent === 'current' ? '#fff' : 'var(--text-muted)',
+              borderColor: filterAgent === 'current' ? 'var(--accent)' : 'var(--border)',
+            }}
+          >
+            {currentAgentLabel} ({filteredCount})
+          </button>
+          <button
+            onClick={() => setFilterAgent('all')}
+            style={{
+              ...s.filterBtn,
+              background: filterAgent === 'all' ? 'var(--accent)' : 'transparent',
+              color: filterAgent === 'all' ? '#fff' : 'var(--text-muted)',
+              borderColor: filterAgent === 'all' ? 'var(--accent)' : 'var(--border)',
+            }}
+          >
+            All agents ({totalCount})
+          </button>
+        </div>
+      )}
 
       {/* Create form */}
       {showCreate && (
@@ -156,13 +235,31 @@ export default function AutomationsPanel() {
           </div>
 
           <div style={s.fld}>
-            <label style={s.flabel}>Schedule (cron)</label>
-            <select style={s.select} value={cron} onChange={e => setCron(e.target.value)}>
-              {CRON_PRESETS.map(p => (
-                <option key={p.value} value={p.value}>{p.label} ({p.value})</option>
-              ))}
+            <label style={s.flabel}>Trigger Type</label>
+            <select style={s.select} value={triggerType} onChange={e => setTriggerType(e.target.value as TriggerType)}>
+              <option value="cron">⏰ Scheduled (cron)</option>
+              <option value="webhook">🔗 Webhook (external trigger)</option>
             </select>
           </div>
+
+          {triggerType === 'cron' && (
+            <div style={s.fld}>
+              <label style={s.flabel}>Schedule (cron)</label>
+              <select style={s.select} value={cron} onChange={e => setCron(e.target.value)}>
+                {CRON_PRESETS.map(p => (
+                  <option key={p.value} value={p.value}>{p.label} ({p.value})</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {triggerType === 'webhook' && (
+            <div style={{ ...s.card, background: 'var(--surface)', border: '1px dashed var(--border)', padding: 10, marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>
+                🔗 A webhook URL will be generated after creation. Use it in n8n, Zapier, or any HTTP client.
+              </div>
+            </div>
+          )}
 
           <div style={s.fld}>
             <label style={s.flabel}>Agent</label>
@@ -202,14 +299,22 @@ export default function AutomationsPanel() {
       {/* List */}
       {loading ? (
         <div style={{ textAlign: 'center', color: 'var(--fg-muted)', fontSize: 12, padding: 24 }}>Loading…</div>
-      ) : automations.length === 0 ? (
+      ) : filteredAutomations.length === 0 ? (
         <div style={{ textAlign: 'center', color: 'var(--fg-muted)', fontSize: 12, padding: 32 }}>
           <div style={{ fontSize: 28, marginBottom: 8 }}>⚡</div>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>No automations yet</div>
-          <div>Create your first scheduled agent task above.</div>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+            {totalCount > 0 && filterAgent === 'current'
+              ? `No automations for ${currentAgentLabel ?? 'this agent'}`
+              : 'No automations yet'}
+          </div>
+          <div>
+            {totalCount > 0 && filterAgent === 'current'
+              ? 'Switch to "All agents" to see others, or create one above.'
+              : 'Create your first scheduled agent task above.'}
+          </div>
         </div>
       ) : (
-        automations.map(auto => (
+        filteredAutomations.map(auto => (
           <div key={auto.id} style={{ ...s.card, opacity: auto.enabled ? 1 : 0.6 }}>
             <div style={s.cardRow}>
               {/* Toggle */}
@@ -230,10 +335,26 @@ export default function AutomationsPanel() {
               </div>
 
               <div style={{ flex: 1 }}>
-                <div style={s.label}>{auto.name}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={s.label}>{auto.name}</span>
+                  {auto.trigger_type === 'webhook' && (
+                    <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 4, background: 'var(--accent)', color: '#fff', fontWeight: 600 }}>WEBHOOK</span>
+                  )}
+                </div>
                 {auto.description && <div style={s.sub}>{auto.description}</div>}
                 <div style={{ ...s.sub, marginTop: 4, display: 'flex', gap: 12, flexWrap: 'wrap' as const }}>
-                  <span>🕐 {auto.trigger_config.cron ?? auto.trigger_config.schedule ?? '?'}</span>
+                  {auto.trigger_type === 'cron' && (
+                    <span>🕐 {auto.trigger_config.cron ?? auto.trigger_config.schedule ?? '?'}</span>
+                  )}
+                  {auto.trigger_type === 'webhook' && (
+                    <span
+                      onClick={() => copyWebhookUrl(auto)}
+                      style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                      title="Click to copy webhook URL"
+                    >
+                      🔗 Copy URL
+                    </span>
+                  )}
                   <span>🤖 {agentName(auto.agent_id)}</span>
                   <span>✉️ {(auto.action_config.message ?? auto.action_config.prompt ?? '').slice(0, 40)}</span>
                 </div>

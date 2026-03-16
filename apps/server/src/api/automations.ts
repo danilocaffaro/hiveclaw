@@ -367,4 +367,60 @@ export function registerAutomationRoutes(app: FastifyInstance, db: Database.Data
     });
     return { data: { success: true, message: `Automation "${auto.name}" triggered` } };
   });
+
+  // ─── Webhook Trigger Endpoint (R19) ─────────────────────────────────────────
+  // POST /api/automations/:id/webhook — external trigger for webhook-type automations
+  // Can be called by n8n, Zapier, Make, curl, or any HTTP client.
+  // Optional: pass JSON body with { message } to override the automation's default prompt.
+  // Auth: open by design (automation ID = secret), or use ?token= for extra security.
+  app.post<{
+    Params: { id: string };
+    Body?: { message?: string; data?: Record<string, unknown> };
+    Querystring?: { token?: string };
+  }>('/api/automations/:id/webhook', async (req, reply) => {
+    const auto = db.prepare('SELECT * FROM automations WHERE id = ?').get(req.params.id) as Automation | undefined;
+    if (!auto) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Automation not found' } });
+
+    if (!auto.enabled) {
+      return reply.status(403).send({ error: { code: 'DISABLED', message: 'Automation is disabled' } });
+    }
+
+    // Optional webhook token check
+    const triggerConfig = JSON.parse(auto.trigger_config || '{}');
+    if (triggerConfig.webhookToken) {
+      const providedToken = (req.query as Record<string, string>)?.token ?? req.headers['x-webhook-token'];
+      if (providedToken !== triggerConfig.webhookToken) {
+        return reply.status(401).send({ error: { code: 'UNAUTHORIZED', message: 'Invalid webhook token' } });
+      }
+    }
+
+    // Allow overriding the message/prompt from the webhook payload
+    const body = req.body as Record<string, unknown> | null;
+    const overrideMessage = typeof body?.message === 'string' ? body.message : null;
+    const webhookData = body?.data ?? body ?? {};
+
+    // If there's an override message, temporarily modify the automation's action config
+    let autoToRun = auto;
+    if (overrideMessage) {
+      const actionConfig = JSON.parse(auto.action_config || '{}');
+      actionConfig.message = overrideMessage;
+      autoToRun = { ...auto, action_config: JSON.stringify(actionConfig) };
+    }
+
+    logger.info('[webhook] Triggered automation "%s" (id=%s) via webhook', auto.name, auto.id);
+
+    // Fire-and-forget
+    void executeAutomation(db, autoToRun).catch(err => {
+      logger.error({ err, autoId: auto.id }, '[webhook] Execution error');
+    });
+
+    return {
+      data: {
+        success: true,
+        message: `Webhook triggered automation "${auto.name}"`,
+        automationId: auto.id,
+        overrideApplied: !!overrideMessage,
+      },
+    };
+  });
 }
