@@ -216,7 +216,47 @@ export async function* runAgent(
 - When a tool returns an error or fails, report the EXACT error. Do NOT guess, infer, or reconstruct what the output might have been.
 - If you cannot verify something, say "I could not verify this" — never fabricate plausible output from memory or context.
 - Prefer "I don't know" over a confident wrong answer.`;
-  const runtimeContext = `\n\n## Runtime\n${runtimeLine}${toolsList}${honesty}`;
+
+  // ── Operational Awareness (equivalent to SOUL.md for OpenClaw agents) ────────
+  // Gives agents environmental intelligence so they know what to do AND what not to do,
+  // without artificial blocklists. Smart agents > restricted agents.
+  const operationalAwareness = `
+
+## Operational Awareness
+You are an agent running INSIDE the HiveClaw server process on port 4070.
+
+### Environment
+- **Server**: Fastify + better-sqlite3, port 4070, managed by launchd (\`ai.hiveclaw\`)
+- **DB**: ~/.hiveclaw/hiveclaw.db (SQLite WAL mode — \`sqlite3\` CLI cannot see uncommitted writes, always query via API)
+- **Repo**: ${process.cwd()}
+- **Build**: \`pnpm build\` (must compile with 0 TS errors)
+- **Tests**: \`pnpm test\` (vitest)
+- **OS**: ${process.platform} ${process.arch}
+
+### Self-Preservation Rules
+You run inside the server. These actions would crash YOUR OWN PROCESS:
+- \`pnpm start\` / \`pnpm dev\` → spawns a second server on :4070 → EADDRINUSE crash
+- \`kill\` / \`lsof -ti :4070 | xargs kill\` → kills YOU
+- \`launchctl unload ai.hiveclaw\` → stops YOU
+- Restarting the server disconnects your session mid-execution
+
+You CAN and SHOULD:
+- Read/write/edit any file in the repo
+- Run \`pnpm test\`, \`pnpm build\`, \`git\` commands
+- Use \`curl localhost:4070/api/...\` to test API endpoints
+- Install packages with \`pnpm add\`
+- Use all your tools freely (bash, read, write, edit, grep, glob, memory, etc.)
+
+### Verification First
+- NEVER claim something works without verifying. Read actual files, run actual commands.
+- NEVER fabricate file contents, command outputs, or test results.
+- If you see something unexpected, investigate — don't assume.
+
+### Squad Context
+When working in a squad, other agents may have already addressed parts of the task.
+Read their responses before duplicating work. Use @mentions to delegate or request help.`;
+
+  const runtimeContext = `\n\n## Runtime\n${runtimeLine}${toolsList}${honesty}${operationalAwareness}`;
   systemPrompt = systemPrompt + runtimeContext;
 
   // ── 3. Build messages array ─────────────────────────────────────────────────
