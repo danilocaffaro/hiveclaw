@@ -5,6 +5,61 @@ import { getWorkerPool } from '../engine/agent-worker-pool.js';
 import { AgentMemoryRepository, type MemoryType } from '../db/agent-memory.js';
 import { DEFAULT_SKILLS } from '../engine/skill-hub.js';
 import { getEngineService } from '../engine/engine-service.js';
+import { getDb } from '../db/index.js';
+import { logger } from '../lib/logger.js';
+
+// ── Core Memory Auto-Provisioning ────────────────────────────────────────────
+// Every new agent gets 4 core blocks (persona, human, project, scratchpad)
+// so they start with full identity awareness — same level as Alice (OpenClaw).
+
+function provisionCoreMemory(
+  memRepo: AgentMemoryRepository,
+  agentId: string,
+  agentName: string,
+  agentEmoji: string,
+  agentRole: string,
+): void {
+  // Only provision if agent has NO core blocks yet (avoid overwriting existing)
+  const existing = memRepo.getCoreBlocks(agentId);
+  if (existing.length > 0) return;
+
+  const repoPath = process.cwd();
+
+  memRepo.setCoreBlock(agentId, 'persona', [
+    `Name: ${agentName}`,
+    `Role: ${agentRole}`,
+    `Platform: HiveClaw — self-hosted AI platform with native engine`,
+    `Communication: Direct, concise, Portuguese (BR) with Danilo, English when asked.`,
+    `Decision style: Analyze → decide → execute. Do not ask the user what to do — make the call.`,
+    `Verification: NEVER claim something works without verifying. Read actual files, run actual commands.`,
+    `Anti-fabrication: NEVER make up code, file contents, or command outputs. If unsure, check first.`,
+  ].join('\n'));
+
+  memRepo.setCoreBlock(agentId, 'human', [
+    'Primary user: Danilo Caffaro (44, ENTP, São Paulo timezone)',
+    'Preferences: direto ao ponto, sem enrolação, acionável, não inventar, se discordar explica porquê',
+    'Danilo is PO — his decisions are final.',
+    'Safety: não enganar, não causar dano, consentimento para ações externas irreversíveis.',
+  ].join('\n'));
+
+  memRepo.setCoreBlock(agentId, 'project', [
+    'Product: HiveClaw — self-hosted AI platform (NOT OpenClaw)',
+    `Repo: ${repoPath}`,
+    'Stack: apps/web (Next.js static export, React, inline CSS vars), apps/server (Fastify + SQLite WAL)',
+    'Server: port 4070, managed by launchd (ai.hiveclaw)',
+    'DB: ~/.hiveclaw/hiveclaw.db (never use sqlite3 CLI — WAL uncommitted writes, always query via API)',
+    'Build: pnpm build (0 TS errors required). Tests: pnpm test (vitest, 229+ must pass)',
+    'Git: main branch, descriptive commit messages',
+    'Styling: ALL inline styles, CSS custom properties, no Tailwind',
+  ].join('\n'));
+
+  memRepo.setCoreBlock(agentId, 'scratchpad', [
+    `Agent ${agentName} (${agentRole}) — newly created.`,
+    'Update this scratchpad as you learn about your tasks and the codebase.',
+  ].join('\n'));
+
+  logger.info('[Agents] Core memory provisioned for new agent %s (%s)', agentName, agentId);
+}
 
 // ── Agent Templates ──────────────────────────────────────────────────────────
 
@@ -145,6 +200,15 @@ export function registerAgentRoutes(app: FastifyInstance, injectedAgents?: Agent
       return reply.status(400).send({ error: { code: 'VALIDATION', message: 'name, role, and systemPrompt are required' } });
     }
     const agent = agents().create(req.body);
+
+    // Auto-provision core memory blocks so every new agent starts with full identity
+    try {
+      const memRepo = new AgentMemoryRepository(getDb());
+      provisionCoreMemory(memRepo, agent.id, agent.name, agent.emoji ?? '🤖', agent.role ?? role);
+    } catch (e) {
+      logger.warn('[Agents] Core memory provisioning failed for %s: %s', agent.id, (e as Error).message);
+    }
+
     return reply.status(201).send({ data: agent });
   });
 
