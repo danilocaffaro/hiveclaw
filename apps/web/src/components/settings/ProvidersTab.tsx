@@ -134,7 +134,7 @@ function EngineProviders() {
   }, []);
 
   if (loading) return <div style={{ color: 'var(--fg-muted)', fontSize: 13, padding: '8px 0 20px' }}>Loading providers…</div>;
-  if (providers.length === 0) return <div style={{ color: 'var(--fg-muted)', fontSize: 13, padding: '8px 0 20px' }}>⚠️ No providers configured. Add one below.</div>;
+  if (providers.length === 0) return <div style={{ color: 'var(--fg-muted)', fontSize: 13, padding: '8px 0 20px' }}>No active engine providers detected. Configure API keys below to get started.</div>;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>

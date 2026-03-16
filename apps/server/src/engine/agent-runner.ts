@@ -840,17 +840,29 @@ function backgroundMemoryExtract(
       }
 
       // ── Extract from tool outputs (Sprint 76 Item 3) ───────────────────────
-      // Rich data from tool calls: API responses, code analysis, web content
+      // Only extract genuinely meaningful facts from tool outputs.
+      // Quality gates: must be informational (not code/logs), reasonable length, no ANSI escapes
       if (toolOutputs && toolOutputs.length > 30) {
-        for (const line of toolOutputs.split(/\n/).filter(l => l.trim().length > 20)) {
-          const lo = line.toLowerCase().trim();
+        const toolLines = toolOutputs.split(/\n/).filter(l => l.trim().length > 30 && l.trim().length < 200);
+        let toolExtracted = 0;
+        const MAX_TOOL_FACTS = 3; // cap per extraction to prevent pollution
+        for (const line of toolLines) {
+          if (toolExtracted >= MAX_TOOL_FACTS) break;
+          const trimmed = line.trim();
+          const lo = trimmed.toLowerCase();
 
-          // Facts from tool outputs: version numbers, status, configurations
-          if (/(?:version|v\d+\.\d+|status|running|installed|configured|enabled|disabled|port \d+)\b/i.test(lo) && lo.length < 300) {
+          // Skip noise: ANSI codes, stack traces, code fragments, SQL, timestamps, CI output
+          if (/\x1b\[|\.run\(|\.prepare\(|\.exec\(|INSERT INTO|SELECT |UPDATE |DELETE FROM|CREATE |DROP |TRIGGER|require\(|import |export |function |const |let |var |=> |\.js:|\.ts:|node_modules|Duration |Tests |Test Files /i.test(trimmed)) continue;
+          // Skip if it looks like a code line (starts with common code patterns)
+          if (/^[\s]*[{}\[\]();]|^\/\/|^#|^\*|^-{2,}|^={2,}|^\|/.test(trimmed)) continue;
+
+          // Only extract truly informational lines about system state
+          if (/(?:version|v\d+\.\d+\.\d+|status|running on port|installed successfully|configured|enabled|disabled)\b/i.test(lo)) {
             const key = `tool_fact_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
-            repo.set(agentId, key, line.trim().slice(0, 300), 'fact', 0.75, undefined, {
+            repo.set(agentId, key, trimmed.slice(0, 200), 'fact', 0.75, undefined, {
               source: 'auto_extract_tool', tags: ['from_tool_output'],
             });
+            toolExtracted++;
             extractedCount.goals++; // reuse counter
           }
         }

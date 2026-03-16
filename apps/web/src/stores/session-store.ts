@@ -127,7 +127,20 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     if (message.session_id !== activeSessionId && message.role === 'assistant') {
       useMessageStore.getState().incrementUnread(message.session_id);
     }
-    set((s) => ({ messages: [...s.messages, message] }));
+    // Update sidebar preview: extract plain text from content for last_message
+    const contentText = typeof message.content === 'string'
+      ? message.content
+      : Array.isArray(message.content)
+        ? (message.content as Array<{ type: string; text?: string }>).filter(b => b.type === 'text').map(b => b.text).join(' ')
+        : '';
+    set((s) => ({
+      messages: [...s.messages, message],
+      sessions: s.sessions.map(sess =>
+        sess.id === message.session_id
+          ? { ...sess, last_message: contentText || sess.last_message, updated_at: new Date().toISOString() }
+          : sess
+      ),
+    }));
   },
   appendToLastMessage: (text) => {
     const { activeSessionId } = get();
