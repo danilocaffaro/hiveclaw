@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 4080",
-    "build": "next build && node -e \"const fs=require('fs');const ts=Date.now();const f='public/sw.js';let c=fs.readFileSync(f,'utf8');c=c.replace('v__BUILD_TS__','v'+ts);fs.writeFileSync('out/sw.js',c);console.log('SW stamped with',ts)\"",
+    "build": "next build && node -e \"const fs=require('fs');const ts=Date.now();const f='public/sw.js';let c=fs.readFileSync(f,'utf8');c=c.replace('v__BUILD_TS__','v'+ts);const d=fs.existsSync('out')?'out':'.next/static';fs.mkdirSync(d,{recursive:true});fs.writeFileSync(d+'/sw.js',c);console.log('SW stamped to',d+'/sw.js','with',ts)\"",
     "start": "next start --port 4080",
     "typecheck": "tsc --noEmit",
     "lint": "next lint"

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "pnpm --filter @hiveclaw/server dev",
     "dev:web": "pnpm --filter @hiveclaw/web dev",
-    "build": "pnpm --filter @hiveclaw/web build && pnpm --filter @hiveclaw/server build",
+    "build": "pnpm --filter @hiveclaw/shared build && NEXT_OUTPUT=export pnpm --filter @hiveclaw/web build && pnpm --filter @hiveclaw/server build",
     "build:web": "NEXT_OUTPUT=export pnpm --filter @hiveclaw/web build",
     "build:server": "pnpm --filter @hiveclaw/server build",
     "start": "NODE_ENV=production node apps/server/dist/index.js",
@@ -16,5 +16,12 @@
   },
   "devDependencies": {
     "typescript": "^5.9.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild",
+      "sharp"
+    ]
   }
 }
