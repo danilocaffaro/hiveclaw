@@ -6,6 +6,7 @@
 
 import { resolve, normalize, sep } from 'path';
 import { homedir, tmpdir } from 'os';
+import { mkdirSync, existsSync } from 'fs';
 
 const IS_WINDOWS = process.platform === 'win32';
 
@@ -16,9 +17,14 @@ const IS_WINDOWS = process.platform === 'win32';
  * Priority: HIVECLAW_WORKSPACE env > SUPERCLAW_WORKSPACE (legacy) > ~/.hiveclaw/workspace > cwd
  */
 export function getWorkspaceRoot(): string {
-  return process.env.HIVECLAW_WORKSPACE
+  const root = process.env.HIVECLAW_WORKSPACE
     || process.env.SUPERCLAW_WORKSPACE // legacy fallback
     || resolve(homedir(), '.hiveclaw', 'workspace');
+  // Auto-create workspace dir on first access so tools don't fail on fresh installs
+  if (!existsSync(root)) {
+    try { mkdirSync(root, { recursive: true }); } catch { /* ignore — permission error handled downstream */ }
+  }
+  return root;
 }
 
 /**
@@ -100,6 +106,18 @@ export function validateToolPath(
   // CWD is allowed (agent's working directory)
   const cwd = process.cwd();
   if (normalized.startsWith(cwd)) {
+    return { allowed: true, resolved: normalized };
+  }
+
+  // Home directory is allowed for read (agents need to access ~/.hiveclaw/ etc.)
+  const home = homedir();
+  if (mode === 'read' && normalized.startsWith(home)) {
+    return { allowed: true, resolved: normalized };
+  }
+
+  // Home/.hiveclaw is always allowed for write (agent workspace, db, etc.)
+  const hiveclawHome = resolve(home, '.hiveclaw');
+  if (normalized.startsWith(hiveclawHome)) {
     return { allowed: true, resolved: normalized };
   }
 
