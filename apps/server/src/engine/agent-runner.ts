@@ -463,6 +463,32 @@ Read their responses before duplicating work. Use @mentions to delegate or reque
   });
   let consecutiveLoopBreaks = 0; // Safety: hard-stop after 2 consecutive loop detections
   for (let iteration = 0; iteration < maxIterations; iteration++) {
+    // ── R20.2d: Proactive token budget check ──────────────────────────────────
+    // Estimate current context size BEFORE sending to LLM. If approaching limit,
+    // compact proactively instead of waiting for smartCompact threshold.
+    // OpenClaw does this via reserveTokens + maxHistoryShare; we do a simpler version.
+    const PROACTIVE_TOKEN_LIMIT = 60_000; // chars/4 ≈ 15K tokens — leave room for response
+    const estimatedContextChars = messages.reduce((sum, m) => {
+      const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+      return sum + content.length;
+    }, 0) + (systemPrompt?.length ?? 0);
+
+    if (estimatedContextChars > PROACTIVE_TOKEN_LIMIT * 4 && iteration > 0) {
+      // Aggressively prune: remove all tool outputs from first half of history
+      const midpoint = Math.floor(messages.length / 2);
+      let pruned = 0;
+      for (let i = 0; i < midpoint; i++) {
+        const msg = messages[i];
+        if (msg.role === 'tool' && typeof msg.content === 'string' && msg.content.length > 200) {
+          msg.content = `[context pruned — tool output from iteration ${Math.floor(i / 4)} removed to stay within token budget]`;
+          pruned++;
+        }
+      }
+      if (pruned > 0) {
+        logger.info(`[AgentRunner] Proactive context prune: replaced ${pruned} old tool outputs (context was ~${Math.round(estimatedContextChars / 4000)}K tokens)`);
+      }
+    }
+
     const llmOptions: LLMOptions = {
       model: agentConfig.modelId,
       temperature: agentConfig.temperature,
@@ -688,31 +714,48 @@ Read their responses before duplicating work. Use @mentions to delegate or reque
       break;
     }
 
-    // ── 7d. Check for tool call loops before executing ──────────────────────────
+    // ── 7d. Check for tool call loops before executing (R20.2b: graduated) ──────
     let loopBroken = false;
     for (const tc of pendingToolCalls) {
       const toolLoop = loopDetector.recordToolCall(tc.name, tc.input);
-      if (toolLoop.loopDetected) {
-        logger.warn(`[AgentRunner] Tool loop in session ${sessionId}: ${toolLoop.details}`);
-        // Instead of breaking the entire agentic loop, inject feedback so the LLM
-        // can self-correct. Only hard-break if we've already warned twice.
+
+      // R20.2b: Graduated response based on severity
+      if (toolLoop.severity === 'warning') {
+        // Level 1: Just log, don't intervene — agent may have a legitimate reason
+        logger.info(`[AgentRunner] Tool repeat warning in session ${sessionId}: ${toolLoop.details}`);
+      } else if (toolLoop.severity === 'inject') {
+        // Level 2: Inject feedback, let LLM self-correct
+        logger.warn(`[AgentRunner] Tool loop (inject) in session ${sessionId}: ${toolLoop.details}`);
         const loopMsg = `\n\n[Loop detected: ${toolLoop.details}. Try a different approach or parameters.]`;
-        yield {
-          event: 'message.delta',
-          data: { text: loopMsg },
-        };
+        yield { event: 'message.delta', data: { text: loopMsg } };
         fullAssistantText += loopMsg;
 
-        // Inject system feedback into messages so the LLM sees it next iteration
         messages.push({ role: 'assistant', content: iterationText || '' });
         messages.push({
           role: 'user',
-          content: `[SYSTEM] ⛔ LOOP DETECTED: You called tool "${tc.name}" 5+ times with identical input. The tool calls have been BLOCKED. Do NOT retry with the same parameters. Either: (1) use different parameters, (2) try a different tool, or (3) respond to the user directly without tools. If the tool keeps failing, explain the error to the user instead of retrying.`,
+          content: `[SYSTEM] ⚠️ LOOP WARNING: You called tool "${tc.name}" ${toolLoop.identicalCount}x with identical input. The tool calls have been BLOCKED for this iteration. Try: (1) different parameters, (2) a different tool, or (3) respond directly without tools.`,
         });
         loopBroken = true;
         break;
+      } else if (toolLoop.severity === 'circuit_breaker') {
+        // Level 3: Hard stop — agent is stuck
+        logger.warn(`[AgentRunner] Tool loop CIRCUIT BREAKER in session ${sessionId}: ${toolLoop.details}`);
+        const breakMsg = `\n\n[Circuit breaker: ${toolLoop.details}. Stopping tool execution.]`;
+        yield { event: 'message.delta', data: { text: breakMsg } };
+        fullAssistantText += breakMsg;
+
+        messages.push({ role: 'assistant', content: iterationText || '' });
+        messages.push({
+          role: 'user',
+          content: `[SYSTEM] ⛔ CIRCUIT BREAKER: You called tool "${tc.name}" ${toolLoop.identicalCount}x with identical input. This is NOT working. You MUST respond to the user NOW with what you have. Do NOT call any more tools. Explain what you tried and what went wrong.`,
+        });
+        // Force break out of the main loop
+        consecutiveLoopBreaks = 99; // guarantee hard stop
+        loopBroken = true;
+        break;
       }
-      // Sprint 79: ProgressChecker duplicate tool check
+
+      // Sprint 79: ProgressChecker duplicate tool check (secondary detector)
       const dupCheck = progressChecker.recordToolCall(tc.name, tc.input);
       if (dupCheck.shouldStop) {
         logger.warn(`[AgentRunner] Duplicate tool detected: ${dupCheck.details}`);
@@ -830,6 +873,22 @@ Read their responses before duplicating work. Use @mentions to delegate or reque
 
     // Add tool results to working messages and continue loop
     messages.push(...toolResultMessages);
+
+    // ── R20.3c: Tool error acknowledgment ─────────────────────────────────────
+    // If any tool returned an error or empty result in this iteration, inject
+    // a system message forcing the LLM to address it before calling more tools.
+    // In provider-native tool_use, this is automatic; in our manual loop it's not.
+    const failedTools = toolResultMessages.filter(m => {
+      const content = typeof m.content === 'string' ? m.content : '';
+      return content.includes('[SYSTEM] ⛔ TOOL') || content.startsWith('ERROR:');
+    });
+    if (failedTools.length > 0) {
+      const failedNames = failedTools.map(m => m.name ?? 'unknown').join(', ');
+      messages.push({
+        role: 'user',
+        content: `[SYSTEM] ⚠️ TOOL ERROR ACKNOWLEDGMENT REQUIRED: ${failedTools.length} tool(s) failed in this iteration (${failedNames}). Before calling any new tools, you MUST acknowledge the error and explain to the user what went wrong. Do NOT blindly retry the same tool with the same parameters.`,
+      });
+    }
 
     // ── R20.2c: In-flight context pruning ─────────────────────────────────────
     // Soft-trim old tool outputs to prevent unbounded messages[] growth.

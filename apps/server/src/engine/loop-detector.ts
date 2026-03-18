@@ -1,9 +1,17 @@
 /**
- * engine/loop-detector.ts — Detect and break agent repetition loops
+ * engine/loop-detector.ts — Detect and break agent repetition loops (v2)
+ *
+ * R20.2b: Graduated thresholds inspired by OpenClaw's 3-detector system.
+ * Instead of binary "5 calls = block", uses WARNING → INJECT → CIRCUIT_BREAKER.
  *
  * Catches two patterns:
  * 1. Tool call loops: agent calls same tool with same input N times
  * 2. Response loops: agent generates nearly identical text N times
+ *
+ * Severity levels:
+ * - WARNING (3 identical): Log warning, continue normally
+ * - INJECT (5 identical): Inject SYSTEM feedback, let LLM self-correct
+ * - CIRCUIT_BREAKER (8 identical): Hard stop, force consolidation
  *
  * Decay: records older than DECAY_WINDOW_MS are pruned on each check,
  * preventing false positives in long-lived sessions where the same
@@ -12,10 +20,14 @@
 
 // ─── Configuration ──────────────────────────────────────────────────────────────
 
-const MAX_IDENTICAL_TOOL_CALLS = 5;   // same tool + same input (raised from 3 — prevents false positives for QA/research agents doing repeated checks)
+// R20.2b: Graduated thresholds (was: single MAX_IDENTICAL_TOOL_CALLS = 5)
+const TOOL_THRESHOLD_WARNING = 3;        // log warning, no action
+const TOOL_THRESHOLD_INJECT = 5;         // inject SYSTEM feedback
+const TOOL_THRESHOLD_CIRCUIT_BREAKER = 8; // hard stop
+
 const MAX_SIMILAR_RESPONSES = 3;       // similarity > 0.85
 const SIMILARITY_THRESHOLD = 0.85;     // Jaccard similarity
-const WINDOW_SIZE = 8;                 // only check last N items
+const WINDOW_SIZE = 12;                // R20.2b: increased from 8 to support graduated detection
 const DECAY_WINDOW_MS = 5 * 60 * 1000; // 5 minutes — records older than this are pruned
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
@@ -32,10 +44,14 @@ interface ResponseRecord {
   timestamp: number;
 }
 
+export type LoopSeverity = 'none' | 'warning' | 'inject' | 'circuit_breaker';
+
 export interface LoopDetectionResult {
   loopDetected: boolean;
+  severity: LoopSeverity;       // R20.2b: graduated severity
   type?: 'tool_call' | 'response';
   details?: string;
+  identicalCount?: number;       // R20.2b: how many identical calls detected
 }
 
 // ─── LoopDetector class ─────────────────────────────────────────────────────────
@@ -53,7 +69,7 @@ export class LoopDetector {
   }
 
   /**
-   * Record a tool call. Returns loop detection result.
+   * Record a tool call. Returns loop detection result with graduated severity.
    */
   recordToolCall(name: string, input: Record<string, unknown>): LoopDetectionResult {
     this.decayToolHistory();
@@ -72,15 +88,38 @@ export class LoopDetector {
       (tc) => tc.name === name && tc.inputHash === inputHash,
     ).length;
 
-    if (identicalCount >= MAX_IDENTICAL_TOOL_CALLS) {
+    // R20.2b: Graduated response
+    if (identicalCount >= TOOL_THRESHOLD_CIRCUIT_BREAKER) {
       return {
         loopDetected: true,
+        severity: 'circuit_breaker',
         type: 'tool_call',
-        details: `Tool "${name}" called ${identicalCount} times with identical input in last ${WINDOW_SIZE} calls`,
+        details: `Tool "${name}" called ${identicalCount}x with identical input — CIRCUIT BREAKER`,
+        identicalCount,
       };
     }
 
-    return { loopDetected: false };
+    if (identicalCount >= TOOL_THRESHOLD_INJECT) {
+      return {
+        loopDetected: true,
+        severity: 'inject',
+        type: 'tool_call',
+        details: `Tool "${name}" called ${identicalCount}x with identical input — injecting feedback`,
+        identicalCount,
+      };
+    }
+
+    if (identicalCount >= TOOL_THRESHOLD_WARNING) {
+      return {
+        loopDetected: false, // not blocking yet, just warning
+        severity: 'warning',
+        type: 'tool_call',
+        details: `Tool "${name}" called ${identicalCount}x with identical input — monitoring`,
+        identicalCount,
+      };
+    }
+
+    return { loopDetected: false, severity: 'none' };
   }
 
   /**
@@ -90,7 +129,7 @@ export class LoopDetector {
     this.decayResponseHistory();
 
     const trimmed = text.trim();
-    if (trimmed.length < 20) return { loopDetected: false };  // too short to matter
+    if (trimmed.length < 20) return { loopDetected: false, severity: 'none' };
 
     const tokens = this.tokenize(trimmed);
     this.responseHistory.push({ text: trimmed, tokens, timestamp: this._nowFn() });
@@ -110,15 +149,16 @@ export class LoopDetector {
       }
     }
 
-    if (similarCount >= MAX_SIMILAR_RESPONSES - 1) {  // -1 because we compare against previous
+    if (similarCount >= MAX_SIMILAR_RESPONSES - 1) {
       return {
         loopDetected: true,
+        severity: 'circuit_breaker',
         type: 'response',
         details: `Agent produced ${similarCount + 1} similar responses (similarity > ${SIMILARITY_THRESHOLD})`,
       };
     }
 
-    return { loopDetected: false };
+    return { loopDetected: false, severity: 'none' };
   }
 
   /**
@@ -131,19 +171,11 @@ export class LoopDetector {
 
   // ── Decay ────────────────────────────────────────────────────────────────────
 
-  /**
-   * Remove tool call records older than DECAY_WINDOW_MS.
-   * Called automatically before each recordToolCall().
-   */
   private decayToolHistory(): void {
     const cutoff = this._nowFn() - DECAY_WINDOW_MS;
     this.toolHistory = this.toolHistory.filter((r) => r.timestamp >= cutoff);
   }
 
-  /**
-   * Remove response records older than DECAY_WINDOW_MS.
-   * Called automatically before each recordResponse().
-   */
   private decayResponseHistory(): void {
     const cutoff = this._nowFn() - DECAY_WINDOW_MS;
     this.responseHistory = this.responseHistory.filter((r) => r.timestamp >= cutoff);
@@ -153,7 +185,6 @@ export class LoopDetector {
 
   private hashInput(input: Record<string, unknown>): string {
     try {
-      // Stable JSON stringification (sorted keys)
       return JSON.stringify(input, Object.keys(input).sort());
     } catch {
       return String(input);
@@ -161,7 +192,6 @@ export class LoopDetector {
   }
 
   private tokenize(text: string): Set<string> {
-    // Simple word-level tokenization, lowercased
     return new Set(
       text
         .toLowerCase()

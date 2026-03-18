@@ -11,24 +11,41 @@ describe('LoopDetector', () => {
   it('should not detect loop on first tool call', () => {
     const result = detector.recordToolCall('bash', { command: 'ls' });
     expect(result.loopDetected).toBe(false);
+    expect(result.severity).toBe('none');
   });
 
-  it('should detect tool call loop after 5 identical calls', () => {
-    detector.recordToolCall('bash', { command: 'ls' });
-    detector.recordToolCall('bash', { command: 'ls' });
+  // R20.2b: Graduated thresholds
+  it('should warn at 3 identical calls (severity=warning)', () => {
     detector.recordToolCall('bash', { command: 'ls' });
     detector.recordToolCall('bash', { command: 'ls' });
     const result = detector.recordToolCall('bash', { command: 'ls' });
-    expect(result.loopDetected).toBe(true);
-    expect(result.type).toBe('tool_call');
+    expect(result.severity).toBe('warning');
+    expect(result.loopDetected).toBe(false); // warning doesn't block
+    expect(result.identicalCount).toBe(3);
   });
 
-  it('should NOT detect loop after only 4 identical calls (threshold is 5)', () => {
-    detector.recordToolCall('bash', { command: 'ls' });
-    detector.recordToolCall('bash', { command: 'ls' });
+  it('should inject at 5 identical calls (severity=inject)', () => {
+    for (let i = 0; i < 4; i++) detector.recordToolCall('bash', { command: 'ls' });
+    const result = detector.recordToolCall('bash', { command: 'ls' });
+    expect(result.severity).toBe('inject');
+    expect(result.loopDetected).toBe(true);
+    expect(result.type).toBe('tool_call');
+    expect(result.identicalCount).toBe(5);
+  });
+
+  it('should circuit-break at 8 identical calls (severity=circuit_breaker)', () => {
+    for (let i = 0; i < 7; i++) detector.recordToolCall('bash', { command: 'ls' });
+    const result = detector.recordToolCall('bash', { command: 'ls' });
+    expect(result.severity).toBe('circuit_breaker');
+    expect(result.loopDetected).toBe(true);
+    expect(result.identicalCount).toBe(8);
+  });
+
+  it('should NOT detect loop after only 2 identical calls', () => {
     detector.recordToolCall('bash', { command: 'ls' });
     const result = detector.recordToolCall('bash', { command: 'ls' });
     expect(result.loopDetected).toBe(false);
+    expect(result.severity).toBe('none');
   });
 
   it('should NOT detect loop for same tool with different input', () => {
@@ -48,29 +65,28 @@ describe('LoopDetector', () => {
   it('should not detect response loop on short/unique text', () => {
     const result = detector.recordResponse('Hello! How can I help you today?');
     expect(result.loopDetected).toBe(false);
+    expect(result.severity).toBe('none');
   });
 
   it('should detect response loop for highly similar responses', () => {
-    // Use nearly identical long texts to guarantee Jaccard > 0.85
     const base = 'I searched the filesystem and found no matching files in the specified directory path you provided. Please verify the path is correct and the directory exists on your system.';
     detector.recordResponse(base + ' Try again with absolute path.');
     detector.recordResponse(base + ' Try again with full path.');
     const result = detector.recordResponse(base + ' Try again with complete path.');
     expect(result.loopDetected).toBe(true);
     expect(result.type).toBe('response');
+    expect(result.severity).toBe('circuit_breaker');
   });
 
   it('should reset all state on reset()', () => {
     detector.recordToolCall('bash', { cmd: 'x' });
     detector.recordToolCall('bash', { cmd: 'x' });
     detector.reset();
-    // After reset, 5 more should trigger fresh count (threshold = 5)
-    detector.recordToolCall('bash', { cmd: 'x' });
-    detector.recordToolCall('bash', { cmd: 'x' });
-    detector.recordToolCall('bash', { cmd: 'x' });
-    detector.recordToolCall('bash', { cmd: 'x' });
+    // After reset, 5 more should trigger inject (threshold = 5)
+    for (let i = 0; i < 4; i++) detector.recordToolCall('bash', { cmd: 'x' });
     const result = detector.recordToolCall('bash', { cmd: 'x' });
-    expect(result.loopDetected).toBe(true); // fresh count → triggers at 5
+    expect(result.loopDetected).toBe(true);
+    expect(result.severity).toBe('inject');
   });
 
   // ── Decay tests ───────────────────────────────────────────────────────────
@@ -80,15 +96,12 @@ describe('LoopDetector', () => {
       let clock = 0;
       detector.setNowFn(() => clock);
 
-      // Two calls at t=0
       detector.recordToolCall('bash', { command: 'ls' });
-      clock += 1000; // +1s
+      clock += 1000;
       detector.recordToolCall('bash', { command: 'ls' });
 
-      // Jump 6 minutes — old records decay
-      clock += 6 * 60 * 1000;
+      clock += 6 * 60 * 1000; // 6min — old records decay
 
-      // Third call should NOT trigger — the first two decayed
       const result = detector.recordToolCall('bash', { command: 'ls' });
       expect(result.loopDetected).toBe(false);
     });
@@ -97,17 +110,13 @@ describe('LoopDetector', () => {
       let clock = 0;
       detector.setNowFn(() => clock);
 
-      // Five calls within 1 minute (threshold = 5)
-      detector.recordToolCall('bash', { command: 'ls' });
-      clock += 10_000; // +10s
-      detector.recordToolCall('bash', { command: 'ls' });
-      clock += 10_000; // +10s
-      detector.recordToolCall('bash', { command: 'ls' });
-      clock += 10_000; // +10s
-      detector.recordToolCall('bash', { command: 'ls' });
-      clock += 10_000; // +10s
+      for (let i = 0; i < 4; i++) {
+        detector.recordToolCall('bash', { command: 'ls' });
+        clock += 10_000;
+      }
       const result = detector.recordToolCall('bash', { command: 'ls' });
       expect(result.loopDetected).toBe(true);
+      expect(result.severity).toBe('inject');
     });
 
     it('should decay response history for long-lived sessions', () => {
@@ -116,15 +125,11 @@ describe('LoopDetector', () => {
 
       const base = 'I searched the filesystem and found no matching files in the specified directory path you provided. Please verify the path is correct and the directory exists on your system.';
 
-      // Two similar responses at t=0
       detector.recordResponse(base + ' Try with absolute path.');
       clock += 1000;
       detector.recordResponse(base + ' Try with full path.');
-
-      // Jump 6 minutes — old responses decay
       clock += 6 * 60 * 1000;
 
-      // Third similar response should NOT trigger — the first two decayed
       const result = detector.recordResponse(base + ' Try with complete path.');
       expect(result.loopDetected).toBe(false);
     });
@@ -147,18 +152,40 @@ describe('LoopDetector', () => {
       let clock = 0;
       detector.setNowFn(() => clock);
 
-      // First call at t=0
       detector.recordToolCall('bash', { command: 'ls' });
-
-      // Jump 4 min (within window)
       clock += 4 * 60 * 1000;
       detector.recordToolCall('bash', { command: 'ls' });
-
-      // Jump another 2 min (first call is now 6 min old — decayed)
       clock += 2 * 60 * 1000;
-      // Only 1 recent call survives → third should NOT trigger
+
       const result = detector.recordToolCall('bash', { command: 'ls' });
       expect(result.loopDetected).toBe(false);
+    });
+  });
+
+  // ── R20.2b: Graduated severity tests ─────────────────────────────────────
+
+  describe('graduated severity', () => {
+    it('should escalate: none → warning → inject → circuit_breaker', () => {
+      // 1-2: none
+      expect(detector.recordToolCall('bash', { cmd: 'x' }).severity).toBe('none');
+      expect(detector.recordToolCall('bash', { cmd: 'x' }).severity).toBe('none');
+      // 3: warning
+      expect(detector.recordToolCall('bash', { cmd: 'x' }).severity).toBe('warning');
+      // 4: still warning
+      expect(detector.recordToolCall('bash', { cmd: 'x' }).severity).toBe('warning');
+      // 5: inject
+      expect(detector.recordToolCall('bash', { cmd: 'x' }).severity).toBe('inject');
+      // 6-7: still inject
+      expect(detector.recordToolCall('bash', { cmd: 'x' }).severity).toBe('inject');
+      expect(detector.recordToolCall('bash', { cmd: 'x' }).severity).toBe('inject');
+      // 8: circuit_breaker
+      expect(detector.recordToolCall('bash', { cmd: 'x' }).severity).toBe('circuit_breaker');
+    });
+
+    it('should return identicalCount on detected loops', () => {
+      for (let i = 0; i < 4; i++) detector.recordToolCall('bash', { cmd: 'x' });
+      const result = detector.recordToolCall('bash', { cmd: 'x' });
+      expect(result.identicalCount).toBe(5);
     });
   });
 });
