@@ -461,6 +461,7 @@ Read their responses before duplicating work. Use @mentions to delegate or reque
     // stallThreshold REMOVED (Sprint 80): was incorrectly stopping legitimate multi-step work
     // tokenBudget REMOVED (Sprint 80): redundant, was killing useful work early
   });
+  let consecutiveLoopBreaks = 0; // Safety: hard-stop after 2 consecutive loop detections
   for (let iteration = 0; iteration < maxIterations; iteration++) {
     const llmOptions: LLMOptions = {
       model: agentConfig.modelId,
@@ -693,11 +694,21 @@ Read their responses before duplicating work. Use @mentions to delegate or reque
       const toolLoop = loopDetector.recordToolCall(tc.name, tc.input);
       if (toolLoop.loopDetected) {
         logger.warn(`[AgentRunner] Tool loop in session ${sessionId}: ${toolLoop.details}`);
+        // Instead of breaking the entire agentic loop, inject feedback so the LLM
+        // can self-correct. Only hard-break if we've already warned twice.
+        const loopMsg = `\n\n[Loop detected: ${toolLoop.details}. Try a different approach or parameters.]`;
         yield {
           event: 'message.delta',
-          data: { text: `\n\n[Loop detected: ${toolLoop.details}. Breaking loop.]` },
+          data: { text: loopMsg },
         };
-        fullAssistantText += `\n\n[Loop detected: ${toolLoop.details}. Breaking loop.]`;
+        fullAssistantText += loopMsg;
+
+        // Inject system feedback into messages so the LLM sees it next iteration
+        messages.push({ role: 'assistant', content: iterationText || '' });
+        messages.push({
+          role: 'user',
+          content: `[SYSTEM] ⛔ LOOP DETECTED: You called tool "${tc.name}" 5+ times with identical input. The tool calls have been BLOCKED. Do NOT retry with the same parameters. Either: (1) use different parameters, (2) try a different tool, or (3) respond to the user directly without tools. If the tool keeps failing, explain the error to the user instead of retrying.`,
+        });
         loopBroken = true;
         break;
       }
@@ -714,7 +725,19 @@ Read their responses before duplicating work. Use @mentions to delegate or reque
         break;
       }
     }
-    if (loopBroken) break;
+    if (loopBroken) {
+      consecutiveLoopBreaks++;
+      if (consecutiveLoopBreaks >= 2) {
+        // Hard stop — LLM failed to self-correct after being warned
+        logger.warn(`[AgentRunner] Hard stop: ${consecutiveLoopBreaks} consecutive loop breaks in session ${sessionId}`);
+        break;
+      }
+      // Reset loop detector so the LLM gets a fresh chance with different params
+      loopDetector.reset();
+      continue; // Continue the agentic loop — let the LLM self-correct
+    }
+    // Reset consecutive counter on successful tool execution
+    consecutiveLoopBreaks = 0;
 
     // ── 7e. Execute tools ──────────────────────────────────────────────────────
 
@@ -757,6 +780,9 @@ Read their responses before duplicating work. Use @mentions to delegate or reque
             agentId: agentConfig.id,
           });
           resultContent = formatToolResult(toolOutput);
+          if (!toolOutput.success) {
+            logger.warn(`[AgentRunner] Tool "${tc.name}" failed in session ${sessionId}: ${resultContent.slice(0, 200)}`);
+          }
           yield {
             event: 'tool.finish',
             data: {
