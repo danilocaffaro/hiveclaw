@@ -102,6 +102,29 @@ function buildTemporalPrefix(sessionId: string): string {
 
 // ─── Core ───────────────────────────────────────────────────────────────────────
 
+// ─── R20.3a: Per-session mutex ──────────────────────────────────────────────────
+// Prevents concurrent agent runs on the same session. If user sends rapid messages
+// while the agent is still processing, subsequent messages queue up instead of
+// spawning parallel loops that corrupt shared state.
+// OpenClaw has full QueueMode/debounce system; this is a simpler equivalent.
+const _sessionLocks = new Map<string, Promise<void>>();
+
+function withSessionLock<T>(sessionKey: string, fn: () => Promise<T>): Promise<T> {
+  const prev = _sessionLocks.get(sessionKey) ?? Promise.resolve();
+  const next = prev.then(() => fn(), () => fn()); // always proceed even if prior failed
+  // Store the void version (we don't want to keep resolved values in the map)
+  _sessionLocks.set(sessionKey, next.then(() => {}, () => {}));
+  // Cleanup after completion to avoid memory leak
+  next.finally(() => {
+    // Only delete if this is still the latest promise in the chain
+    const current = _sessionLocks.get(sessionKey);
+    if (current === next.then(() => {}, () => {})) {
+      _sessionLocks.delete(sessionKey);
+    }
+  });
+  return next;
+}
+
 export interface ChannelInbound {
   channelId: string;
   agentId: string;
@@ -119,6 +142,12 @@ export interface ChannelInbound {
  * channel_messages so the agent never loses conversational context.
  */
 export async function handleChannelInbound(inbound: ChannelInbound): Promise<string> {
+  const sessionKey = `channel:${inbound.channelId}:${inbound.fromId}`;
+  // R20.3a: Serialize agent runs per session to prevent concurrent corruption
+  return withSessionLock(sessionKey, () => _handleChannelInboundInner(inbound));
+}
+
+async function _handleChannelInboundInner(inbound: ChannelInbound): Promise<string> {
   const sm = getSessionManager();
   const db = initDatabase();
   const agentRepo = new AgentRepository(db);

@@ -823,13 +823,34 @@ Read their responses before duplicating work. Use @mentions to delegate or reque
       toolResultMessages.push({
         role: 'tool',
         content: enforced,
-        toolCallId: tc.id,
+        tool_call_id: tc.id, // R20.1b: normalized to snake_case
         name: tc.name,
       });
     }
 
     // Add tool results to working messages and continue loop
     messages.push(...toolResultMessages);
+
+    // ── R20.2c: In-flight context pruning ─────────────────────────────────────
+    // Soft-trim old tool outputs to prevent unbounded messages[] growth.
+    // Keeps head (first 200 chars) + tail (last 200 chars) of tool results
+    // that are more than 3 iterations old, replacing middle with "[trimmed]".
+    // This mirrors OpenClaw's contextPruning.softTrim approach.
+    const PRUNE_AGE_ITERATIONS = 3; // only prune outputs older than this
+    const PRUNE_MIN_CHARS = 1000;   // don't bother trimming short outputs
+    const PRUNE_HEAD_CHARS = 200;
+    const PRUNE_TAIL_CHARS = 200;
+    if (iteration >= PRUNE_AGE_ITERATIONS) {
+      const pruneBeforeIdx = messages.length - (PRUNE_AGE_ITERATIONS * 4); // rough: 4 msgs per iteration (assistant+tools)
+      for (let i = 0; i < pruneBeforeIdx && i < messages.length; i++) {
+        const msg = messages[i];
+        if (msg.role === 'tool' && typeof msg.content === 'string' && msg.content.length > PRUNE_MIN_CHARS) {
+          const head = msg.content.slice(0, PRUNE_HEAD_CHARS);
+          const tail = msg.content.slice(-PRUNE_TAIL_CHARS);
+          msg.content = `${head}\n\n[… ${msg.content.length - PRUNE_HEAD_CHARS - PRUNE_TAIL_CHARS} chars trimmed — tool output from earlier iteration …]\n\n${tail}`;
+        }
+      }
+    }
 
     // Sprint 80: consolidation call instead of silent break at maxIterations
     if (iteration === maxIterations - 1) {

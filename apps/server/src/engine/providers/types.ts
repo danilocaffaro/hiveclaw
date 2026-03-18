@@ -5,7 +5,7 @@
 export interface LLMMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | LLMContentBlock[];
-  toolCallId?: string;
+  tool_call_id?: string; // R20.1b: normalized to snake_case (was toolCallId)
   name?: string;
 }
 
