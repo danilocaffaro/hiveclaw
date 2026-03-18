@@ -20,6 +20,51 @@ import { handleThreshold, ensureSessionChainSchema } from './session-rotator.js'
 import { getWorkspaceRoot } from '../config/security.js';
 import { DEFAULT_PORT } from '../config/defaults.js';
 
+// ─── Anti-Fabrication: Empty Result Detection ────────────────────────────────
+// Tools where empty results mean "FAILED to find" → hard blocker injected
+const EMPTY_IS_FAILURE = new Set(['web_search', 'webfetch', 'browser']);
+// Tools where empty results mean "valid negative" (no match found = useful info)
+// grep, glob, bash, read, write, edit, memory, etc. → no blocker needed
+
+/**
+ * Detect whether a tool result is "empty" in a way that means failure.
+ * Only triggers for tools in EMPTY_IS_FAILURE set.
+ */
+function detectEmptyToolResult(toolName: string, resultContent: string): boolean {
+  if (!EMPTY_IS_FAILURE.has(toolName)) return false;
+
+  try {
+    const parsed = JSON.parse(resultContent);
+
+    // web_search: { results: [] } or count === 0
+    if (toolName === 'web_search') {
+      if (Array.isArray(parsed.results) && parsed.results.length === 0) return true;
+      if (parsed.count === 0) return true;
+    }
+
+    // webfetch: empty body or very short (<50 chars of actual content)
+    if (toolName === 'webfetch') {
+      const text = typeof parsed === 'string' ? parsed : (parsed.result ?? parsed.text ?? '');
+      if (typeof text === 'string' && text.trim().length < 50) return true;
+    }
+
+    // browser: empty snapshot or no content
+    if (toolName === 'browser') {
+      const text = typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
+      if (text.trim().length < 50) return true;
+    }
+
+    return false;
+  } catch {
+    // Not JSON — check raw string
+    const trimmed = resultContent.trim();
+    if (trimmed === '' || trimmed === '{}' || trimmed === '[]' || trimmed === 'null') return true;
+    // webfetch might return very short HTML artifacts
+    if (EMPTY_IS_FAILURE.has(toolName) && trimmed.length < 50) return true;
+    return false;
+  }
+}
+
 // ─── SSE Event Types ──────────────────────────────────────────────────────────
 
 export interface SSEEvent {
@@ -213,10 +258,13 @@ export async function* runAgent(
   const toolsList = toolNames.length > 0
     ? `\nAvailable tools: ${toolNames.join(', ')}. Use them proactively — you have real access to web, files, code execution, memory, and more. Never claim you lack capabilities that your tools provide.`
     : '';
-  const honesty = `\n\n## Tool Output Integrity (MANDATORY)
-- When a tool returns an error or fails, report the EXACT error. Do NOT guess, infer, or reconstruct what the output might have been.
-- If you cannot verify something, say "I could not verify this" — never fabricate plausible output from memory or context.
-- Prefer "I don't know" over a confident wrong answer.`;
+  const honesty = `\n\n## Tool Output Integrity (MANDATORY — ZERO TOLERANCE)
+- When a tool returns an error, report the EXACT error to the user. Do NOT guess or reconstruct what the output might have been.
+- When a tool returns EMPTY results (0 search results, empty page, no content), tell the user: "I searched but found no results" or "The page returned no content". NEVER invent, fabricate, or hallucinate results.
+- If you cannot verify something, say "I could not verify this" — never present unverified information as fact.
+- NEVER describe web page content, search results, screenshots, or file contents that were not actually returned by the tool.
+- Prefer "I don't know / I couldn't find this" over a confident wrong answer.
+- If a tool worked but returned unexpected results, describe what you ACTUALLY received, not what you expected.`;
 
   // ── Operational Awareness (equivalent to SOUL.md for OpenClaw agents) ────────
   // Gives agents environmental intelligence so they know what to do AND what not to do,
@@ -638,12 +686,18 @@ Read their responses before duplicating work. Use @mentions to delegate or reque
       }
 
       // Append tool result as a "tool" role message
-      // Anti-fabrication: when a tool fails, append enforcement notice so the LLM
-      // reports the real error instead of guessing what the output would have been.
+      // Anti-fabrication v2: detect BOTH errors AND empty results from tools where
+      // empty means "failed to find" (web_search, webfetch, browser) vs tools where
+      // empty means "valid negative" (grep, glob, bash, read).
       const isError = resultContent.startsWith('ERROR:');
-      const enforced = isError
-        ? `${resultContent}\n\n[SYSTEM] This tool call FAILED. Report the exact error above. Do NOT guess or reconstruct what the output might have been.`
-        : resultContent;
+      const isEmpty = detectEmptyToolResult(tc.name, resultContent);
+      let enforced = resultContent;
+
+      if (isError) {
+        enforced = `${resultContent}\n\n[SYSTEM] ⛔ TOOL "${tc.name}" FAILED. Report the exact error above to the user. Do NOT guess, infer, or reconstruct what the output might have been. Say "I could not [action] because [error]".`;
+      } else if (isEmpty) {
+        enforced = `${resultContent}\n\n[SYSTEM] ⛔ TOOL "${tc.name}" returned EMPTY/NO results. This means the search/fetch found nothing — NOT that results exist but weren't shown. You MUST tell the user: "I searched for [query] but found no results" or "I could not access [url]". Do NOT fabricate, guess, or invent results that were not returned. Do NOT describe content you did not receive.`;
+      }
 
       toolResultMessages.push({
         role: 'tool',
