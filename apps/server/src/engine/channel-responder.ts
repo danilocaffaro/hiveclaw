@@ -112,13 +112,12 @@ const _sessionLocks = new Map<string, Promise<void>>();
 function withSessionLock<T>(sessionKey: string, fn: () => Promise<T>): Promise<T> {
   const prev = _sessionLocks.get(sessionKey) ?? Promise.resolve();
   const next = prev.then(() => fn(), () => fn()); // always proceed even if prior failed
-  // Store the void version (we don't want to keep resolved values in the map)
-  _sessionLocks.set(sessionKey, next.then(() => {}, () => {}));
-  // Cleanup after completion to avoid memory leak
-  next.finally(() => {
-    // Only delete if this is still the latest promise in the chain
-    const current = _sessionLocks.get(sessionKey);
-    if (current === next.then(() => {}, () => {})) {
+  // Store the void-settled version as the lock tail
+  const lockPromise = next.then(() => {}, () => {});
+  _sessionLocks.set(sessionKey, lockPromise);
+  // Cleanup: only delete if no newer call has chained after us
+  lockPromise.then(() => {
+    if (_sessionLocks.get(sessionKey) === lockPromise) {
       _sessionLocks.delete(sessionKey);
     }
   });
