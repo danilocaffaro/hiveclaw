@@ -477,6 +477,27 @@ Read their responses before duplicating work. Use @mentions to delegate or reque
     let iterationTokensOut = 0;
     let finishReason: StreamChunk['type'] extends 'finish' ? string : string = 'stop';
 
+    // ── Sprint 80 fix: Stream buffer to catch provider truncation directives ──
+    // The provider (GitHub Copilot/Claude) emits "⚠️ Summarize progress so far
+    // and continue in a new iteration." when hitting output token limits.
+    // We buffer the tail of the stream to detect and suppress this before it
+    // reaches the frontend via SSE.
+    const TRUNCATION_NEEDLE = '⚠️ Summarize progress';
+    const TRUNCATION_NEEDLE_SHORT = 'Summarize progress so far';
+    let streamBuffer = '';
+    const BUFFER_THRESHOLD = 120; // chars to hold back when we suspect truncation
+
+    const flushBuffer = (force: boolean = false) => {
+      if (!streamBuffer) return;
+      if (!force && (streamBuffer.includes('⚠️') || streamBuffer.includes('Summarize progress'))) {
+        if (streamBuffer.length < BUFFER_THRESHOLD) return;
+        if (streamBuffer.includes(TRUNCATION_NEEDLE) || streamBuffer.includes(TRUNCATION_NEEDLE_SHORT)) {
+          return;
+        }
+      }
+      streamBuffer = '';
+    };
+
     try {
       const stream = router.chatWithFallback(messages, llmOptions, fallbackChain);
 
@@ -484,13 +505,36 @@ Read their responses before duplicating work. Use @mentions to delegate or reque
         if (chunk.type === 'text') {
           iterationText += chunk.text;
           fullAssistantText += chunk.text;
-          // ── 7b. Text delta event ─────────────────────────────────────────
-          yield { event: 'message.delta', data: { text: chunk.text } };
-          if (ENABLE_MESSAGE_BUS) {
-            messageBus.publish(sessionId, 'message.delta', { text: chunk.text ?? '', agentId: agentConfig.id ?? '' });
+          streamBuffer += chunk.text;
+
+          // ── 7b. Text delta event (with truncation filtering) ─────────────
+          // Check if buffer might contain truncation directive
+          const mightBeTruncation = streamBuffer.includes('⚠️') || streamBuffer.includes('Summarize progress');
+          if (mightBeTruncation && streamBuffer.length < BUFFER_THRESHOLD) {
+            // Hold back — wait for more text to confirm
+          } else if (mightBeTruncation && (streamBuffer.includes(TRUNCATION_NEEDLE) || streamBuffer.includes(TRUNCATION_NEEDLE_SHORT))) {
+            // Confirmed truncation — suppress entirely, don't emit to frontend
+            // (iterationText/fullAssistantText will be cleaned later)
+          } else {
+            // Safe — emit buffered text
+            if (streamBuffer) {
+              yield { event: 'message.delta', data: { text: streamBuffer } };
+              if (ENABLE_MESSAGE_BUS) {
+                messageBus.publish(sessionId, 'message.delta', { text: streamBuffer, agentId: agentConfig.id ?? '' });
+              }
+              streamBuffer = '';
+            }
           }
 
         } else if (chunk.type === 'tool_call') {
+          // Flush any non-truncation buffered text before processing tool calls
+          if (streamBuffer && !streamBuffer.includes(TRUNCATION_NEEDLE) && !streamBuffer.includes(TRUNCATION_NEEDLE_SHORT)) {
+            yield { event: 'message.delta', data: { text: streamBuffer } };
+            if (ENABLE_MESSAGE_BUS) {
+              messageBus.publish(sessionId, 'message.delta', { text: streamBuffer, agentId: agentConfig.id ?? '' });
+            }
+            streamBuffer = '';
+          }
           // ── 7b. Tool call detected ───────────────────────────────────────
           const tc = chunk.toolCall ?? { id: chunk.id ?? '', name: chunk.name ?? '', arguments: '{}' };
           let toolInput: Record<string, unknown> = {};
@@ -513,6 +557,19 @@ Read their responses before duplicating work. Use @mentions to delegate or reque
           iterationTokensOut += chunk.outputTokens ?? 0;
 
         } else if (chunk.type === 'finish') {
+          // ── Sprint 80 fix: Flush remaining buffer on stream end ──────────
+          // If buffer contains truncation directive, DON'T emit it
+          if (streamBuffer) {
+            const isTruncBuf = streamBuffer.includes(TRUNCATION_NEEDLE) || streamBuffer.includes(TRUNCATION_NEEDLE_SHORT);
+            if (!isTruncBuf) {
+              yield { event: 'message.delta', data: { text: streamBuffer } };
+              if (ENABLE_MESSAGE_BUS) {
+                messageBus.publish(sessionId, 'message.delta', { text: streamBuffer, agentId: agentConfig.id ?? '' });
+              }
+            }
+            streamBuffer = '';
+          }
+
           const finishData = chunk as unknown as { reason?: string; finishReason?: string; tokensIn?: number; tokensOut?: number };
           const reason = finishData.reason ?? finishData.finishReason ?? 'stop';
           finishReason = reason;
@@ -790,6 +847,10 @@ Read their responses before duplicating work. Use @mentions to delegate or reque
   );
 
   try {
+    // ── Sprint 80 fix: Final strip of any leaked provider truncation directives ──
+    const PERSIST_STRIP_PATTERN = /⚠️?\s*(Summarize progress|continue in a new iteration)[^]*/gi;
+    fullAssistantText = fullAssistantText.replace(PERSIST_STRIP_PATTERN, '').trim();
+
     sessionManager.addMessage(sessionId, {
       role: 'assistant',
       content: fullAssistantText,
