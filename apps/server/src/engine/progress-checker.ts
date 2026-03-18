@@ -1,12 +1,23 @@
 /**
  * ProgressChecker — Smart agentic loop control
  *
- * Replaces fixed MAX_TOOL_ITERATIONS with intelligent self-awareness:
- * 1. Detects duplicate tool calls (same name + args)
- * 2. Detects stalled progress (no state change in N iterations)
- * 3. Provides budget tracking (tokens, time)
+ * Sprint 80 — Unlimited Agent (Adler proposal, Mar 18 2026)
+ * ─────────────────────────────────────────────────────────
+ * Philosophy: The agent should never be stopped by artificial limits.
+ * The ONLY legitimate stop reasons are:
+ *   1. Genuine infinite loop (same tool + same args, consecutively)
+ *   2. Absolute time wall (30 min) — true runaway protection only
  *
- * Sprint 79 — Smart Agentic Loop
+ * REMOVED vs Sprint 79:
+ *   - stallThreshold: was incorrectly flagging legitimate multi-step work
+ *     (fetching 20 GitHub files = "stalled" by old logic — wrong)
+ *   - tokenBudget: redundant with LLM maxTokens; was killing useful work
+ *   - checkInterval: no longer needed without stall detection
+ *
+ * CHANGED:
+ *   - duplicateThreshold: 3 → 5 (more tolerance for retries)
+ *   - timeBudgetMs: 10min → 30min (true wall, not productivity limit)
+ *   - recordTokens(): now a no-op (API-compatible stub)
  */
 
 export interface ToolCallRecord {
@@ -18,27 +29,20 @@ export interface ToolCallRecord {
 
 export interface ProgressCheckResult {
   shouldStop: boolean;
-  reason?: 'duplicate_tool' | 'no_progress' | 'token_budget' | 'time_budget';
+  reason?: 'duplicate_tool' | 'time_budget';
   details?: string;
   recommendation?: string;
 }
 
 export interface ProgressCheckerOptions {
-  /** How many consecutive duplicate tool calls trigger a stop (default: 2) */
+  /** Consecutive identical tool+args calls before stopping. Default: 5 */
   duplicateThreshold?: number;
-  /** How many iterations without progress before stopping (default: 6) */
-  stallThreshold?: number;
-  /** Max tokens before stopping (default: 80_000) */
-  tokenBudget?: number;
-  /** Max time in ms before stopping (default: 120_000 = 2min) */
+  /** Absolute time wall ms. Default: 1_800_000 (30min). 0 = disabled */
   timeBudgetMs?: number;
-  /** Check interval — evaluate progress every N iterations (default: 5) */
-  checkInterval?: number;
 }
 
 function hashArgs(args: Record<string, unknown>): string {
   try {
-    // Stable hash — sort keys for consistent comparison
     return JSON.stringify(args, Object.keys(args).sort());
   } catch {
     return String(args);
@@ -47,142 +51,66 @@ function hashArgs(args: Record<string, unknown>): string {
 
 export class ProgressChecker {
   private history: ToolCallRecord[] = [];
-  private totalTokens = 0;
   private startTime = Date.now();
-  private lastProgressIteration = 0;
-  private uniqueToolsExecuted = new Set<string>();
-
   private duplicateThreshold: number;
-  private stallThreshold: number;
-  private tokenBudget: number;
   private timeBudgetMs: number;
-  private checkInterval: number;
 
   constructor(options: ProgressCheckerOptions = {}) {
-    this.duplicateThreshold = options.duplicateThreshold ?? 2;
-    this.stallThreshold = options.stallThreshold ?? 6;
-    this.tokenBudget = options.tokenBudget ?? 80_000;
-    this.timeBudgetMs = options.timeBudgetMs ?? 120_000;
-    this.checkInterval = options.checkInterval ?? 5;
+    this.duplicateThreshold = options.duplicateThreshold ?? 5;
+    this.timeBudgetMs = options.timeBudgetMs ?? 1_800_000;
   }
 
-  /**
-   * Record a tool call and check for duplicate loops
-   */
   recordToolCall(name: string, args: Record<string, unknown>, success = true): ProgressCheckResult {
     const argsHash = hashArgs(args);
-    const now = Date.now();
+    this.history.push({ name, argsHash, timestamp: Date.now(), success });
 
-    this.history.push({ name, argsHash, timestamp: now, success });
-
-    // Mark progress — new unique tool executed
-    const toolKey = `${name}:${argsHash}`;
-    if (!this.uniqueToolsExecuted.has(toolKey)) {
-      this.uniqueToolsExecuted.add(toolKey);
-      this.lastProgressIteration = this.history.length;
+    // Count CONSECUTIVE identical calls at tail of history
+    let count = 0;
+    for (let i = this.history.length - 1; i >= 0; i--) {
+      if (this.history[i].name === name && this.history[i].argsHash === argsHash) count++;
+      else break;
     }
 
-    // Check for consecutive duplicates
-    const recentDuplicates = this.history
-      .slice(-this.duplicateThreshold)
-      .filter(r => r.name === name && r.argsHash === argsHash);
-
-    if (recentDuplicates.length >= this.duplicateThreshold) {
+    if (count >= this.duplicateThreshold) {
       return {
         shouldStop: true,
         reason: 'duplicate_tool',
-        details: `Tool "${name}" called ${recentDuplicates.length}x with identical arguments`,
-        recommendation: 'The tool is not producing new results. Try a different approach or report the result.',
+        details: `"${name}" called ${count}x consecutively with identical args`,
+        recommendation: `Tool "${name}" is not producing new results. Try different parameters or report what you found so far.`,
       };
     }
-
     return { shouldStop: false };
   }
 
-  /**
-   * Record token usage
-   */
-  recordTokens(inputTokens: number, outputTokens: number): ProgressCheckResult {
-    this.totalTokens += inputTokens + outputTokens;
-
-    if (this.totalTokens > this.tokenBudget) {
-      return {
-        shouldStop: true,
-        reason: 'token_budget',
-        details: `Token budget exceeded: ${this.totalTokens.toLocaleString()} / ${this.tokenBudget.toLocaleString()}`,
-        recommendation: 'Summarize progress so far and continue in a new iteration.',
-      };
-    }
-
+  /** No-op stub — token budget removed in Sprint 80 */
+  recordTokens(_in: number, _out: number): ProgressCheckResult {
     return { shouldStop: false };
   }
 
-  /**
-   * Check time budget
-   */
   checkTimeBudget(): ProgressCheckResult {
+    if (this.timeBudgetMs <= 0) return { shouldStop: false };
     const elapsed = Date.now() - this.startTime;
-
     if (elapsed > this.timeBudgetMs) {
       return {
         shouldStop: true,
         reason: 'time_budget',
-        details: `Time budget exceeded: ${Math.round(elapsed / 1000)}s / ${Math.round(this.timeBudgetMs / 1000)}s`,
-        recommendation: 'Report current progress and continue in next response.',
+        details: `30-min wall reached: ${Math.round(elapsed / 1000)}s elapsed`,
+        recommendation: 'Time limit reached. Consolidate and report everything gathered so far.',
       };
     }
-
     return { shouldStop: false };
   }
 
-  /**
-   * Check for stalled progress (called every N iterations)
-   */
-  checkProgress(currentIteration: number): ProgressCheckResult {
-    // Only check at intervals
-    if (currentIteration % this.checkInterval !== 0 || currentIteration === 0) {
-      return { shouldStop: false };
-    }
-
-    const iterationsSinceProgress = currentIteration - this.lastProgressIteration;
-
-    if (iterationsSinceProgress >= this.stallThreshold) {
-      return {
-        shouldStop: true,
-        reason: 'no_progress',
-        details: `No new progress in ${iterationsSinceProgress} iterations (last progress at iteration ${this.lastProgressIteration})`,
-        recommendation: 'The agent appears stuck. Report current state and ask for guidance.',
-      };
-    }
-
-    return { shouldStop: false };
+  /** Sprint 80: only checks time wall — stall detection removed */
+  fullCheck(_iteration: number): ProgressCheckResult {
+    return this.checkTimeBudget();
   }
 
-  /**
-   * Full check — run all checks at once
-   */
-  fullCheck(currentIteration: number): ProgressCheckResult {
-    // Time budget
-    const timeCheck = this.checkTimeBudget();
-    if (timeCheck.shouldStop) return timeCheck;
-
-    // Stall check
-    const progressCheck = this.checkProgress(currentIteration);
-    if (progressCheck.shouldStop) return progressCheck;
-
-    return { shouldStop: false };
-  }
-
-  /**
-   * Summary stats for logging
-   */
   getSummary() {
     return {
       totalToolCalls: this.history.length,
-      uniqueToolCalls: this.uniqueToolsExecuted.size,
-      totalTokens: this.totalTokens,
+      uniqueToolCalls: new Set(this.history.map(r => `${r.name}:${r.argsHash}`)).size,
       elapsedMs: Date.now() - this.startTime,
-      lastProgressIteration: this.lastProgressIteration,
     };
   }
 }

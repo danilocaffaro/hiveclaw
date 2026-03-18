@@ -456,11 +456,10 @@ Read their responses before duplicating work. Use @mentions to delegate or reque
   // only, set very high so legitimate complex work is never interrupted.
   const maxIterations = agentConfig.maxToolIterations ?? TOOL_LIMITS.MAX_TOOL_ITERATIONS;
   const progressChecker = new ProgressChecker({
-    duplicateThreshold: 3,   // stop if same tool + same args called 3x consecutively
-    stallThreshold: 12,      // stop if no new unique tool call in 12 iterations
-    tokenBudget: 200_000,    // generous — let the agent work
-    timeBudgetMs: 600_000,   // 10 minutes — complex tasks need time
-    checkInterval: 5,        // evaluate stall every 5 iterations
+    duplicateThreshold: 5,    // Sprint 80: 3 → 5 (more tolerance for retries)
+    timeBudgetMs: 1_800_000,  // Sprint 80: 30min wall (was 10min) — runaway protection only
+    // stallThreshold REMOVED (Sprint 80): was incorrectly stopping legitimate multi-step work
+    // tokenBudget REMOVED (Sprint 80): redundant, was killing useful work early
   });
   for (let iteration = 0; iteration < maxIterations; iteration++) {
     const llmOptions: LLMOptions = {
@@ -557,24 +556,38 @@ Read their responses before duplicating work. Use @mentions to delegate or reque
     totalTokensIn += iterationTokensIn;
     totalTokensOut += iterationTokensOut;
 
-    // ── Sprint 79: Token budget check ─────────────────────────────────────────
-    const tokenCheck = progressChecker.recordTokens(iterationTokensIn, iterationTokensOut);
-    if (tokenCheck.shouldStop) {
-      logger.warn(`[AgentRunner] Token budget: ${tokenCheck.details}`);
-      yield { event: 'message.delta', data: { text: `\n\n⚠️ ${tokenCheck.recommendation}` } };
-      fullAssistantText += `\n\n⚠️ ${tokenCheck.recommendation}`;
-      break;
-    }
+    // ── Sprint 80: recordTokens is a no-op stub (token budget removed) ───────────────────────────────
+    progressChecker.recordTokens(iterationTokensIn, iterationTokensOut); // no-op
 
-    // ── Sprint 79: Progress stall check ───────────────────────────────────────
+    // ── Sprint 80: Only time wall check (30min) — stall detection removed ────────────────────────────
     const progressCheck = progressChecker.fullCheck(iteration);
     if (progressCheck.shouldStop) {
-      logger.warn(`[AgentRunner] Progress stalled: ${progressCheck.details}`);
-      yield { event: 'message.delta', data: { text: `\n\n⚠️ ${progressCheck.recommendation}` } };
-      fullAssistantText += `\n\n⚠️ ${progressCheck.recommendation}`;
+      logger.warn(`[AgentRunner] Time wall reached: ${progressCheck.details}`);
+      // Sprint 80: consolidation call — never leave user with empty response
+      messages.push({
+        role: 'user',
+        content: `[SYSTEM] ${progressCheck.recommendation} Do NOT call any more tools.`,
+      });
+      const consolidateOptions: LLMOptions = {
+        model: agentConfig.modelId,
+        temperature: agentConfig.temperature,
+        maxTokens: agentConfig.maxTokens,
+        systemPrompt,
+        tools: undefined,
+      };
+      try {
+        const cStream = router.chatWithFallback(messages, consolidateOptions, fallbackChain);
+        for await (const chunk of cStream) {
+          if (chunk.type === 'text') {
+            fullAssistantText += chunk.text;
+            yield { event: 'message.delta', data: { text: chunk.text } };
+          }
+        }
+      } catch (e) {
+        logger.warn('[AgentRunner] Time-wall consolidation failed: %s', (e as Error).message);
+      }
       break;
     }
-
     // ── 7c. No tool calls → done ───────────────────────────────────────────────
     if (pendingToolCalls.length === 0) {
       // Check for response loop
@@ -710,10 +723,31 @@ Read their responses before duplicating work. Use @mentions to delegate or reque
     // Add tool results to working messages and continue loop
     messages.push(...toolResultMessages);
 
-    // Guard: if we've hit the max, break before the next LLM call
+    // Sprint 80: consolidation call instead of silent break at maxIterations
     if (iteration === maxIterations - 1) {
-      logger.warn(`[AgentRunner] Max tool iterations (${maxIterations}) reached for agent ${agentConfig.id}`);
-      // Internal-only: do NOT leak iteration limits to the user-visible chat
+      logger.warn(`[AgentRunner] Max iterations (${maxIterations}) reached — requesting consolidation`);
+      messages.push({
+        role: 'user',
+        content: '[SYSTEM] You have reached the tool execution limit. Do NOT call any more tools. Consolidate EVERYTHING you have gathered so far into a final, complete response for the user. Deliver what you have.',
+      });
+      const finalOptions: LLMOptions = {
+        model: agentConfig.modelId,
+        temperature: agentConfig.temperature,
+        maxTokens: agentConfig.maxTokens,
+        systemPrompt,
+        tools: undefined,
+      };
+      try {
+        const finalStream = router.chatWithFallback(messages, finalOptions, fallbackChain);
+        for await (const chunk of finalStream) {
+          if (chunk.type === 'text') {
+            fullAssistantText += chunk.text;
+            yield { event: 'message.delta', data: { text: chunk.text } };
+          }
+        }
+      } catch (e) {
+        logger.warn('[AgentRunner] Consolidation call failed: %s', (e as Error).message);
+      }
       break;
     }
   } // end agentic loop
