@@ -588,8 +588,33 @@ Read their responses before duplicating work. Use @mentions to delegate or reque
       }
       break;
     }
-    // ── 7c. No tool calls → done ───────────────────────────────────────────────
+    // ── 7c. No tool calls → check for provider truncation, then done ───────────────────────────
     if (pendingToolCalls.length === 0) {
+      // Sprint 80: Detect provider truncation directive leaking as text.
+      // GitHub Copilot/Claude emits "Summarize progress..." when it hits the
+      // output token limit mid-response. We strip it and auto-continue.
+      const PROVIDER_TRUNCATION_PATTERNS = [
+        /\u26a0\ufe0f\s*Summarize progress/i,
+        /continue in a new iteration/i,
+        /Summarize progress so far/i,
+      ];
+      const isProviderTruncation = PROVIDER_TRUNCATION_PATTERNS.some(p => p.test(iterationText));
+      if (isProviderTruncation) {
+        logger.warn(`[AgentRunner] Provider truncation at iteration ${iteration} in session ${sessionId} — auto-continuing`);
+        const stripPattern = /\u26a0\ufe0f?\s*(Summarize progress|continue in a new iteration)[^]*/i;
+        iterationText = iterationText.replace(stripPattern, '').trim();
+        fullAssistantText = fullAssistantText.replace(stripPattern, '').trim();
+        if (iterationText) {
+          messages.push({ role: 'assistant', content: iterationText });
+        }
+        messages.push({
+          role: 'user',
+          content: '[SYSTEM] Your previous response was truncated by the provider output limit. Continue from exactly where you left off. Do not repeat what you already said.',
+        });
+        iterationText = '';
+        continue; // Don't break — let the agentic loop carry on
+      }
+
       // Check for response loop
       if (iterationText) {
         const responseLoop = loopDetector.recordResponse(iterationText);
