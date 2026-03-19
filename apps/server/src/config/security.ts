@@ -151,7 +151,7 @@ export const WRITE_ALLOWED_EXTENSIONS = new Set([
   '.sql', '.graphql', '.gql',
   '.vue', '.svelte', '.astro',
   // Misc
-  '.log', '.gitignore', '.dockerignore', '.editorconfig',
+  '.log', '.editorconfig',
   '.lock', '.sum', // lockfiles (pnpm-lock.yaml already covered by .yaml)
   '.map', // source maps
   '.d.ts', // type declarations (matched as .ts by extname)
@@ -159,14 +159,34 @@ export const WRITE_ALLOWED_EXTENSIONS = new Set([
 ]);
 
 /**
+ * Known dotfiles allowed for write (basename starts with dot, extname returns '').
+ * These are config files commonly created/edited by agents.
+ */
+const WRITE_ALLOWED_DOTFILES = new Set([
+  '.gitignore', '.dockerignore', '.eslintignore', '.prettierignore',
+  '.env', '.env.local', '.env.development', '.env.production', '.env.test', '.env.example',
+  '.editorconfig', '.eslintrc', '.prettierrc', '.stylelintrc',
+  '.nvmrc', '.node-version', '.python-version', '.ruby-version', '.tool-versions',
+  '.npmrc', '.yarnrc', '.babelrc',
+  '.gitattributes', '.mailmap',
+  '.htaccess',
+]);
+
+/**
  * Check if a file extension is allowed for write operations.
- * Files with no extension are blocked (prevents overwriting binaries).
+ * Files with no extension are blocked (prevents overwriting binaries),
+ * unless they are known dotfiles (e.g. .gitignore, .env, .eslintrc).
  */
 export function isWriteExtensionAllowed(filePath: string): { allowed: true } | { allowed: false; reason: string } {
   const ext = extname(filePath).toLowerCase();
+  const baseName = filePath.split('/').pop()?.toLowerCase() ?? '';
 
   if (!ext) {
-    return { allowed: false, reason: `Write blocked: file '${filePath}' has no extension. Agent write operations require a known file extension.` };
+    // No extension — check if it's a known dotfile (e.g. .gitignore, .env)
+    if (baseName.startsWith('.') && WRITE_ALLOWED_DOTFILES.has(baseName)) {
+      return { allowed: true };
+    }
+    return { allowed: false, reason: `Write blocked: file '${filePath}' has no recognized extension or dotfile name. Agent write operations require a known file extension.` };
   }
 
   if (!WRITE_ALLOWED_EXTENSIONS.has(ext)) {

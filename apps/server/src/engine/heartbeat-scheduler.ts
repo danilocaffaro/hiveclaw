@@ -39,12 +39,20 @@ interface HeartbeatConfig {
 let _timer: ReturnType<typeof setInterval> | null = null;
 let _running = false;
 
+/** Max wall time for a single heartbeat run (60s). Prevents hung agents. */
+const HEARTBEAT_TIMEOUT_MS = 60_000;
+
 // ─── Default Prompt ─────────────────────────────────────────────────────────────
 
 const DEFAULT_HEARTBEAT_PROMPT = `[HEARTBEAT] Run a quick health check:
 1. Check server status (memory usage, uptime)
 2. Check for any pending tasks or alerts
 3. Report any issues found, or confirm all clear.
+
+End your response with a JSON status block:
+\`\`\`json
+{"status": "ok|warning|critical", "alerts": ["description of any issues"]}
+\`\`\`
 Keep the response concise.`;
 
 // ─── Core Execution ─────────────────────────────────────────────────────────────
@@ -120,20 +128,41 @@ async function executeHeartbeat(db: Database.Database): Promise<void> {
     const prompt = config.prompt || DEFAULT_HEARTBEAT_PROMPT;
     const runner = agentConfig.engineVersion === 2 ? runAgentV2 : runAgent;
 
-    // Run agent and collect response
+    // Run agent with timeout — heartbeats should be fast (60s max)
+    const abortController = new AbortController();
+    const timeoutHandle = setTimeout(() => abortController.abort(), HEARTBEAT_TIMEOUT_MS);
+
     let fullResponse = '';
     let tokensIn = 0;
     let tokensOut = 0;
+    let timedOut = false;
 
-    for await (const event of runner(session.id, prompt, agentConfig)) {
-      if (event.event === 'message.delta') {
-        const delta = event.data as { text?: string };
-        if (delta.text) fullResponse += delta.text;
-      } else if (event.event === 'message.finish') {
-        const finish = event.data as { tokens_in?: number; tokens_out?: number };
-        tokensIn = finish.tokens_in ?? 0;
-        tokensOut = finish.tokens_out ?? 0;
+    try {
+      const runnerOpts = agentConfig.engineVersion === 2
+        ? { signal: abortController.signal }
+        : undefined;
+
+      for await (const event of runner(session.id, prompt, agentConfig, runnerOpts)) {
+        if (abortController.signal.aborted) {
+          timedOut = true;
+          break;
+        }
+        if (event.event === 'message.delta') {
+          const delta = event.data as { text?: string };
+          if (delta.text) fullResponse += delta.text;
+        } else if (event.event === 'message.finish') {
+          const finish = event.data as { tokens_in?: number; tokens_out?: number };
+          tokensIn = finish.tokens_in ?? 0;
+          tokensOut = finish.tokens_out ?? 0;
+        }
       }
+    } finally {
+      clearTimeout(timeoutHandle);
+    }
+
+    if (timedOut) {
+      logger.warn('[heartbeat] Run %s timed out after %dms', runId, HEARTBEAT_TIMEOUT_MS);
+      fullResponse += '\n[HEARTBEAT TIMEOUT — agent did not complete within time limit]';
     }
 
     // Record completion
@@ -155,13 +184,46 @@ async function executeHeartbeat(db: Database.Database): Promise<void> {
 
     logger.info('[heartbeat] Completed run %s — %d chars, %d/%d tokens', runId, fullResponse.length, tokensIn, tokensOut);
 
-    // Check for alert indicators in the response
-    const alertPatterns = [/🔴|critical|emergency|down|unreachable|crash/i, /⚠️|warning|degraded|high.*load/i];
-    const hasAlert = alertPatterns.some(p => p.test(fullResponse));
-    if (hasAlert) {
-      logger.warn('[heartbeat] Alert detected in heartbeat response! Run: %s', runId);
+    // Detect alert level from structured response or fallback heuristics.
+    // Preferred: agent returns JSON block like ```json\n{"status":"critical","alerts":[...]}\n```
+    // Fallback: keyword detection (only on lines starting with status markers, not in technical prose).
+    let alertLevel: 'ok' | 'warning' | 'critical' = 'ok';
+
+    // Try structured JSON extraction first
+    const jsonMatch = fullResponse.match(/```json\s*\n([\s\S]*?)\n```/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[1]) as { status?: string; alerts?: unknown[] };
+        if (parsed.status === 'critical' || (parsed.alerts && parsed.alerts.length > 0)) {
+          alertLevel = 'critical';
+        } else if (parsed.status === 'warning') {
+          alertLevel = 'warning';
+        }
+      } catch { /* malformed JSON, fall through to heuristic */ }
+    }
+
+    // Fallback heuristic: only match explicit status-reporting patterns, not technical prose
+    if (alertLevel === 'ok') {
+      // Lines that START with alert markers (agent deliberately flagging something)
+      const lines = fullResponse.split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (/^(🔴|❌|\[CRITICAL\]|\[ALERT\])/i.test(trimmed)) { alertLevel = 'critical'; break; }
+        if (/^(⚠️|🟡|\[WARNING\])/i.test(trimmed)) { alertLevel = alertLevel === 'critical' ? 'critical' : 'warning'; }
+      }
+      // Timeout is always at least a warning
+      if (timedOut && alertLevel === 'ok') alertLevel = 'warning';
+    }
+
+    if (alertLevel !== 'ok') {
+      logger.warn('[heartbeat] Alert level=%s in run %s', alertLevel, runId);
       // Future: deliver alert via channel (Telegram, etc.)
     }
+
+    // Store alert level in result
+    db.prepare(
+      "UPDATE heartbeat_runs SET result = json_set(result, '$.alertLevel', ?) WHERE id = ?"
+    ).run(alertLevel, runId);
 
   } catch (err) {
     logger.error('[heartbeat] Execution failed: %s', (err as Error).message);

@@ -38,6 +38,40 @@ import { TOOL_LIMITS, ENABLE_MESSAGE_BUS, DEFAULT_PORT } from '../config/default
 import { messageBus } from './message-bus.js';
 import type { SSEEvent, AgentConfig } from './agent-runner.js';
 
+// ─── Squad Context: Substantive Preview Extraction ──────────────────────────
+
+/** Common boilerplate patterns that agents use to start responses */
+const BOILERPLATE_RE = /^(okay,?\s+|sure[,!]?\s+|alright[,!]?\s+|certainly[,!]?\s+|let me\s+|i('ll| will)\s+|claro[,!]?\s+|vou\s+|certo[,!]?\s+|ok[,!]?\s+)/i;
+
+/**
+ * Extract a substantive preview from an agent response, skipping boilerplate openers.
+ * Returns the first meaningful chunk up to maxLen characters.
+ */
+function extractSubstantivePreview(content: string, maxLen: number): string {
+  if (!content || content.length <= maxLen) return content;
+
+  // Split into sentences (simple split by period/newline)
+  const sentences = content.split(/(?:\.\s|\n)+/).filter(s => s.trim().length > 5);
+
+  // Skip leading boilerplate sentences
+  let startIdx = 0;
+  while (startIdx < sentences.length && BOILERPLATE_RE.test(sentences[startIdx].trim())) {
+    startIdx++;
+  }
+  if (startIdx >= sentences.length) startIdx = 0; // all boilerplate? use from start
+
+  // Build preview from substantive sentences
+  let preview = '';
+  for (let i = startIdx; i < sentences.length; i++) {
+    const next = (preview ? '. ' : '') + sentences[i].trim();
+    if (preview.length + next.length > maxLen) break;
+    preview += next;
+  }
+
+  if (!preview) preview = content.slice(0, maxLen);
+  return preview + (content.length > preview.length ? '...' : '');
+}
+
 // ─── Anti-Fabrication: Empty Result Detection ────────────────────────────────
 
 const EMPTY_IS_FAILURE = new Set(['web_search', 'webfetch', 'browser']);
@@ -331,8 +365,8 @@ export async function* runAgentV2(
       // Other agent's messages: summarize to reduce noise
       const agentName = agentNames?.get(msgAgentId) || 'Another agent';
       const content = typeof msg.content === 'string' ? msg.content : '';
-      // Keep first 200 chars as preview, skip tool_calls details
-      const preview = content.slice(0, 200) + (content.length > 200 ? '...' : '');
+      // Extract substantive preview: skip common boilerplate openers, take first meaningful chunk
+      const preview = extractSubstantivePreview(content, 200);
       return { ...msg, content: `[${agentName} responded: ${preview}]` };
     });
 

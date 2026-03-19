@@ -32,14 +32,18 @@ const COMPACTION_PROMPT = `You are a memory compaction system. Given a conversat
 
 1. "summary": A concise summary (2-4 sentences) of what was discussed and accomplished.
 2. "facts": An array of durable facts extracted from the conversation. Each fact has:
-   - "type": one of "decision", "preference", "fact", "entity", "goal", "procedure"
+   - "type": one of "decision", "preference", "correction", "fact", "entity", "goal", "procedure", "event"
    - "key": short identifier (snake_case)
    - "value": the fact content (1-2 sentences max)
 
-Extract ONLY information that would be useful in future conversations.
-Skip: greetings, filler, already-known information, temporary states.
+Important extraction rules:
+- For PREFERENCES: capture both positive ("prefers X") and negative ("dislikes Y", "never wants Z").
+  Use type "correction" with value starting "[AVOID]" for negative preferences.
+- For DECISIONS: capture what was decided AND why (rationale matters for future context).
+- For ENTITIES: names, project names, tools, services mentioned as important.
+- Skip: greetings, filler, already-known information, temporary states, routine acknowledgments.
 
-Respond with ONLY valid JSON, no markdown fences.`;
+Respond with ONLY valid JSON, no markdown fences, no extra text.`;
 
 /**
  * Compact messages using LLM summarization.
@@ -133,24 +137,46 @@ function parseCompactionResponse(text: string): {
   summary: string;
   facts: Array<{ type: string; key: string; value: string }>;
 } | null {
-  try {
-    // Strip markdown fences if present
-    let cleaned = text.trim();
-    if (cleaned.startsWith('```')) {
-      cleaned = cleaned.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-    }
+  // Try multiple extraction strategies (LLMs are inconsistent with format)
 
-    const json = JSON.parse(cleaned);
+  // Strategy 1: Direct JSON parse (clean response)
+  const result = tryParseJson(text.trim());
+  if (result) return result;
+
+  // Strategy 2: Strip markdown fences
+  const fenceMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (fenceMatch) {
+    const result2 = tryParseJson(fenceMatch[1].trim());
+    if (result2) return result2;
+  }
+
+  // Strategy 3: Find first { ... } block (LLM added preamble/epilogue)
+  const braceMatch = text.match(/\{[\s\S]*\}/);
+  if (braceMatch) {
+    const result3 = tryParseJson(braceMatch[0]);
+    if (result3) return result3;
+  }
+
+  logger.warn('[LLMCompactor] All parse strategies failed. Raw response (first 200 chars): %s', text.slice(0, 200));
+  return null;
+}
+
+/** Attempt to parse JSON and validate the compaction schema. */
+function tryParseJson(text: string): {
+  summary: string;
+  facts: Array<{ type: string; key: string; value: string }>;
+} | null {
+  try {
+    const json = JSON.parse(text);
 
     if (typeof json.summary !== 'string') return null;
     if (!Array.isArray(json.facts)) return null;
 
-    // Validate facts
     const validTypes = new Set(['decision', 'preference', 'fact', 'entity', 'goal', 'procedure', 'correction', 'event']);
     const facts = json.facts
-      .filter((f: any) => f && typeof f.type === 'string' && typeof f.key === 'string' && typeof f.value === 'string')
-      .filter((f: any) => validTypes.has(f.type))
-      .slice(0, 20); // Cap at 20 facts per compaction
+      .filter((f: Record<string, unknown>) => f && typeof f.type === 'string' && typeof f.key === 'string' && typeof f.value === 'string')
+      .filter((f: Record<string, unknown>) => validTypes.has(f.type as string))
+      .slice(0, 20);
 
     return { summary: json.summary.slice(0, 1000), facts };
   } catch {
