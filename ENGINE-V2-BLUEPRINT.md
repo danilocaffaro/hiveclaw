@@ -1,6 +1,7 @@
 # ENGINE-V2-BLUEPRINT.md — Migration to Provider-Native Tool Loop
 
 > **Author:** Alice 🐕 + Adler 🦊 | **Date:** 2026-03-18
+> **Updated:** 2026-03-19 (Adler review — 3 adjustments applied)
 > **Status:** PLANNING (no code changes)
 > **Consensus:** 100% (Alice + Adler)
 
@@ -33,7 +34,7 @@ Each provider gets its own adapter that handles quirks internally:
     │   (per-provider) │
     ├─────────────────┤
     │ AnthropicAdapter │  → uses Messages API with tool_use
-    │ CopilotAdapter   │  → handles token exchange + truncation
+    │ CopilotAdapter   │  → see Copilot Strategy below
     │ OpenAIAdapter    │  → uses Responses API / function calling
     │ OllamaAdapter    │  → uses chat completion with tools
     └─────────────────┘
@@ -46,34 +47,14 @@ Each adapter:
 - Normalizes all events to a common format
 - Owns its quirks (truncation detection, token exchange, etc.)
 
-### Phase 2: Immutable Message Pipeline (~2-3 days)
+**Done when:** Clark runs 30 sessions with Anthropic + OpenAI without quirk
+leakage errors. Provider-specific behaviors are invisible to agent-runner v2.
 
-Replace mutable `messages[]` with an immutable conversation log:
+### Phase 2: Native Tool Loop (~5-7 days)  ← moved up per Adler review
 
-```typescript
-interface ConversationTurn {
-  readonly id: string;
-  readonly role: 'user' | 'assistant' | 'tool';
-  readonly content: string;
-  readonly toolCalls?: ReadonlyArray<ToolCall>;
-  readonly toolResults?: ReadonlyArray<ToolResult>;
-  readonly timestamp: number;
-}
-
-// Each iteration builds a NEW array from the log, never mutates in place
-function buildContextWindow(log: ConversationTurn[], budget: number): Message[] {
-  // Apply pruning, trimming, and budget constraints
-  // Return a fresh array for the provider call
-}
-```
-
-Benefits:
-- No more `iterationText = ''` reset bugs
-- No more text leaking between iterations
-- Each provider call gets a clean, budget-fitted context
-- Easy to add caching/replay
-
-### Phase 3: Delegate Tool Loop to Provider (~5-7 days)
+> **Rationale (Adler 🦊):** This phase resolves structural problems #1, #2, #5 —
+> the most critical bugs. Immutable Pipeline (Phase 3) is quality improvement,
+> not bug correction. If timeline compresses, we want the critical fixes shipped first.
 
 For providers that support it (Anthropic, OpenAI), let the provider manage the
 tool_use → tool_result → continue cycle:
@@ -111,6 +92,66 @@ We handle:
 - Persisting the conversation log
 - Safety guardrails (loop detection as a safety net, not primary control)
 
+**Done when:** Truncation pattern rate = 0 in 50 long sessions (zero occurrences
+of the `⚠️ Summarize progress...` pattern). Manual agentic `for` loop removed for
+providers that support native tool_use.
+
+### Phase 3: Immutable Message Pipeline (~2-3 days)  ← moved down per Adler review
+
+Replace mutable `messages[]` with an immutable conversation log:
+
+```typescript
+interface ConversationTurn {
+  readonly id: string;
+  readonly role: 'user' | 'assistant' | 'tool';
+  readonly content: string;
+  readonly toolCalls?: ReadonlyArray<ToolCall>;
+  readonly toolResults?: ReadonlyArray<ToolResult>;
+  readonly timestamp: number;
+}
+
+// Each iteration builds a NEW array from the log, never mutates in place
+function buildContextWindow(log: ConversationTurn[], budget: number): Message[] {
+  // Apply pruning, trimming, and budget constraints
+  // Return a fresh array for the provider call
+}
+```
+
+Benefits:
+- No more `iterationText = ''` reset bugs
+- No more text leaking between iterations
+- Each provider call gets a clean, budget-fitted context
+- Easy to add caching/replay
+
+**Done when:** Zero `iterationText = ''` resets in code. Lint rule prohibiting
+direct mutation of `messages[]`. All message array construction goes through
+`buildContextWindow()`.
+
+## Copilot Strategy (mandatory — Adler review item #2)
+
+> **Context (Adler 🦊):** Copilot is an Anthropic proxy with undocumented behavior.
+> OpenClaw never needed truncation detection because they don't have a manual
+> agentic loop — the problem is exclusive to our manual loop implementation.
+> Copilot cannot be treated as generic in Phase 2.
+
+**Chosen approach: Opção B — Encapsulated manual loop** (decided by Alice)
+
+The `CopilotAdapter` will internally encapsulate the manual loop with all Sprint 80
+fixes (truncation detection `4f09f9a`, stream buffer `1574c60`, auto-continue) while
+exposing the same `AsyncGenerator<AgentEvent>` interface as other adapters.
+
+From agent-runner v2's perspective, CopilotAdapter behaves identically to
+AnthropicAdapter — the manual loop is an implementation detail hidden inside.
+
+**Why not Opção A (test native tool_use):** Copilot's proxy behavior is
+undocumented and may change without notice. Empirical testing proves
+"it works today" but provides no reliability guarantee. Opção B is defensive
+and future-proof — if Copilot starts supporting native tool_use reliably,
+we can upgrade the adapter internals without changing the interface.
+
+**Validation:** CopilotAdapter must pass the same 30-session test as
+AnthropicAdapter, with zero truncation leaks.
+
 ## Risks & Mitigations
 
 | Risk | Mitigation |
@@ -119,7 +160,7 @@ We handle:
 | Ollama may not support native tool loop | Keep manual loop as fallback for basic providers |
 | Lost granular control over iterations | Safety guardrails (time wall, loop detection) still apply as outer guards |
 | Migration breaks existing agents | Feature flag: `engine_v2: true` per agent, gradual rollout |
-| Copilot proxy behavior unknown for native loop | Test extensively; Copilot adapter may need manual loop internally |
+| Copilot proxy behavior changes | Opção B: manual loop encapsulated in adapter, immune to proxy changes |
 
 ## Migration Strategy
 
@@ -129,15 +170,28 @@ We handle:
 4. **Default new agents to v2**, existing agents stay v1
 5. **Remove v1 after 30 days** of stable v2 operation
 
-## Effort Estimate
+## Acceptance Criteria (per phase)
+
+| Phase | Done when... |
+|-------|-------------|
+| 1 — Adapters | Clark runs 30 sessions with Anthropic + OpenAI without quirk leakage |
+| 2 — Native Tool Loop | Truncation rate = 0 in 50 long sessions; zero `⚠️ Summarize progress` occurrences |
+| 3 — Immutable Pipeline | Zero `iterationText = ''` resets; lint rule prohibiting direct `messages[]` mutation |
+| Migration | 100% of agents on v2 for 30 days without regression |
+
+## Effort Estimate (reordered)
 
 | Phase | Effort | Dependencies |
 |-------|--------|-------------|
 | Phase 1: Provider Adapters | 3-5 days | None |
-| Phase 2: Immutable Pipeline | 2-3 days | Phase 1 |
-| Phase 3: Native Tool Loop | 5-7 days | Phase 1 + 2 |
+| Phase 2: Native Tool Loop | 5-7 days | Phase 1 |
+| Phase 3: Immutable Pipeline | 2-3 days | Phase 1 |
 | Testing + Migration | 3-5 days | All phases |
 | **Total** | **13-20 days** | — |
+
+> **Note:** Phases 2 and 3 depend on Phase 1 but are independent of each other.
+> Phase 2 is prioritized because it resolves critical bugs (#1, #2, #5).
+> Phase 3 can be done in parallel or after Phase 2.
 
 ## R20 Hardening as Bridge
 
