@@ -532,6 +532,12 @@ export async function* runAgentV2(
     }
 
     if (!streamSuccess) {
+      // P1: Distinguish abort from real provider failure
+      if (signal?.aborted) {
+        persistPartialResponse('aborted');
+        yield { event: 'message.delta', data: { text: '\n\n[Run cancelled.]' } };
+        break;
+      }
       persistPartialResponse('all-providers-exhausted');
       yield { event: 'error', data: { message: 'All providers failed', code: 'PROVIDER_ERROR' } };
       return;
@@ -542,6 +548,13 @@ export async function* runAgentV2(
     progressChecker.recordTokens(iterationTokensIn, iterationTokensOut);
 
     // ── Handle finish reasons ─────────────────────────────────────────────────
+
+    // P1: Check abort before processing finish reason
+    if (signal?.aborted) {
+      persistPartialResponse('aborted');
+      yield { event: 'message.delta', data: { text: '\n\n[Run cancelled.]' } };
+      break;
+    }
 
     if (finishReason === 'error') {
       persistPartialResponse('provider-finish-error');
