@@ -94,6 +94,7 @@ export interface AgentConfig {
   maxToolIterations?: number; // per-agent override (default: TOOL_LIMITS.MAX_TOOL_ITERATIONS)
   tools?: string[]; // tool names to enable (undefined = all tools)
   fallbackProviders?: string[]; // ordered fallback provider IDs
+  engineVersion?: 1 | 2; // default 1 for existing agents; 2 = native tool loop (agent-runner-v2)
 }
 
 // ─── Tool Registry ────────────────────────────────────────────────────────────
