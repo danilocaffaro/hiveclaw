@@ -109,17 +109,43 @@ function buildTemporalPrefix(sessionId: string): string {
 // while the agent is still processing, subsequent messages queue up instead of
 // spawning parallel loops that corrupt shared state.
 // OpenClaw has full QueueMode/debounce system; this is a simpler equivalent.
-const _sessionLocks = new Map<string, Promise<void>>();
+//
+// R21/P3: Added periodic sweep to prevent unbounded Map growth in squad mode
+// where many unique fromIds create entries that never repeat.
+
+interface LockEntry {
+  promise: Promise<void>;
+  createdAt: number;
+  settled: boolean;
+}
+
+const _sessionLocks = new Map<string, LockEntry>();
+
+// Sweep interval: remove entries that are settled AND older than 60s
+const LOCK_SWEEP_INTERVAL_MS = 60_000;
+const LOCK_SWEEP_MAX_AGE_MS = 60_000;
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of _sessionLocks) {
+    if (entry.settled && (now - entry.createdAt) > LOCK_SWEEP_MAX_AGE_MS) {
+      _sessionLocks.delete(key);
+    }
+  }
+}, LOCK_SWEEP_INTERVAL_MS).unref(); // unref so it doesn't keep the process alive
 
 function withSessionLock<T>(sessionKey: string, fn: () => Promise<T>): Promise<T> {
-  const prev = _sessionLocks.get(sessionKey) ?? Promise.resolve();
+  const prevEntry = _sessionLocks.get(sessionKey);
+  const prev = prevEntry?.promise ?? Promise.resolve();
   const next = prev.then(() => fn(), () => fn()); // always proceed even if prior failed
   // Store the void-settled version as the lock tail
   const lockPromise = next.then(() => {}, () => {});
-  _sessionLocks.set(sessionKey, lockPromise);
-  // Cleanup: only delete if no newer call has chained after us
+  const entry: LockEntry = { promise: lockPromise, createdAt: Date.now(), settled: false };
+  lockPromise.then(() => { entry.settled = true; });
+  _sessionLocks.set(sessionKey, entry);
+  // Immediate cleanup: only delete if no newer call has chained after us
   lockPromise.then(() => {
-    if (_sessionLocks.get(sessionKey) === lockPromise) {
+    if (_sessionLocks.get(sessionKey) === entry) {
       _sessionLocks.delete(sessionKey);
     }
   });
