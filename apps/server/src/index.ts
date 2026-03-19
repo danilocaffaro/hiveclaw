@@ -511,7 +511,7 @@ async function main() {
       const channelRepo = new ChannelRepository(db);
       const channels = channelRepo.list();
       const v2Channels = channels
-        .filter(c => c.enabled && c.type === 'telegram')  // grammy adapter only for now
+        .filter(c => c.enabled && (c.type === 'telegram' || c.type === 'whatsapp'))  // grammy + baileys adapters
         .map(c => ({
           id: c.id,
           name: c.name,

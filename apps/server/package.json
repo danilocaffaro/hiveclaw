@@ -17,6 +17,7 @@
     "@fastify/multipart": "^9.4.0",
     "@fastify/rate-limit": "^10.3.0",
     "@hiveclaw/shared": "workspace:*",
+    "@whiskeysockets/baileys": "7.0.0-rc.9",
     "better-sqlite3": "^11.8.0",
     "fast-glob": "^3.3.3",
     "fastify": "^5.3.0",

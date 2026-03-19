@@ -27,6 +27,7 @@ import type {
 } from './adapter.js';
 import { createAdapter, registerAdapterFactory } from './adapter.js';
 import { TelegramAdapter } from './telegram-adapter.js';
+import { WhatsAppAdapter } from './whatsapp-adapter.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -75,7 +76,7 @@ export class ChannelRouter {
   constructor() {
     // Register adapter factories
     registerAdapterFactory('telegram', () => new TelegramAdapter());
-    // Future: registerAdapterFactory('whatsapp', () => new WhatsAppAdapter());
+    registerAdapterFactory('whatsapp', () => new WhatsAppAdapter());
     // Future: registerAdapterFactory('discord', () => new DiscordAdapter());
   }
 
