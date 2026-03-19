@@ -1,7 +1,7 @@
 # NODE-EXEC-SECURITY-SPEC.md
 ## HiveClaw Phase 3 — Node Remote Execution Security Specification
 
-**Status:** 📋 DRAFT — Awaiting Adler review  
+**Status:** ✅ APPROVED — Adler review 2026-03-19 (with 2 amendments)  
 **Author:** Alice 🐕  
 **Date:** 2026-03-19  
 **Triggered by:** Adler security flag on Phase 3 (blueprint Q&A)  
@@ -51,7 +51,7 @@ Every command is classified into a tier based on potential damage. The tier dete
 |------|------|-------------------|----------|
 | **Tier 0: Read-only / Sensors** | 🟢 None | Automatic | `camera_snap`, `camera_list`, `screen_record` (screenshot), `location_get`, `notifications_list` |
 | **Tier 1: Safe exec** | 🟢 Low | Automatic (if in allowlist) | `ls`, `pwd`, `whoami`, `date`, `cat <allowed-paths>`, `df`, `uptime`, `ps aux`, `echo`, `which` |
-| **Tier 2: Side-effect exec** | 🟡 Medium | Agent-level approval (LLM confirms intent) | `mkdir`, `cp`, `mv`, `touch`, `chmod` (non-recursive), `brew install`, `npm install`, `open` (macOS) |
+| **Tier 2: Side-effect exec** | 🟡 Medium | Agent-level approval (LLM confirms intent) | `mkdir`, `cp`, `mv`, `touch`, `chmod` (non-recursive), `brew install`, `npm install`, `open` (macOS). **No command substitution** (`$()`, backticks) allowed even in Tier 2 — Adler Q1 amendment. |
 | **Tier 3: Destructive / Sensitive** | 🔴 High | **Owner approval required** (push notification + wait) | `rm`, `kill`, `pkill`, `shutdown`, `reboot`, `chmod -R`, `chown`, writing to `/etc`, `sudo`, `curl | sh` |
 | **Tier 4: Blocked** | ⛔ Never | **Always rejected** | `rm -rf /`, `mkfs`, `dd if=/dev/zero`, `:(){ :|:& };:`, any command with `> /dev/sd*`, `format`, pipe to `sh`/`bash`/`eval` from untrusted source |
 
@@ -81,6 +81,9 @@ const BLOCKED_PATTERNS = [
   /sudo\s+rm\s+-rf/,                // sudo rm -rf
   /curl.*\|\s*(sh|bash)/,           // curl pipe to shell
   /wget.*\|\s*(sh|bash)/,           // wget pipe to shell
+  /\$\(/,                           // command substitution $() — Adler Q1 amendment
+  /`[^`]+`/,                        // backtick command substitution — Adler Q1 amendment
+  /\$\{[^}]*\b(PATH|HOME|USER|SHELL|SSH|AWS|TOKEN|KEY|SECRET|PASSWORD)\b/i, // sensitive env var expansion
 ];
 
 const DESTRUCTIVE_COMMANDS = new Set([
@@ -396,14 +399,97 @@ Server pushes policy updates to connected nodes via WS. Node client hot-reloads 
 
 ---
 
-## 10. Open Questions (for Adler review)
+## 10. Late Result Handling (Adler amendment)
 
-1. **Shell interpretation:** Should `exec` run through `sh -c` (supports pipes/redirects but harder to analyze) or direct `execFile` (no shell, safer but limited)? **Recommendation:** `execFile` for Tier 1, `sh -c` for Tier 2+ with pattern analysis.
+When a Tier 3 command times out waiting for owner approval, the agent may have already moved on to subsequent tool calls assuming the command would succeed. This creates a **context integrity problem**.
 
-2. **Multi-node commands:** Should agents be able to broadcast one command to all nodes? **Recommendation:** No in v1. One node per command call. Orchestration is the agent's job.
+### 10.1 The Problem
 
-3. **File transfer:** Should nodes support `upload`/`download` (push file to node, pull file from node)? **Recommendation:** Yes, as Tier 2 commands, with path allowlist and size limits (50MB max).
+```
+t=0s   Agent calls: exec("rm -rf /tmp/old-build")     → Tier 3 → awaiting owner
+t=5s   Agent calls: exec("mkdir /tmp/old-build")       → Tier 1 → succeeds
+t=10s  Agent calls: exec("cp -r /dist /tmp/old-build") → Tier 1 → succeeds
+t=300s Owner: "approve"                                 → too late, context has diverged
+```
 
-4. **Camera/screen consent on macOS:** macOS prompts for camera access per-app. Should the node client pre-request these permissions on install? **Recommendation:** Yes, during `npx hiveclaw-node pair` setup wizard.
+If the late-approved `rm` executes now, it destroys the new build the agent just created.
 
-5. **Session binding:** Should a command be tied to a specific agent session, or can any session of the same agent use the same node? **Recommendation:** Any session of the agent. Node access is granted to the agent, not the session.
+### 10.2 Solution: Approval Window + Stale Detection
+
+1. **Approval window:** Tier 3 commands have a **5-minute approval window**. If the owner responds after this window, the command is **auto-expired** (not executed).
+
+2. **Stale command detection:** When a Tier 3 approval arrives, before executing, the server checks:
+   - Has the agent made any subsequent `exec` calls to the **same node** that touch **overlapping paths**?
+   - Has the agent's session advanced more than N tool calls since the original request?
+   - If yes → mark as `stale`, notify owner: "Command expired — agent context has advanced. Re-submit if still needed."
+
+3. **Agent notification via system message:** When a Tier 3 command is pending approval, the server injects a **blocking marker** into the agent's tool response:
+
+   ```json
+   {
+     "status": "pending_approval",
+     "message": "⏳ Awaiting owner approval for: rm -rf /tmp/old-build. Do NOT proceed as if this command succeeded. Wait for result or work around it.",
+     "command_id": "cmd-uuid",
+     "timeout": "5m"
+   }
+   ```
+
+   The agent receives this as a tool result and should understand it hasn't executed.
+
+4. **Resolution notification:** When the approval resolves (approved/denied/timeout), the server injects the result into the agent's **next interaction** as a system context message:
+
+   ```
+   [System] Previously pending command resolved:
+   Command: rm -rf /tmp/old-build
+   Result: DENIED (owner timeout after 5m)
+   Adjust your plan accordingly.
+   ```
+
+### 10.3 Implementation
+
+```typescript
+// In agent-runner-v2.ts tool execution:
+if (toolResult.status === 'pending_approval') {
+  // Don't loop — return the pending status to the agent as a tool result
+  // The agent sees it and can decide to wait or work around it
+  return { content: toolResult.message, isError: false };
+}
+
+// In session message injection:
+function injectPendingResolutions(sessionId: string, messages: Message[]): Message[] {
+  const resolved = pendingCommandStore.getResolved(sessionId);
+  if (resolved.length === 0) return messages;
+
+  const systemMsg = resolved.map(r =>
+    `[Resolved] ${r.command}: ${r.status} ${r.status === 'denied' ? '(adjust plan)' : '(completed)'}`
+  ).join('\n');
+
+  pendingCommandStore.clearResolved(sessionId);
+  return [...messages, { role: 'system', content: systemMsg }];
+}
+```
+
+### 10.4 Edge Cases
+
+| Case | Behavior |
+|------|----------|
+| Owner approves within window, no stale conflict | Execute normally, return result |
+| Owner approves within window, stale conflict detected | Expire command, notify both owner and agent |
+| Owner denies | Return denial to agent immediately |
+| Timeout (5min) | Auto-deny, inject resolution into agent context |
+| Agent session ended before resolution | Log result but don't inject (no active session) |
+| Owner approves after window | "Approval too late — command expired" notification to owner |
+
+---
+
+## 11. Open Questions — RESOLVED (Adler review 2026-03-19)
+
+1. **Shell interpretation:** `execFile` for Tier 1, `sh -c` for Tier 2+ with pattern analysis on the **original string before shell expansion**. ✅ **Approved** with amendment: command substitution (`$()`, backticks) prohibited even in Tier 2.
+
+2. **Multi-node commands:** No broadcast in v1. ✅ **Deferred.**
+
+3. **File transfer:** Yes — as **separate tools** `node_upload` (agent→node, always Tier 2) and `node_download` (node→agent, Tier 1 if path in allowlist, Tier 3 if outside). Not part of `exec` tool. ✅ **Approved.**
+
+4. **Camera/screen consent on macOS:** Pre-request during `pair` wizard by calling `screencapture` and `imagesnap` once to trigger OS permission prompts. ✅ **Approved.**
+
+5. **Session binding:** Node access is tied to agent identity, not session. Same agent across multiple channels/sessions can access the same nodes. ✅ **Approved.**
