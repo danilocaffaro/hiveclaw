@@ -1,13 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import Database from 'better-sqlite3';
-import { randomUUID } from 'crypto';
 import { join } from 'path';
 import { homedir } from 'os';
+import { triggerHeartbeat } from '../engine/heartbeat-scheduler.js';
 
 interface HeartbeatConfigRow {
   id: number;
   enabled: number;
   interval_minutes: number;
+  agent_id: string | null;
+  prompt: string | null;
   last_run_id: string | null;
   created_at: string;
   updated_at: string;
@@ -101,30 +103,49 @@ export async function heartbeatRoutes(app: FastifyInstance) {
     }
   });
 
-  // POST /heartbeat/run — trigger immediate heartbeat (record a run)
+  // POST /heartbeat/run — trigger immediate heartbeat (P4: now actually runs the agent)
   app.post('/heartbeat/run', async (_req, reply) => {
     try {
-      const id = randomUUID();
-      const startedAt = new Date().toISOString();
+      const result = await triggerHeartbeat();
+      return reply.status(201).send({ data: result });
+    } catch (err) {
+      app.log.error(err);
+      return reply.status(500).send({ error: { code: 'INTERNAL', message: String(err) } });
+    }
+  });
 
-      db.prepare(
-        "INSERT INTO heartbeat_runs (id, status, started_at) VALUES (?, 'running', ?)"
-      ).run(id, startedAt);
+  // PUT /heartbeat/config — update heartbeat configuration (P4)
+  app.put<{
+    Body: Partial<{
+      enabled: boolean;
+      interval_minutes: number;
+      agent_id: string;
+      prompt: string;
+    }>;
+  }>('/heartbeat/config', async (req, reply) => {
+    try {
+      const b = req.body ?? {};
+      const fields: string[] = [];
+      const values: unknown[] = [];
 
-      // Simulate completion immediately (real heartbeat logic would be async)
-      const completedAt = new Date().toISOString();
-      const result = JSON.stringify({ message: 'Heartbeat triggered manually', timestamp: completedAt });
-      db.prepare(
-        "UPDATE heartbeat_runs SET status = 'completed', completed_at = ?, result = ? WHERE id = ?"
-      ).run(completedAt, result, id);
+      if (b.enabled !== undefined) { fields.push('enabled = ?'); values.push(b.enabled ? 1 : 0); }
+      if (b.interval_minutes !== undefined) {
+        if (b.interval_minutes < 1 || b.interval_minutes > 1440) {
+          return reply.status(400).send({ error: { code: 'VALIDATION', message: 'interval_minutes must be 1-1440' } });
+        }
+        fields.push('interval_minutes = ?'); values.push(b.interval_minutes);
+      }
+      if (b.agent_id !== undefined) { fields.push('agent_id = ?'); values.push(b.agent_id); }
+      if (b.prompt !== undefined) { fields.push('prompt = ?'); values.push(b.prompt); }
 
-      // Update last_run_id in config
-      db.prepare(
-        'UPDATE heartbeat_config SET last_run_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1'
-      ).run(id);
+      if (fields.length === 0) return reply.status(400).send({ error: { code: 'VALIDATION', message: 'No fields to update' } });
 
-      const run = db.prepare('SELECT * FROM heartbeat_runs WHERE id = ?').get(id) as HeartbeatRunRow;
-      return reply.status(201).send({ data: parseRun(run) });
+      fields.push('updated_at = CURRENT_TIMESTAMP');
+      values.push(1); // WHERE id = 1
+      db.prepare(`UPDATE heartbeat_config SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+
+      const config = db.prepare('SELECT * FROM heartbeat_config WHERE id = 1').get() as HeartbeatConfigRow;
+      return { data: parseConfig(config) };
     } catch (err) {
       app.log.error(err);
       return reply.status(500).send({ error: { code: 'INTERNAL', message: String(err) } });

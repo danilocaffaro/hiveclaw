@@ -502,6 +502,11 @@ async function main() {
     // Start automation cron scheduler (R6)
     startCronScheduler(db);
 
+    // Start heartbeat scheduler (P4)
+    import('./engine/heartbeat-scheduler.js').then(m => m.startHeartbeatScheduler()).catch(err => {
+      app.log.warn('Heartbeat scheduler failed to start: %s', (err as Error).message);
+    });
+
     // Check for updates (non-blocking, fires after startup)
     import('./lib/update-checker.js').then(m => m.checkForUpdate()).catch(() => {});
   } catch (err) {
