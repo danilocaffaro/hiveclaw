@@ -15,7 +15,7 @@ import { execFile, exec, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { homedir } from 'node:os';
+import { homedir, hostname as osHostname } from 'node:os';
 import { createHmac } from 'node:crypto';
 import { WebSocket } from 'ws';
 import * as readline from 'node:readline';
@@ -371,7 +371,7 @@ function connect(config: NodeConfig, policy: NodePolicy): Promise<void> {
       }
     });
 
-    ws.on('error', (err) => {
+    ws.on('error', (err: Error) => {
       reject(err);
     });
   });
@@ -536,11 +536,7 @@ function detectDeviceType(): string {
 }
 
 function hostname(): string {
-  try {
-    return require('os').hostname();
-  } catch {
-    return 'unknown-host';
-  }
+  return osHostname();
 }
 
 async function preRequestPermissions(): Promise<void> {
