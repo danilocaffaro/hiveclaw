@@ -261,6 +261,19 @@ export function registerSessionRoutes(app: FastifyInstance) {
     return { data: result };
   });
 
+  // ── POST /sessions/:id/cancel ───────────────────────────────────────────────
+  //
+  // P1: Cancel an active agent run. Triggers AbortController, which propagates
+  // to the adapter fetch() and tool loop. Partial response is persisted.
+  app.post<{ Params: { id: string } }>('/sessions/:id/cancel', async (req, reply) => {
+    const { id } = req.params;
+    const cancelled = getEngineService().sessions.cancelRun(id);
+    if (cancelled) {
+      return { data: { cancelled: true, message: 'Run cancelled' } };
+    }
+    return reply.status(404).send({ error: { code: 'NO_ACTIVE_RUN', message: 'No active run for this session' } });
+  });
+
   // ── POST /sessions/:id/message ─────────────────────────────────────────────
   //
   // This is the CRITICAL endpoint: accepts a user message, runs the agent loop,

@@ -66,8 +66,14 @@ export class OllamaAdapter implements ProviderAdapter {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: options.signal,
       });
     } catch (err: unknown) {
+      if ((err as Error).name === 'AbortError') {
+        yield { type: 'error', error: 'Request aborted' };
+        yield { type: 'finish', reason: 'error' };
+        return;
+      }
       yield { type: 'error', error: `Ollama connection failed: ${(err as Error).message}` };
       yield { type: 'finish', reason: 'error' };
       return;

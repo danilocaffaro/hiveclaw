@@ -189,8 +189,13 @@ export class OpenAIAdapter implements ProviderAdapter {
 
     let res: Response;
     try {
-      res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+      res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal: options.signal });
     } catch (err: unknown) {
+      if ((err as Error).name === 'AbortError') {
+        yield { type: 'error', error: 'Request aborted' };
+        yield { type: 'finish', reason: 'error' };
+        return;
+      }
       throw new Error(`Connection failed: ${(err as Error).message}`);
     }
 

@@ -51,6 +51,8 @@ export interface AdapterOptions {
   maxTokens?: number;
   systemPrompt?: string;
   tools?: ToolDefinition[];
+  /** Abort signal propagated from the runner — cancels in-flight fetch requests */
+  signal?: AbortSignal;
 }
 
 // ─── AdapterConfig ──────────────────────────────────────────────────────────────

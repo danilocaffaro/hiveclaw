@@ -22,6 +22,7 @@ import type { Agent } from '@hiveclaw/shared';
 import { getSessionManager } from './session-manager.js';
 import { runAgent } from './agent-runner.js';
 import { runAgentV2 } from './agent-runner-v2.js';
+import { registerRun, unregisterRun } from './run-registry.js';
 import type { AgentConfig } from './agent-runner.js';
 import { AgentRepository } from '../db/agents.js';
 import { ProviderRepository } from '../db/providers.js';
@@ -225,7 +226,15 @@ async function _handleChannelInboundInner(inbound: ChannelInbound): Promise<stri
   let ranToCompletion = false;
 
   try {
-    const runner = agentConfig.engineVersion === 2 ? runAgentV2 : runAgent;
+    let runner: typeof runAgent;
+    let controller: AbortController | undefined;
+    if (agentConfig.engineVersion === 2) {
+      controller = registerRun(sessionId);
+      runner = ((sid: string, msg: string, cfg: AgentConfig, runOpts?: Record<string, unknown>) =>
+        runAgentV2(sid, msg, cfg, { ...runOpts, signal: controller!.signal })) as typeof runAgent;
+    } else {
+      runner = runAgent;
+    }
     for await (const event of runner(sessionId, userMessageWithContext, agentConfig)) {
       if (event.event === 'message.delta') {
         const delta = event.data as { text?: string };
@@ -261,6 +270,7 @@ async function _handleChannelInboundInner(inbound: ChannelInbound): Promise<stri
     }
   } catch (err) {
     logger.error({ err }, '[channel-responder] runAgent threw');
+    if (agentConfig.engineVersion === 2) unregisterRun(sessionId);
     if (!fullResponse.trim()) {
       fullResponse = '⚠️ Sorry, I encountered an error processing your message.';
     }
@@ -297,6 +307,9 @@ async function _handleChannelInboundInner(inbound: ChannelInbound): Promise<stri
       } catch { /* non-fatal */ }
     }
   }
+
+  // P1: Cleanup run registry on normal completion
+  if (agentConfig.engineVersion === 2) unregisterRun(sessionId);
 
   return fullResponse.trim();
 }

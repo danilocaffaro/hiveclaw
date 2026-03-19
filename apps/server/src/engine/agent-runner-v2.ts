@@ -252,7 +252,7 @@ export async function* runAgentV2(
   sessionId: string,
   userMessage: string,
   agentConfig: AgentConfig,
-  opts?: { skipPersistUserMessage?: boolean; sender?: { id?: string; name?: string; emoji?: string; type?: string } },
+  opts?: { skipPersistUserMessage?: boolean; sender?: { id?: string; name?: string; emoji?: string; type?: string }; signal?: AbortSignal },
 ): AsyncGenerator<SSEEvent> {
   const sessionManager = getSessionManager();
 
@@ -362,7 +362,15 @@ export async function* runAgentV2(
   };
 
   // ── 9. Native Tool Loop ────────────────────────────────────────────────────
+  const signal = opts?.signal;
+
   for (let iteration = 0; iteration < maxIterations; iteration++) {
+    // ── P1: Abort check at each iteration ─────────────────────────────────────
+    if (signal?.aborted) {
+      persistPartialResponse('aborted');
+      yield { event: 'message.delta', data: { text: '\n\n[Run cancelled by user.]' } };
+      break;
+    }
     // ── R20.2d: Proactive token budget check ──────────────────────────────────
     const PROACTIVE_TOKEN_LIMIT = 60_000;
     const estimatedContextChars = messages.reduce((sum, m) => {
@@ -396,7 +404,7 @@ export async function* runAgentV2(
         try {
           const consolidationOpts: AdapterOptions = {
             model: agentConfig.modelId, temperature: agentConfig.temperature,
-            maxTokens: agentConfig.maxTokens, systemPrompt,
+            maxTokens: agentConfig.maxTokens, systemPrompt, signal,
           };
           for await (const evt of consolidationAdapter.streamTurn(messages, consolidationOpts)) {
             if (evt.type === 'text') {
@@ -436,6 +444,7 @@ export async function* runAgentV2(
         maxTokens: agentConfig.maxTokens,
         systemPrompt,
         tools: toolDefs && toolDefs.length > 0 ? toolDefs : undefined,
+        signal,
       };
 
       try {
@@ -645,6 +654,13 @@ export async function* runAgentV2(
 
     // ── Execute tools ─────────────────────────────────────────────────────────
 
+    // P1: Check abort before expensive tool execution
+    if (signal?.aborted) {
+      persistPartialResponse('aborted-before-tools');
+      yield { event: 'message.delta', data: { text: '\n\n[Run cancelled by user.]' } };
+      break;
+    }
+
     // Build assistant message with tool_calls
     const assistantMsg: LLMMessage & { tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }> } = {
       role: 'assistant',
@@ -753,7 +769,7 @@ export async function* runAgentV2(
         try {
           const finalOpts: AdapterOptions = {
             model: agentConfig.modelId, temperature: agentConfig.temperature,
-            maxTokens: agentConfig.maxTokens, systemPrompt,
+            maxTokens: agentConfig.maxTokens, systemPrompt, signal,
           };
           for await (const evt of consolidationAdapter.streamTurn(messages, finalOpts)) {
             if (evt.type === 'text') {

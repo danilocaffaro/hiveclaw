@@ -33,6 +33,7 @@ import type { ChannelInbound } from './channel-responder.js';
 import { getSessionManager } from './session-manager.js';
 import { runAgent, serializeSSE } from './agent-runner.js';
 import { runAgentV2 } from './agent-runner-v2.js';
+import { registerRun, unregisterRun, cancelRun, hasActiveRun, activeRunCount } from './run-registry.js';
 import type { AgentConfig, SSEEvent } from './agent-runner.js';
 import { runSquad } from './squad-runner.js';
 import type { SquadConfig } from './squad-runner.js';
@@ -101,6 +102,12 @@ export interface IChannelService {
 export interface ISessionService {
   getManager: typeof getSessionManager;
   runAgent: typeof runAgent;
+  /** Cancel an active v2 run. Returns true if found and cancelled. */
+  cancelRun: (sessionId: string) => boolean;
+  /** Check if a session has an active run. */
+  hasActiveRun: (sessionId: string) => boolean;
+  /** Number of currently active runs. */
+  activeRunCount: () => number;
   runSquad: typeof runSquad;
   serializeSSE: typeof serializeSSE;
   handoff: typeof handoffSession;
@@ -179,9 +186,24 @@ class EngineServiceImpl implements IEngineService {
     getManager: getSessionManager,
     runAgent: (...args: Parameters<typeof runAgent>) => {
       const agentConfig = args[2];
-      const runner = agentConfig?.engineVersion === 2 ? runAgentV2 : runAgent;
-      return runner(...args);
+      if (agentConfig?.engineVersion === 2) {
+        const sessionId = args[0];
+        const controller = registerRun(sessionId);
+        // Wrap the v2 generator to unregister on completion
+        const gen = runAgentV2(args[0], args[1], args[2], { ...args[3], signal: controller.signal });
+        return (async function* () {
+          try {
+            yield* gen;
+          } finally {
+            unregisterRun(sessionId);
+          }
+        })();
+      }
+      return runAgent(...args);
     },
+    cancelRun,
+    hasActiveRun,
+    activeRunCount,
     runSquad,
     serializeSSE,
     handoff: handoffSession,
