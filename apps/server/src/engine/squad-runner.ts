@@ -46,6 +46,13 @@ function selectRunner(config: AgentConfig) {
   return config.engineVersion === 2 ? runAgentV2 : runAgent;
 }
 
+/** Build a squad agent name map for context isolation */
+function buildSquadAgentNames(agents: AgentConfig[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const a of agents) map.set(a.id, `${a.emoji ?? '🤖'} ${a.name}`);
+  return map;
+}
+
 // ─── R7: Squad → Task auto-tracking ──────────────────────────────────────────
 
 function squadCreateTasks(
@@ -482,7 +489,11 @@ async function* runRoundRobin(
   if (isExternalAgent(agent)) {
     yield* runExternalAgent(sessionId, message, agent, config);
   } else {
-    yield* selectRunner(agent)(sessionId, message, agent, { skipPersistUserMessage: true });
+    const rrOpts: Record<string, unknown> = { skipPersistUserMessage: true };
+    if (agent.engineVersion === 2) {
+      rrOpts.squadContextIsolation = { agentId: agent.id, squadAgentNames: buildSquadAgentNames(config.agents) };
+    }
+    yield* selectRunner(agent)(sessionId, message, agent, rrOpts);
   }
 }
 
@@ -582,7 +593,11 @@ async function* runSpecialist(
   }
 
   // Fallback: direct runAgent()
-  yield* selectRunner(picked)(sessionId, message, picked, { skipPersistUserMessage: true });
+  const specOpts: Record<string, unknown> = { skipPersistUserMessage: true };
+  if (picked.engineVersion === 2) {
+    specOpts.squadContextIsolation = { agentId: picked.id, squadAgentNames: buildSquadAgentNames(config.agents) };
+  }
+  yield* selectRunner(picked)(sessionId, message, picked, specOpts);
 }
 
 // ─── Routing Strategy: Debate ─────────────────────────────────────────────────
@@ -944,7 +959,15 @@ async function* runSequential(
       }
       turnMgr.recordTurn(agent.id);
     } else {
-      for await (const event of selectRunner(agent)(sessionId, prompt, agent, { skipPersistUserMessage: true })) {
+      // P6: Pass squad context isolation for v2 agents
+      const runnerOpts: Record<string, unknown> = { skipPersistUserMessage: true };
+      if (agent.engineVersion === 2) {
+        runnerOpts.squadContextIsolation = {
+          agentId: agent.id,
+          squadAgentNames: buildSquadAgentNames(config.agents),
+        };
+      }
+      for await (const event of selectRunner(agent)(sessionId, prompt, agent, runnerOpts)) {
         yield enrichEvent(event);
         if (event.event === 'message.delta') {
           const d = event.data as Record<string, unknown>;

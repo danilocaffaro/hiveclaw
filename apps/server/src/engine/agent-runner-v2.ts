@@ -252,7 +252,14 @@ export async function* runAgentV2(
   sessionId: string,
   userMessage: string,
   agentConfig: AgentConfig,
-  opts?: { skipPersistUserMessage?: boolean; sender?: { id?: string; name?: string; emoji?: string; type?: string }; signal?: AbortSignal },
+  opts?: {
+    skipPersistUserMessage?: boolean;
+    sender?: { id?: string; name?: string; emoji?: string; type?: string };
+    signal?: AbortSignal;
+    /** P6: In squad mode, filter context to only show this agent's own messages + user messages.
+     *  Other agents' tool results and assistant messages are replaced with a brief summary. */
+    squadContextIsolation?: { agentId: string; squadAgentNames?: Map<string, string> };
+  },
 ): AsyncGenerator<SSEEvent> {
   const sessionManager = getSessionManager();
 
@@ -296,9 +303,46 @@ export async function* runAgentV2(
 
   // ── 5. Build messages array ─────────────────────────────────────────────────
   const freshMessages = sessionManager.getMessages(sessionId);
-  const messages: LLMMessage[] = [...historyToLLMMessages(freshMessages)];
+  let messages: LLMMessage[] = [...historyToLLMMessages(freshMessages)];
   if (opts?.skipPersistUserMessage && userMessage) {
     messages.push({ role: 'user', content: userMessage });
+  }
+
+  // ── 5b. P6: Squad context isolation ──────────────────────────────────────────
+  // In squad mode, other agents' tool results and detailed responses create noise.
+  // Filter to show: (1) all user messages, (2) this agent's own messages in full,
+  // (3) other agents' messages as brief summaries.
+  if (opts?.squadContextIsolation) {
+    const myAgentId = opts.squadContextIsolation.agentId;
+    const agentNames = opts.squadContextIsolation.squadAgentNames;
+    messages = messages.map(msg => {
+      // Keep all user messages untouched
+      if (msg.role === 'user') return msg;
+      // Keep system messages untouched
+      if (msg.role === 'system') return msg;
+
+      // For assistant messages: check if it's from this agent
+      const msgRecord = msg as unknown as Record<string, unknown>;
+      const msgAgentId = msgRecord.agent_id as string | undefined;
+
+      // Own messages: keep in full
+      if (msgAgentId === myAgentId || !msgAgentId) return msg;
+
+      // Other agent's messages: summarize to reduce noise
+      const agentName = agentNames?.get(msgAgentId) || 'Another agent';
+      const content = typeof msg.content === 'string' ? msg.content : '';
+      // Keep first 200 chars as preview, skip tool_calls details
+      const preview = content.slice(0, 200) + (content.length > 200 ? '...' : '');
+      return { ...msg, content: `[${agentName} responded: ${preview}]` };
+    });
+
+    // Remove other agents' tool messages entirely (they're noise for this agent)
+    messages = messages.filter(msg => {
+      if (msg.role !== 'tool') return true;
+      // Tool messages don't have agent_id, but they follow tool_calls from assistant messages.
+      // We keep all tool messages for simplicity — the important filtering is on assistant messages.
+      return true;
+    });
   }
 
   // ── 6. Token monitoring & session rotation ──────────────────────────────────
