@@ -31,6 +31,7 @@ export function initDatabase(): Database.Database {
       fallback_providers TEXT DEFAULT '[]',
       temperature REAL DEFAULT 0.7,
       max_tokens INTEGER DEFAULT 4096,
+      engine_version INTEGER DEFAULT 2,
       status TEXT DEFAULT 'active',
       color TEXT DEFAULT '#7c5bf5',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -422,6 +423,12 @@ export function initDatabase(): Database.Database {
   // R15: Agent bearer token for agent-to-agent auth
   if (!agentCols.includes('api_token')) {
     db.exec("ALTER TABLE agents ADD COLUMN api_token TEXT DEFAULT NULL");
+  }
+
+  // Engine v2: Add engine_version column (default 1 for existing agents, 2 for new)
+  if (!agentCols.includes('engine_version')) {
+    db.exec("ALTER TABLE agents ADD COLUMN engine_version INTEGER DEFAULT 1");
+    // Existing agents stay v1; new agents created after this get v2 via CREATE TABLE default
   }
 
   // B056: Ensure tasks table exists (may be missing in fresh installs)

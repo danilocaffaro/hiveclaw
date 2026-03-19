@@ -19,6 +19,7 @@ export interface Agent {
   status: 'active' | 'idle' | 'busy' | 'error' | 'offline';
   color: string;
   apiToken?: string;
+  engineVersion?: 1 | 2;
   createdAt: string;
   updatedAt: string;
 }

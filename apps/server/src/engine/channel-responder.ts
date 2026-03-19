@@ -55,7 +55,7 @@ function agentRowToConfig(agent: Agent): AgentConfig {
     modelId: (agent.modelPreference as string) || getDefaultModelId(resolvedProvider),
     temperature: (agent.temperature as number) ?? 0.7,
     maxTokens: 4096,
-    engineVersion: ((agent as unknown as Record<string, unknown>).engine_version as 1 | 2) ?? 1,
+    engineVersion: agent.engineVersion ?? 1,
   };
 }
 

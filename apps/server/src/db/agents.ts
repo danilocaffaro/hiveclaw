@@ -10,6 +10,7 @@ interface AgentRow {
   provider_preference: string | null; fallback_providers: string;
   temperature: number; max_tokens: number | null; status: string; color: string | null;
   api_token: string | null;
+  engine_version: number | null;
   created_at: string; updated_at: string;
 }
 
@@ -132,6 +133,7 @@ export class AgentRepository {
       status: row.status as Agent['status'],
       color: row.color ?? '',
       apiToken: row.api_token ?? undefined,
+      engineVersion: (row.engine_version ?? 1) as 1 | 2,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
