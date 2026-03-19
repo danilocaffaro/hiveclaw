@@ -510,8 +510,9 @@ async function main() {
       const { ChannelRepository } = await import('./api/channels.js');
       const channelRepo = new ChannelRepository(db);
       const channels = channelRepo.list();
+      const v2Types = new Set(['telegram', 'whatsapp', 'discord', 'slack']);
       const v2Channels = channels
-        .filter(c => c.enabled && (c.type === 'telegram' || c.type === 'whatsapp'))  // grammy + baileys adapters
+        .filter(c => c.enabled && v2Types.has(c.type))  // all 4 adapters
         .map(c => ({
           id: c.id,
           name: c.name,

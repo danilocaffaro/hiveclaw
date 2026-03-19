@@ -28,6 +28,8 @@ import type {
 import { createAdapter, registerAdapterFactory } from './adapter.js';
 import { TelegramAdapter } from './telegram-adapter.js';
 import { WhatsAppAdapter } from './whatsapp-adapter.js';
+import { DiscordAdapter } from './discord-adapter.js';
+import { SlackAdapter } from './slack-adapter.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -77,7 +79,8 @@ export class ChannelRouter {
     // Register adapter factories
     registerAdapterFactory('telegram', () => new TelegramAdapter());
     registerAdapterFactory('whatsapp', () => new WhatsAppAdapter());
-    // Future: registerAdapterFactory('discord', () => new DiscordAdapter());
+    registerAdapterFactory('discord', () => new DiscordAdapter());
+    registerAdapterFactory('slack', () => new SlackAdapter());
   }
 
   // ─── Lifecycle ──────────────────────────────────────────────────────

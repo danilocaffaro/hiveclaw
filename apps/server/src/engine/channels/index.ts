@@ -31,5 +31,7 @@ export {
 
 export { TelegramAdapter } from './telegram-adapter.js';
 export { WhatsAppAdapter } from './whatsapp-adapter.js';
+export { DiscordAdapter } from './discord-adapter.js';
+export { SlackAdapter } from './slack-adapter.js';
 export { ChannelRouter, getChannelRouter, resetChannelRouter } from './channel-router.js';
 export type { ChannelDBEntry } from './channel-router.js';
