@@ -344,7 +344,7 @@ export class SessionManager {
     const rows = this.db.prepare(`
       SELECT * FROM messages
       WHERE session_id = ?
-      ORDER BY created_at ASC
+      ORDER BY rowid ASC
       LIMIT ? OFFSET ?
     `).all(sessionId, limit, offset) as MessageRow[];
 
@@ -376,26 +376,27 @@ export class SessionManager {
     if (countRow.cnt <= COMPACT_MIN_TOTAL) return; // nothing to compact
 
     // Find the cutoff — keep only the last COMPACT_KEEP_LAST messages
+    // Use rowid for deterministic ordering (created_at is not unique for batch inserts)
     const cutoffRow = this.db.prepare(`
-      SELECT created_at FROM messages
+      SELECT rowid FROM messages
       WHERE session_id = ?
-      ORDER BY created_at DESC
+      ORDER BY rowid DESC
       LIMIT 1 OFFSET ?
-    `).get(id, COMPACT_KEEP_LAST - 1) as { created_at: string } | undefined;
+    `).get(id, COMPACT_KEEP_LAST - 1) as { rowid: number } | undefined;
 
     if (!cutoffRow) return;
 
     const deletedCount = (this.db.prepare(`
       SELECT COUNT(*) as cnt FROM messages
-      WHERE session_id = ? AND created_at < ?
-    `).get(id, cutoffRow.created_at) as { cnt: number }).cnt;
+      WHERE session_id = ? AND rowid < ?
+    `).get(id, cutoffRow.rowid) as { cnt: number }).cnt;
 
     if (deletedCount === 0) return;
 
     // Delete old messages
     this.db.prepare(`
-      DELETE FROM messages WHERE session_id = ? AND created_at < ?
-    `).run(id, cutoffRow.created_at);
+      DELETE FROM messages WHERE session_id = ? AND rowid < ?
+    `).run(id, cutoffRow.rowid);
 
     // Insert a system note so the model knows about compaction
     const notice = `[System: ${deletedCount} earlier messages were compacted to save context. Conversation continues from here.]`;
@@ -409,10 +410,11 @@ export class SessionManager {
 
     // Re-order: the notice should appear BEFORE the kept messages.
     // We achieve this by giving it a timestamp just before the oldest kept message.
+    // Use rowid for deterministic ordering (same rationale as cutoff query above).
     const oldestKeptRow = this.db.prepare(`
       SELECT created_at FROM messages
       WHERE session_id = ? AND id != ?
-      ORDER BY created_at ASC
+      ORDER BY rowid ASC
       LIMIT 1
     `).get(id, noticeId) as { created_at: string } | undefined;
 
