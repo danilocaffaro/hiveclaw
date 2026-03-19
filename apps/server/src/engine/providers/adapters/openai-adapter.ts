@@ -212,7 +212,7 @@ export class OpenAIAdapter implements ProviderAdapter {
     let buffer = '';
     let tokensIn = 0, tokensOut = 0;
     const pendingToolCalls: Array<{ id: string; name: string; arguments: string } | undefined> = [];
-    let finishReason: 'stop' | 'tool_calls' | 'max_tokens' | 'error' = 'stop';
+    let finishReason: 'stop' | 'tool_calls' | 'max_tokens' | 'max_tokens_tool_call' | 'error' = 'stop';
 
     try {
       while (true) {
@@ -307,13 +307,28 @@ export class OpenAIAdapter implements ProviderAdapter {
     }
 
     // Stream ended without [DONE] — emit what we have
+    // R22-P1: If max_tokens and any collected tool call has un-parseable JSON,
+    // signal max_tokens_tool_call so the runner can inject a recovery prompt.
     const collected = this.collectToolCalls(pendingToolCalls);
     if (collected.length > 0) {
-      for (const tc of collected) {
-        yield { type: 'tool_call', id: tc.id, name: tc.name, arguments: tc.arguments };
+      let anyTruncated = false;
+      if (finishReason === 'max_tokens') {
+        for (const tc of collected) {
+          try { JSON.parse(tc.arguments); } catch {
+            logger.warn('[OpenAI] Tool call "%s" truncated by max_tokens (%d chars of args)', tc.name, tc.arguments.length);
+            anyTruncated = true;
+          }
+        }
       }
-      yield { type: 'tool_result_needed', toolCalls: collected };
-      finishReason = 'tool_calls';
+      if (!anyTruncated) {
+        for (const tc of collected) {
+          yield { type: 'tool_call', id: tc.id, name: tc.name, arguments: tc.arguments };
+        }
+        yield { type: 'tool_result_needed', toolCalls: collected };
+        finishReason = 'tool_calls';
+      } else {
+        finishReason = 'max_tokens_tool_call';
+      }
     }
     yield { type: 'usage', inputTokens: tokensIn, outputTokens: tokensOut };
     yield { type: 'finish', reason: finishReason };

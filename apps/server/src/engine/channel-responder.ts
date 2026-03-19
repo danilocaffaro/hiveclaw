@@ -227,6 +227,7 @@ async function _handleChannelInboundInner(inbound: ChannelInbound): Promise<stri
   //    On ANY error path we fall through to the fallback persistence block below.
   let fullResponse = '';
   let ranToCompletion = false;
+  let runnerAlreadyPersisted = false; // R22-P1 Bug 2: track if runner persisted
 
   try {
     let runner: typeof runAgent;
@@ -244,6 +245,9 @@ async function _handleChannelInboundInner(inbound: ChannelInbound): Promise<stri
         if (delta.text) fullResponse += delta.text;
       } else if (event.event === 'message.finish') {
         ranToCompletion = true;
+        // R22-P1 Bug 2: runner signals it already persisted the message
+        const finishData = event.data as { __persisted?: boolean };
+        if (finishData?.__persisted) runnerAlreadyPersisted = true;
       } else if (event.event === 'error') {
         const errData = event.data as { message?: string };
         const errMsg = errData?.message ?? 'Unknown error';
@@ -255,18 +259,23 @@ async function _handleChannelInboundInner(inbound: ChannelInbound): Promise<stri
         }
         // Persist assistant response explicitly when runAgent exits via error event
         // (runAgent's own addMessage at line 588 is unreachable on error paths)
-        try {
-          sm.addMessage(sessionId, {
-            role: 'assistant',
-            content: fullResponse,
-            agent_id: agentConfig.id,
-            agent_name: agentConfig.name ?? '',
-            agent_emoji: (agentConfig as { emoji?: string }).emoji ?? '🤖',
-            sender_type: 'agent',
-          });
-          logger.info('[channel-responder] Persisted assistant message after error path (%d chars)', fullResponse.length);
-        } catch (persistErr) {
-          logger.error('[channel-responder] Failed to persist assistant message after error: %s', (persistErr as Error).message);
+        // R22-P1 Bug 2: skip if runner already persisted (e.g. generator cleanup error after finish)
+        if (!runnerAlreadyPersisted) {
+          try {
+            sm.addMessage(sessionId, {
+              role: 'assistant',
+              content: fullResponse,
+              agent_id: agentConfig.id,
+              agent_name: agentConfig.name ?? '',
+              agent_emoji: (agentConfig as { emoji?: string }).emoji ?? '🤖',
+              sender_type: 'agent',
+            });
+            logger.info('[channel-responder] Persisted assistant message after error path (%d chars)', fullResponse.length);
+          } catch (persistErr) {
+            logger.error('[channel-responder] Failed to persist assistant message after error: %s', (persistErr as Error).message);
+          }
+        } else {
+          logger.debug('[channel-responder] Skipping error-path persist — runner already persisted');
         }
         return fullResponse.trim();
       }
@@ -278,18 +287,23 @@ async function _handleChannelInboundInner(inbound: ChannelInbound): Promise<stri
       fullResponse = '⚠️ Sorry, I encountered an error processing your message.';
     }
     // runAgent threw — persist what we have
-    try {
-      sm.addMessage(sessionId, {
-        role: 'assistant',
-        content: fullResponse,
-        agent_id: agentConfig.id,
-        agent_name: agentConfig.name ?? '',
-        agent_emoji: (agentConfig as { emoji?: string }).emoji ?? '🤖',
-        sender_type: 'agent',
-      });
-      logger.info('[channel-responder] Persisted assistant message after throw (%d chars)', fullResponse.length);
-    } catch (persistErr) {
-      logger.error('[channel-responder] Failed to persist assistant message after throw: %s', (persistErr as Error).message);
+    // R22-P1 Bug 2: skip if runner already persisted before the throw
+    if (!runnerAlreadyPersisted) {
+      try {
+        sm.addMessage(sessionId, {
+          role: 'assistant',
+          content: fullResponse,
+          agent_id: agentConfig.id,
+          agent_name: agentConfig.name ?? '',
+          agent_emoji: (agentConfig as { emoji?: string }).emoji ?? '🤖',
+          sender_type: 'agent',
+        });
+        logger.info('[channel-responder] Persisted assistant message after throw (%d chars)', fullResponse.length);
+      } catch (persistErr) {
+        logger.error('[channel-responder] Failed to persist assistant message after throw: %s', (persistErr as Error).message);
+      }
+    } else {
+      logger.debug('[channel-responder] Skipping throw-path persist — runner already persisted');
     }
     return fullResponse.trim();
   }
@@ -297,7 +311,8 @@ async function _handleChannelInboundInner(inbound: ChannelInbound): Promise<stri
   if (!fullResponse.trim()) {
     fullResponse = '🤖 (no response)';
     // Persist empty response too so session stays in sync
-    if (!ranToCompletion) {
+    // R22-P1 Bug 2: skip if runner already persisted
+    if (!ranToCompletion && !runnerAlreadyPersisted) {
       try {
         sm.addMessage(sessionId, {
           role: 'assistant',

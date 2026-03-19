@@ -502,7 +502,7 @@ export async function* runAgentV2(
     let iterationText = '';
     let iterationTokensIn = 0;
     let iterationTokensOut = 0;
-    let finishReason: 'stop' | 'tool_calls' | 'max_tokens' | 'error' = 'stop';
+    let finishReason: 'stop' | 'tool_calls' | 'max_tokens' | 'max_tokens_tool_call' | 'error' = 'stop';
 
     // Sprint 80 stream buffer: truncation detection safety net
     const TRUNCATION_NEEDLE = '⚠️ Summarize progress';
@@ -640,8 +640,23 @@ export async function* runAgentV2(
       return;
     }
 
+    // R22-P1 Bug 1: Tool call JSON was truncated by max_tokens mid-generation.
+    // The adapter detected inToolUse=true at stream end and signaled this reason.
+    // Inject a recovery prompt telling the agent to change strategy.
+    if (finishReason === 'max_tokens_tool_call') {
+      logger.warn('[AgentRunner-v2] Tool call truncated by max_tokens at iteration %d — injecting recovery prompt', iteration);
+      if (iterationText) {
+        messages.push({ role: 'assistant', content: iterationText });
+      }
+      messages.push({
+        role: 'user',
+        content: '[SYSTEM] ⚠️ Your tool call was truncated — the JSON arguments exceeded the output token budget. You MUST use a different approach: (1) write large content to disk in smaller chunks using multiple tool calls, (2) use a more concise format, or (3) generate less content per call. Do NOT retry the same approach.',
+      });
+      continue;
+    }
+
     if (finishReason === 'max_tokens' && pendingToolCalls.length === 0) {
-      // Auto-continue: append continuation instruction and loop
+      // Normal text truncation — append partial text and continue
       if (iterationText) {
         messages.push({ role: 'assistant', content: iterationText });
       }
@@ -894,7 +909,9 @@ export async function* runAgentV2(
   }
 
   // ── 11. Finish event ────────────────────────────────────────────────────────
-  yield { event: 'message.finish', data: { tokens_in: totalTokensIn, tokens_out: totalTokensOut, cost } };
+  // R22-P1 Bug 2: signal that we already persisted so channel-responder
+  // error/throw fallback paths don't double-persist on generator cleanup errors.
+  yield { event: 'message.finish', data: { tokens_in: totalTokensIn, tokens_out: totalTokensOut, cost, __persisted: true } };
   if (ENABLE_MESSAGE_BUS) {
     messageBus.publish(sessionId, 'message.finish', { tokens_in: totalTokensIn, tokens_out: totalTokensOut, cost });
   }

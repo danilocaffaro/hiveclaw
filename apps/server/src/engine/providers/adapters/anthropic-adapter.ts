@@ -175,7 +175,7 @@ export class AnthropicAdapter implements ProviderAdapter {
     let currentToolArgs = '';
     let inToolUse = false;
     const collectedToolCalls: Array<{ id: string; name: string; arguments: string }> = [];
-    let finishReason: 'stop' | 'tool_calls' | 'max_tokens' | 'error' = 'stop';
+    let finishReason: 'stop' | 'tool_calls' | 'max_tokens' | 'max_tokens_tool_call' | 'error' = 'stop';
 
     try {
       while (true) {
@@ -254,6 +254,16 @@ export class AnthropicAdapter implements ProviderAdapter {
     if (collectedToolCalls.length > 0) {
       yield { type: 'tool_result_needed', toolCalls: collectedToolCalls };
       finishReason = 'tool_calls';
+    }
+
+    // R22-P1: Detect incomplete tool call (max_tokens mid-JSON)
+    // If the stream ended while building a tool call, the content_block_stop
+    // was never emitted. Signal max_tokens_tool_call so the runner can inject
+    // a recovery prompt instead of treating it as normal text truncation.
+    if (inToolUse && currentToolName) {
+      logger.warn('[Anthropic] Tool call "%s" truncated by max_tokens (%d chars of args)', currentToolName, currentToolArgs.length);
+      finishReason = 'max_tokens_tool_call';
+      inToolUse = false;
     }
 
     yield { type: 'usage', inputTokens: tokensIn, outputTokens: tokensOut };

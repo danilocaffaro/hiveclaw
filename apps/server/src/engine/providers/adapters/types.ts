@@ -19,7 +19,7 @@ export type AgentEvent =
   | { type: 'tool_call'; id: string; name: string; arguments: string }
   | { type: 'tool_result_needed'; toolCalls: Array<{ id: string; name: string; arguments: string }> }
   | { type: 'usage'; inputTokens: number; outputTokens: number }
-  | { type: 'finish'; reason: 'stop' | 'tool_calls' | 'max_tokens' | 'error' }
+  | { type: 'finish'; reason: 'stop' | 'tool_calls' | 'max_tokens' | 'max_tokens_tool_call' | 'error' }
   | { type: 'error'; error: string };
 
 // ─── ProviderAdapter ────────────────────────────────────────────────────────────
