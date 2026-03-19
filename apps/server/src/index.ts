@@ -61,6 +61,7 @@ import { registerRoutingRoutes } from './api/routing.js';
 import { registerAnalyticsRoutes } from './api/analytics.js';
 import { registerEmbeddingRoutes } from './api/embeddings.js';
 import { registerChannelRoutes } from './api/channels.js';
+import { registerChannelV2Routes } from './api/channels-v2.js';
 import { registerN8nRoutes } from './api/n8n.js';
 import { registerExternalAgentRoutes } from './api/external-agents.js';
 import { registerSearchRoutes } from './api/search.js';
@@ -477,6 +478,7 @@ async function main() {
   registerAnalyticsRoutes(app, db);
   registerEmbeddingRoutes(app);
   registerChannelRoutes(app, db);
+  registerChannelV2Routes(app, db);
   registerExternalAgentRoutes(app);
   registerSearchRoutes(app, db);
   registerOGPreviewRoutes(app);
