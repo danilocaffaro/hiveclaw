@@ -1,5 +1,5 @@
 // ============================================================
-// Tool Registry — all 19 tools
+// Tool Registry — all 20 tools
 // ============================================================
 import type { Tool } from './types.js';
 
@@ -22,6 +22,7 @@ import { CredentialTool } from './credential.js';
 import { ScreenshotTool } from './screenshot.js';
 import { WebSearchTool } from './web-search.js';
 import { MacControlTool } from './mac-control.js';
+import { CanvasTool } from './canvas.js';
 
 export { BashTool } from './bash.js';
 export { EditTool } from './edit.js';
@@ -42,6 +43,7 @@ export { CredentialTool } from './credential.js';
 export { ScreenshotTool } from './screenshot.js';
 export { WebSearchTool } from './web-search.js';
 export { MacControlTool } from './mac-control.js';
+export { CanvasTool } from './canvas.js';
 
 export type { Tool, ToolInput, ToolOutput, ToolDefinition, ToolContext } from './types.js';
 export { formatToolResult } from './types.js';
@@ -70,6 +72,7 @@ export function getToolRegistry(): Map<string, Tool> {
     new ScreenshotTool(),
     new WebSearchTool(),
     new MacControlTool(),
+    new CanvasTool(),
   ];
 
   const registry = new Map<string, Tool>();

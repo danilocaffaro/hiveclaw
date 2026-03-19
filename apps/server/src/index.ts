@@ -67,6 +67,7 @@ import { registerSearchRoutes } from './api/search.js';
 import { registerOGPreviewRoutes } from './api/og-preview.js';
 import { registerMessageRoutes } from './api/messages.js';
 import { registerSkillScoutRoutes } from './api/skill-scout.js';
+import { registerCanvasRoutes, resetCanvasHost } from './engine/canvas/canvas-host.js';
 import { startSkillScoutCron } from './engine/skill-scout-cron.js';
 import { WorkflowRepository } from './db/workflow-repository.js';
 import { WorkflowEngine, seedBuiltinWorkflows } from './engine/workflow-engine.js';
@@ -404,7 +405,7 @@ async function main() {
         '/n8n', '/preview', '/audit', '/integrations', '/webhooks',
         '/public', '/shared-links', '/backlog', '/routing', '/analytics',
         '/channels', '/embeddings', '/data', '/events', '/models', '/status', '/external-agents',
-        '/engine', '/search', '/preview/og', '/messages', '/starred'];
+        '/engine', '/search', '/preview/og', '/messages', '/starred', '/canvas'];
       if (apiPrefixes.some(p => req.url.startsWith(p))) return;
 
       if (req.url.startsWith('/_next/')) {
@@ -481,6 +482,7 @@ async function main() {
   registerMessageRoutes(app, db);
   registerN8nRoutes(app);
   registerSkillScoutRoutes(app, db);
+  registerCanvasRoutes(app);
 
   // ─── Start ────────────────────────────────────────────────────────────
   // R16: Rotate log files before startup (keeps them < 10MB each)
@@ -523,6 +525,7 @@ async function main() {
   const shutdown = () => {
     logger.info('\n✨ Shutting down...');
     watchdog.stop();
+    resetCanvasHost();
     db.close();
     process.exit(0);
   };
