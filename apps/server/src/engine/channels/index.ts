@@ -35,3 +35,14 @@ export { DiscordAdapter } from './discord-adapter.js';
 export { SlackAdapter } from './slack-adapter.js';
 export { ChannelRouter, getChannelRouter, resetChannelRouter } from './channel-router.js';
 export type { ChannelDBEntry } from './channel-router.js';
+
+export {
+  InboundRateLimiter,
+  CircuitBreaker,
+  StreamingDebouncer,
+  ReconnectManager,
+  verifyTelegramWebhook,
+  verifyDiscordSignature,
+  verifySlackSignature,
+} from './hardening.js';
+export type { RateLimiterConfig, CircuitBreakerConfig, CircuitState, ReconnectConfig } from './hardening.js';
