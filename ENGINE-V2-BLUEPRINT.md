@@ -214,6 +214,63 @@ session mutex, error acknowledgment) serve as a **bridge** to Engine v2:
 - They establish patterns that v2 will formalize (pruning → immutable pipeline, graduated detection → safety guardrails)
 - They can be removed once v2 subsumes their functionality
 
+## OpenClaw Reference Architecture (Adler's insight)
+
+> **Source:** Reverse-engineered from `/opt/homebrew/lib/node_modules/openclaw/dist/`
+> **Key insight (Adler 🦊):** "We are OpenClaw agents running Copilot with native
+> tool_use in every conversation. What Engine v2 wants to implement already works —
+> not as hypothesis, as observable fact. The right approach is to reverse engineer
+> OpenClaw and replicate what they've already solved."
+
+### How OpenClaw Handles the Tool Loop
+
+OpenClaw does NOT have a manual agentic loop. Instead:
+
+1. **SDK-level tool_use**: Uses Vercel AI SDK which handles `tool_use → tool_result →
+   continue` natively for all providers (Anthropic, OpenAI, Copilot via proxy).
+
+2. **Hook-based loop detection**: `wrapToolWithBeforeToolCallHook()` intercepts each
+   tool call BEFORE execution:
+   - Calls `detectToolCallLoop()` with 3 detectors: `genericRepeat`, `knownPollNoProgress`, `pingPong`
+   - `warning` level: logs + emits warning (doesn't block)
+   - `critical` level: throws error → blocks tool execution
+   - Records outcome via `recordToolCallOutcome()` for no-progress detection
+
+3. **Copilot token management**: `resolveCopilotApiToken()` with disk-based cache
+   (`github-copilot.token.json`), `isTokenUsable()` with 5min margin,
+   `deriveCopilotApiBaseUrlFromToken()` parsing `proxy-ep=` from token string.
+
+4. **Graduated thresholds**: WARNING=10, CRITICAL=20, CIRCUIT_BREAKER=30
+   (vs HiveClaw R20.2b: WARNING=3, INJECT=5, CIRCUIT_BREAKER=8)
+
+### What to Port to HiveClaw Engine v2
+
+| OpenClaw Pattern | HiveClaw Phase | Notes |
+|-----------------|----------------|-------|
+| SDK handles tool loop | Phase 2 | Use streaming + manual tool execution cycle |
+| Hook-based detection | Phase 1 | Wrap tool execution with `beforeToolCall` |
+| 3 detectors (repeat/poll/pingpong) | Phase 1 | Port `detectToolCallLoop()` |
+| Outcome tracking | Phase 1 | Port `recordToolCallOutcome()` for no-progress |
+| Token disk cache | Already done (R20.1a) | HiveClaw uses in-memory; could upgrade to disk |
+| `proxy-ep=` baseUrl derivation | Phase 1 | Port `deriveCopilotApiBaseUrlFromToken()` |
+
+### Key Files in OpenClaw (for reference)
+
+```
+dist/tool-loop-detection-B0_Mp2Go.js  — 3 detectors, graduated thresholds (14KB)
+dist/reply-Deht_wOB.js:63660-63800   — beforeToolCall hook wiring
+dist/github-copilot-token-2ggfYP8J.js — token cache + baseUrl derivation
+```
+
+### Implementation Approach Change (Adler)
+
+Instead of inventing the CopilotAdapter from scratch:
+1. **Extract** patterns from OpenClaw's working implementation
+2. **Port** to HiveClaw's architecture (no SDK dependency — we use raw HTTP streaming)
+3. **Validate** with the same 30/50 session acceptance criteria
+
+This likely reduces Phase 2 effort estimate from 5-7 days to 3-5 days.
+
 ## Decision Required
 
 - [ ] **Danilo**: Approve timeline (13-20 days) for Engine v2
