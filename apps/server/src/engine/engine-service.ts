@@ -32,6 +32,7 @@ import { handleChannelInbound } from './channel-responder.js';
 import type { ChannelInbound } from './channel-responder.js';
 import { getSessionManager } from './session-manager.js';
 import { runAgent, serializeSSE } from './agent-runner.js';
+import { runAgentV2 } from './agent-runner-v2.js';
 import type { AgentConfig, SSEEvent } from './agent-runner.js';
 import { runSquad } from './squad-runner.js';
 import type { SquadConfig } from './squad-runner.js';
@@ -176,7 +177,11 @@ class EngineServiceImpl implements IEngineService {
 
   readonly sessions: ISessionService = {
     getManager: getSessionManager,
-    runAgent,
+    runAgent: (...args: Parameters<typeof runAgent>) => {
+      const agentConfig = args[2];
+      const runner = agentConfig?.engineVersion === 2 ? runAgentV2 : runAgent;
+      return runner(...args);
+    },
     runSquad,
     serializeSSE,
     handoff: handoffSession,

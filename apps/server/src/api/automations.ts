@@ -17,6 +17,7 @@ import { randomUUID } from 'crypto';
 import type Database from 'better-sqlite3';
 import { logger } from '../lib/logger.js';
 import { runAgent, type AgentConfig } from '../engine/agent-runner.js';
+import { runAgentV2 } from '../engine/agent-runner-v2.js';
 
 interface Automation {
   id: string;
@@ -153,11 +154,13 @@ async function executeAutomation(db: Database.Database, auto: Automation): Promi
           maxTokens: Number(agentRow.max_tokens ?? 4096),
           tools: JSON.parse(String(agentRow.tools || '[]')),
           maxToolIterations: agentRow.max_tool_iterations ? Number(agentRow.max_tool_iterations) : undefined,
+          engineVersion: (Number(agentRow.engine_version) || 1) as 1 | 2,
         };
         // Consume the SSE stream to completion (fire-and-forget — no client to stream to)
         try {
           logger.info('[automation] Running agent %s (provider=%s model=%s)', agentConfig.name, agentConfig.providerId, agentConfig.modelId);
-          for await (const _event of runAgent(session.id, message, agentConfig, { skipPersistUserMessage: true })) {
+          const runner = agentConfig.engineVersion === 2 ? runAgentV2 : runAgent;
+          for await (const _event of runner(session.id, message, agentConfig, { skipPersistUserMessage: true })) {
             // Events consumed silently — agent response is persisted in DB by agent-runner
           }
           logger.info('[automation] Agent %s completed for "%s"', agentConfig.name, auto.name);
