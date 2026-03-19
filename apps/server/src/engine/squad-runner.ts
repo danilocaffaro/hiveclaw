@@ -19,6 +19,7 @@
 
 import type { AgentConfig, SSEEvent } from './agent-runner.js';
 import { runAgent } from './agent-runner.js';
+import { runAgentV2 } from './agent-runner-v2.js';
 import { getSessionManager } from './session-manager.js';
 import { getProviderRouter } from './providers/index.js';
 import type { LLMMessage } from './providers/types.js';
@@ -38,6 +39,12 @@ import {
 import { ExternalAgentRepository } from '../db/external-agents.js';
 import { initDatabase } from '../db/index.js';
 import { ENABLE_MESSAGE_BUS, DEFAULT_PORT } from '../config/defaults.js';
+
+// ─── Engine v2 runner selection ──────────────────────────────────────────────
+
+function selectRunner(config: AgentConfig) {
+  return config.engineVersion === 2 ? runAgentV2 : runAgent;
+}
 
 // ─── R7: Squad → Task auto-tracking ──────────────────────────────────────────
 
@@ -475,7 +482,7 @@ async function* runRoundRobin(
   if (isExternalAgent(agent)) {
     yield* runExternalAgent(sessionId, message, agent, config);
   } else {
-    yield* runAgent(sessionId, message, agent, { skipPersistUserMessage: true });
+    yield* selectRunner(agent)(sessionId, message, agent, { skipPersistUserMessage: true });
   }
 }
 
@@ -575,7 +582,7 @@ async function* runSpecialist(
   }
 
   // Fallback: direct runAgent()
-  yield* runAgent(sessionId, message, picked, { skipPersistUserMessage: true });
+  yield* selectRunner(picked)(sessionId, message, picked, { skipPersistUserMessage: true });
 }
 
 // ─── Routing Strategy: Debate ─────────────────────────────────────────────────
@@ -937,7 +944,7 @@ async function* runSequential(
       }
       turnMgr.recordTurn(agent.id);
     } else {
-      for await (const event of runAgent(sessionId, prompt, agent, { skipPersistUserMessage: true })) {
+      for await (const event of selectRunner(agent)(sessionId, prompt, agent, { skipPersistUserMessage: true })) {
         yield enrichEvent(event);
         if (event.event === 'message.delta') {
           const d = event.data as Record<string, unknown>;

@@ -1,8 +1,8 @@
 # ENGINE-V2-BLUEPRINT.md — Migration to Provider-Native Tool Loop
 
 > **Author:** Alice 🐕 + Adler 🦊 | **Date:** 2026-03-18
-> **Updated:** 2026-03-19 (Adler review — 3 adjustments applied)
-> **Status:** PLANNING (no code changes)
+> **Updated:** 2026-03-19 (Phase 3 complete — integration wiring)
+> **Status:** Phase 3 COMPLETE — Phase 1 ✅ Phase 2 ✅ Phase 3 ✅
 > **Consensus:** 100% (Alice + Adler)
 
 ---
@@ -96,7 +96,31 @@ We handle:
 of the `⚠️ Summarize progress...` pattern). Manual agentic `for` loop removed for
 providers that support native tool_use.
 
-### Phase 3: Immutable Message Pipeline (~2-3 days)  ← moved down per Adler review
+### Phase 3: Immutable Message Pipeline (~2-3 days)  ← moved down per Adler review ✅ COMPLETE (2026-03-18, <1 day actual)
+
+> **Scope change:** Phase 3 was scoped down to integration wiring only. The full
+> immutable message pipeline refactor was deferred because the Phase 2 runner
+> already uses clean message building with explicit tool_calls attachment.
+
+Wired `channel-responder.ts` and `squad-runner.ts` to route agents through
+`runAgentV2` when `engineVersion === 2` in the agent config. Default remains v1
+for all existing agents.
+
+Changes:
+- `channel-responder.ts`: imports `runAgentV2`, reads `engine_version` from agent
+  DB row into `agentConfig.engineVersion`, conditional runner selection
+- `squad-runner.ts`: imports `runAgentV2`, `selectRunner()` helper, all 3 call
+  sites updated to use `selectRunner(config)()`
+- `agent-runner.ts`: `engineVersion?: 1 | 2` already in `AgentConfig` (added in Phase 2)
+
+#### Stream Buffer Deprecation Plan
+
+The Sprint 80 stream buffer (truncation detection safety net) is **kept** in
+`agent-runner-v2.ts` during the v2 rollout period.
+
+- **Deprecation condition:** 0 truncation detections across 50+ long sessions on v2
+- **After validation:** Remove stream buffer from `agent-runner-v2.ts`
+- **v1 forever:** Stream buffer stays in `agent-runner.ts` permanently
 
 Replace mutable `messages[]` with an immutable conversation log:
 
@@ -193,13 +217,13 @@ tool_calls are broken on the Copilot proxy.
 
 ## Effort Estimate (reordered)
 
-| Phase | Effort | Dependencies |
-|-------|--------|-------------|
-| Phase 1: Provider Adapters | 3-5 days | None |
-| Phase 2: Native Tool Loop | 5-7 days | Phase 1 |
-| Phase 3: Immutable Pipeline | 2-3 days | Phase 1 |
-| Testing + Migration | 3-5 days | All phases |
-| **Total** | **13-20 days** | — |
+| Phase | Effort (est.) | Actual | Dependencies |
+|-------|--------|--------|-------------|
+| Phase 1: Provider Adapters | 3-5 days | ✅ Complete | None |
+| Phase 2: Native Tool Loop | 5-7 days | ✅ Complete | Phase 1 |
+| Phase 3: Integration Wiring | 2-3 days | ✅ <1 day | Phase 1 + 2 |
+| Testing + Migration | 3-5 days | Pending | All phases |
+| **Total** | **13-20 days** | — | — |
 
 > **Note:** Phases 2 and 3 depend on Phase 1 but are independent of each other.
 > Phase 2 is prioritized because it resolves critical bugs (#1, #2, #5).
