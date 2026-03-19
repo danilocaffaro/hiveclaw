@@ -127,30 +127,42 @@ Benefits:
 direct mutation of `messages[]`. All message array construction goes through
 `buildContextWindow()`.
 
-## Copilot Strategy (mandatory — Adler review item #2)
+## Copilot Strategy (resolved — spike test completed)
 
-> **Context (Adler 🦊):** Copilot is an Anthropic proxy with undocumented behavior.
-> OpenClaw never needed truncation detection because they don't have a manual
-> agentic loop — the problem is exclusive to our manual loop implementation.
-> Copilot cannot be treated as generic in Phase 2.
+> **Spike test date:** 2026-03-18 21:20 | **Result:** Opção A confirmed ✅
 
-**Chosen approach: Opção B — Encapsulated manual loop** (decided by Alice)
+### Findings
 
-The `CopilotAdapter` will internally encapsulate the manual loop with all Sprint 80
-fixes (truncation detection `4f09f9a`, stream buffer `1574c60`, auto-continue) while
-exposing the same `AsyncGenerator<AgentEvent>` interface as other adapters.
+The Copilot proxy (api.enterprise.githubcopilot.com) supports native tool_use
+**via streaming only**. Non-streaming (`stream: false`) returns `finish_reason:
+tool_calls` but **does NOT include the `tool_calls` array** in the message object.
 
-From agent-runner v2's perspective, CopilotAdapter behaves identically to
-AnthropicAdapter — the manual loop is an implementation detail hidden inside.
+Since HiveClaw uses `streamChat()` (always streaming), this is fully compatible.
 
-**Why not Opção A (test native tool_use):** Copilot's proxy behavior is
-undocumented and may change without notice. Empirical testing proves
-"it works today" but provides no reliability guarantee. Opção B is defensive
-and future-proof — if Copilot starts supporting native tool_use reliably,
-we can upgrade the adapter internals without changing the interface.
+### Spike Results (4/4 PASS)
 
-**Validation:** CopilotAdapter must pass the same 30-session test as
-AnthropicAdapter, with zero truncation leaks.
+| Test | Result | Details |
+|------|--------|---------|
+| Basic cycle | ✅ | tool_use → tool_result → final response, clean |
+| Large output (14KB) | ✅ | Zero truncation, zero ⚠️ pattern |
+| 3 parallel tool calls | ✅ | Tokyo + London + web search, all resolved in one turn |
+| Tool error result | ✅ | ENOENT error acknowledged, no crash/fabrication |
+
+### Decision: Opção A — Native tool_use via streaming
+
+CopilotAdapter uses the same native tool loop as AnthropicAdapter and OpenAIAdapter.
+No encapsulated manual loop needed. Sprint 80 truncation detection becomes a safety
+net (kept but expected to never trigger).
+
+**Critical constraint:** CopilotAdapter MUST use `stream: true` — non-streaming
+tool_calls are broken on the Copilot proxy.
+
+### Eliminated risk from original blueprint
+
+| Original risk | Status |
+|--------------|--------|
+| "Copilot proxy behavior unknown for native loop" | **RESOLVED** — empirically validated |
+| "Copilot adapter may need manual loop internally" | **ELIMINATED** — native loop works |
 
 ## Risks & Mitigations
 
@@ -160,7 +172,7 @@ AnthropicAdapter, with zero truncation leaks.
 | Ollama may not support native tool loop | Keep manual loop as fallback for basic providers |
 | Lost granular control over iterations | Safety guardrails (time wall, loop detection) still apply as outer guards |
 | Migration breaks existing agents | Feature flag: `engine_v2: true` per agent, gradual rollout |
-| Copilot proxy behavior changes | Opção B: manual loop encapsulated in adapter, immune to proxy changes |
+| Copilot proxy behavior changes | Spike-validated streaming tool_use; Sprint 80 detection kept as safety net |
 
 ## Migration Strategy
 
