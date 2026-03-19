@@ -158,6 +158,9 @@ export interface ChannelInbound {
   agentId: string;
   fromId: string;
   text: string;
+  senderName?: string;
+  isGroup?: boolean;
+  groupTitle?: string;
 }
 
 /**
