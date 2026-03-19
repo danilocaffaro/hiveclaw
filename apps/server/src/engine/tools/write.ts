@@ -1,7 +1,7 @@
 import { writeFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 import type { Tool, ToolInput, ToolOutput, ToolDefinition } from './types.js';
-import { validateToolPath } from '../../config/security.js';
+import { validateToolPath, isWriteExtensionAllowed } from '../../config/security.js';
 
 export class WriteTool implements Tool {
   readonly definition: ToolDefinition = {
@@ -32,6 +32,12 @@ export class WriteTool implements Tool {
     const pathCheck = validateToolPath(filePath, 'write');
     if (!pathCheck.allowed) {
       return { success: false, error: pathCheck.reason };
+    }
+
+    // R21/P7: Extension whitelist — prevent writing binaries or unknown file types
+    const extCheck = isWriteExtensionAllowed(pathCheck.resolved);
+    if (!extCheck.allowed) {
+      return { success: false, error: extCheck.reason };
     }
 
     try {

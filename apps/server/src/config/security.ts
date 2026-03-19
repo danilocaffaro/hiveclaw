@@ -4,7 +4,7 @@
  * All sandboxing, blocking, and access control rules live here.
  */
 
-import { resolve, normalize, sep } from 'path';
+import { resolve, normalize, sep, extname } from 'path';
 import { homedir, tmpdir } from 'os';
 import { mkdirSync, existsSync } from 'fs';
 
@@ -126,6 +126,54 @@ export function validateToolPath(
     reason: `Access denied: path '${requestedPath}' is outside the workspace (${workspace}). ` +
       `Set HIVECLAW_WORKSPACE env to expand access.`,
   };
+}
+
+// ─── Write Extension Whitelist (R21/P7) ─────────────────────────────────────────
+
+/**
+ * Extensions allowed for write operations by agent tools.
+ * Files without an extension or with an unlisted extension are blocked.
+ * To allow a new extension, expand this set — no runtime override.
+ * (Adler review: force:true bypass removed — compromised agents could abuse it.)
+ */
+export const WRITE_ALLOWED_EXTENSIONS = new Set([
+  // Text / docs
+  '.txt', '.md', '.rst', '.adoc',
+  // Data / config
+  '.json', '.yaml', '.yml', '.toml', '.csv', '.tsv', '.xml',
+  '.env', '.conf', '.cfg', '.ini', '.properties',
+  // Web
+  '.html', '.htm', '.css', '.svg',
+  // Code
+  '.ts', '.js', '.mjs', '.cjs', '.jsx', '.tsx',
+  '.py', '.rb', '.go', '.rs', '.java', '.kt', '.swift', '.c', '.cpp', '.h',
+  '.sh', '.bash', '.zsh', '.fish', '.bat', '.ps1',
+  '.sql', '.graphql', '.gql',
+  '.vue', '.svelte', '.astro',
+  // Misc
+  '.log', '.gitignore', '.dockerignore', '.editorconfig',
+  '.lock', '.sum', // lockfiles (pnpm-lock.yaml already covered by .yaml)
+  '.map', // source maps
+  '.d.ts', // type declarations (matched as .ts by extname)
+  '.prisma', '.proto', '.tf', '.hcl',
+]);
+
+/**
+ * Check if a file extension is allowed for write operations.
+ * Files with no extension are blocked (prevents overwriting binaries).
+ */
+export function isWriteExtensionAllowed(filePath: string): { allowed: true } | { allowed: false; reason: string } {
+  const ext = extname(filePath).toLowerCase();
+
+  if (!ext) {
+    return { allowed: false, reason: `Write blocked: file '${filePath}' has no extension. Agent write operations require a known file extension.` };
+  }
+
+  if (!WRITE_ALLOWED_EXTENSIONS.has(ext)) {
+    return { allowed: false, reason: `Write blocked: extension '${ext}' is not in the allowed list. Expand WRITE_ALLOWED_EXTENSIONS in config/security.ts if needed.` };
+  }
+
+  return { allowed: true };
 }
 
 // ─── Command Blocking ───────────────────────────────────────────────────────────

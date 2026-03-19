@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'fs';
 import type { Tool, ToolInput, ToolOutput, ToolDefinition } from './types.js';
-import { validateToolPath } from '../../config/security.js';
+import { validateToolPath, isWriteExtensionAllowed } from '../../config/security.js';
 
 export class EditTool implements Tool {
   readonly definition: ToolDefinition = {
@@ -30,6 +30,12 @@ export class EditTool implements Tool {
     const pathCheck = validateToolPath(filePath, 'write');
     if (!pathCheck.allowed) {
       return { success: false, error: pathCheck.reason };
+    }
+
+    // R21/P7: Extension whitelist — prevent editing binaries or unknown file types
+    const extCheck = isWriteExtensionAllowed(pathCheck.resolved);
+    if (!extCheck.allowed) {
+      return { success: false, error: extCheck.reason };
     }
 
     try {
