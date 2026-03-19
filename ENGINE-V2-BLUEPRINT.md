@@ -271,6 +271,30 @@ Instead of inventing the CopilotAdapter from scratch:
 
 This likely reduces Phase 2 effort estimate from 5-7 days to 3-5 days.
 
+### Open Decisions (Adler review 2026-03-18 21:29)
+
+**1. Vercel AI SDK dependency decision (must decide before Phase 1)**
+
+The SDK is the key — it abstracts the `tool_use → tool_result → continue` cycle.
+Two options:
+
+| Option | Pros | Cons |
+|--------|------|------|
+| (A) Adopt Vercel AI SDK | Future updates free, battle-tested, less code | New dependency, SDK opinions may conflict |
+| (B) Replicate pattern manually | Zero new deps, full control | Must maintain tool loop ourselves |
+
+→ **Decision needed before Phase 1 starts.**
+
+**2. Loop detection thresholds — revise up with Engine v2**
+
+OpenClaw: WARNING=10, CRITICAL=20, CIRCUIT_BREAKER=30
+HiveClaw R20: WARNING=3, INJECT=5, CIRCUIT_BREAKER=8
+
+Adler notes: with native tool loop, the provider manages better → needs less
+intervention → higher thresholds are correct. Current R20 values stay as bridge;
+Engine v2 should adopt OpenClaw-range thresholds (e.g. WARNING=8, CRITICAL=15,
+CIRCUIT_BREAKER=25).
+
 ## Decision Required
 
 - [ ] **Danilo**: Approve timeline (13-20 days) for Engine v2
