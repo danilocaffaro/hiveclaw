@@ -88,6 +88,28 @@ describe('Command Classifier', () => {
     expect(result.blocked).toBe(true);
   });
 
+  // R22: Interpreter code execution (Sherlock audit)
+  it.each([
+    ['python3 -c "import os; os.system(\'rm -rf /\')"', 'interpreter code exec'],
+    ['python -c "print(1)"', 'interpreter code exec'],
+    ['ruby -e "system(\'id\')"', 'interpreter code exec'],
+    ['perl -e "exec(\'whoami\')"', 'interpreter code exec'],
+    ['node -e "require(\'child_process\').exec(\'ls\')"', 'interpreter code exec'],
+    ['lua -e "os.execute(\'ls\')"', 'interpreter code exec'],
+    ['php -e "system(\'id\')"', 'interpreter code exec'],
+  ] as [string, string][])('blocks interpreter exec "%s" as Tier 4 (%s)', (cmd, reason) => {
+    const result = classifyCommand('exec', cmd);
+    expect(result.tier).toBe(4);
+    expect(result.blocked).toBe(true);
+    expect(result.blockedPattern).toBe(reason);
+  });
+
+  it('allows python running a script file (no -c/-e)', () => {
+    const result = classifyCommand('exec', 'python3 script.py');
+    expect(result.tier).toBe(3); // unknown binary, fail-closed
+    expect(result.blocked).toBe(false);
+  });
+
   // Exec method
   it('returns execFile for Tier 0-1', () => {
     expect(getExecMethod(0)).toBe('execFile');

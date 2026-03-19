@@ -48,6 +48,8 @@ const BLOCKED_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /rm\s+-rf\s+\/\s*$/, label: 'rm -rf /' },
   { pattern: /mkfs\b/, label: 'mkfs (format disk)' },
   { pattern: /dd\s+if=.*of=\/dev\//, label: 'dd to device' },
+  // R22: Interpreter code execution (Sherlock audit finding #3)
+  { pattern: /\b(python3?|ruby|perl|node|lua|php)\s+(-c|-e)\s/, label: 'interpreter code exec' },
 ];
 
 // ─── Command Lists ────────────────────────────────────────────────────────

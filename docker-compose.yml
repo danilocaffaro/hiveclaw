@@ -10,7 +10,7 @@ services:
     container_name: hiveclaw
     restart: unless-stopped
     ports:
-      - "4070:4070"
+      - "127.0.0.1:4070:4070"
     volumes:
       - hiveclaw-data:/data
       - hiveclaw-workspace:/workspace
