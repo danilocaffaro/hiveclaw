@@ -68,6 +68,7 @@ import { registerOGPreviewRoutes } from './api/og-preview.js';
 import { registerMessageRoutes } from './api/messages.js';
 import { registerSkillScoutRoutes } from './api/skill-scout.js';
 import { registerCanvasRoutes, resetCanvasHost } from './engine/canvas/canvas-host.js';
+import { getChannelRouter, resetChannelRouter } from './engine/channels/channel-router.js';
 import { startSkillScoutCron } from './engine/skill-scout-cron.js';
 import { WorkflowRepository } from './db/workflow-repository.js';
 import { WorkflowEngine, seedBuiltinWorkflows } from './engine/workflow-engine.js';
@@ -504,6 +505,31 @@ async function main() {
     // Start automation cron scheduler (R6)
     startCronScheduler(db);
 
+    // Start channel adapters v2 (Phase 1 — Platform Blueprint)
+    {
+      const { ChannelRepository } = await import('./api/channels.js');
+      const channelRepo = new ChannelRepository(db);
+      const channels = channelRepo.list();
+      const v2Channels = channels
+        .filter(c => c.enabled && c.type === 'telegram')  // grammy adapter only for now
+        .map(c => ({
+          id: c.id,
+          name: c.name,
+          type: c.type,
+          enabled: c.enabled,
+          agentId: c.agentId,
+          config: c.config as Record<string, unknown>,
+        }));
+      if (v2Channels.length > 0) {
+        const router = getChannelRouter();
+        router.startAll(v2Channels).then(() => {
+          logger.info('[Channels v2] Started %d adapter(s)', v2Channels.length);
+        }).catch(err => {
+          logger.error({ err }, '[Channels v2] Failed to start adapters');
+        });
+      }
+    }
+
     // Start heartbeat scheduler (P4)
     import('./engine/heartbeat-scheduler.js').then(m => m.startHeartbeatScheduler()).catch(err => {
       app.log.warn('Heartbeat scheduler failed to start: %s', (err as Error).message);
@@ -526,6 +552,7 @@ async function main() {
     logger.info('\n✨ Shutting down...');
     watchdog.stop();
     resetCanvasHost();
+    resetChannelRouter();
     db.close();
     process.exit(0);
   };
