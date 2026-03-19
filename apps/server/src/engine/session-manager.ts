@@ -488,16 +488,26 @@ export class SessionManager {
           for (const line of text.split('\n')) {
             const lo = line.toLowerCase().trim();
             if (!lo || lo.length < 5) continue;
-            // Detect goals/tasks patterns
-            if (/(?:goal|objective|target|aiming|need to|must|should|want to)\b/i.test(lo) && lo.length < 300) {
+
+            // P5: Stricter goal detection — require user-facing intent patterns,
+            // exclude technical instructions (install, restart, configure, etc.)
+            const TECHNICAL_NOISE = /(?:install|restart|configure|import|require|mkdir|chmod|npm|pnpm|yarn|pip|brew|apt|curl|wget|sudo|cd |cp |mv |rm )\b/i;
+            if (
+              msg.role === 'user' &&
+              /(?:my goal is|objective is|i want to|i need to|aiming to|target is|we need to|we want to|we should)\b/i.test(lo) &&
+              !TECHNICAL_NOISE.test(lo) &&
+              lo.length < 300
+            ) {
               activeGoals.push(line.trim().slice(0, 200));
             }
-            // Detect completed items
-            if (/(?:done|completed|finished|implemented|fixed|resolved|✅|✓)\b/i.test(lo) && lo.length < 300) {
+            // Detect completed items — require explicit completion markers
+            if (/(?:done|completed|finished|implemented|fixed|resolved|✅|✓)\b/i.test(lo) &&
+              (msg.role === 'assistant' || /(?:i |we |it's |that's )/i.test(lo)) &&
+              lo.length < 300) {
               completedSteps.push(line.trim().slice(0, 200));
             }
-            // Detect next actions
-            if (/(?:next|todo|will do|plan to|going to|then we)\b/i.test(lo) && lo.length < 300) {
+            // Detect next actions — require first-person intent
+            if (/(?:next i'll|next we'll|todo:|i will|we will|plan to|going to)\b/i.test(lo) && lo.length < 300) {
               nextActions.push(line.trim().slice(0, 200));
             }
             // Detect questions
@@ -564,6 +574,7 @@ export class SessionManager {
     const topics = new Set<string>();
     const entities = new Set<string>();
     const preferences = new Set<string>();
+    const antiPreferences = new Set<string>();
     const codeExts = /\.(ts|js|py|tsx|jsx|json|md|yaml|yml|sql|sh|css|html)$/;
 
     for (const msg of oldMessages) {
@@ -578,19 +589,34 @@ export class SessionManager {
         const lo = s.toLowerCase();
         const trimmed = s.trim().slice(0, 300);
 
-        // Decisions
-        if (/(?:decid|decision|agreed|will use|chosen|approach|opted|confirmed)\b/.test(lo)) {
+        // P5: Decisions — require explicit decision language, not just "confirmed" (too broad)
+        if (/(?:we decided|decision:|agreed to|will use|chosen|approach:|opted for|confirmed that)\b/.test(lo)) {
           decisions.add(trimmed);
         }
-        // Preferences — only positive signals; negations go to corrections (anti_preference)
-        // Negative words (never, dislike, hate, don't like) are handled separately below
-        if (/(?:prefer|like|want|always|favorite)\b/.test(lo) && msg.role === 'user' &&
-            !/(?:never|dislike|don't like|hate|avoid|can't stand)\b/.test(lo)) {
-          preferences.add(trimmed);
+
+        // P5: Preferences — separate positive and negative, both user-role only
+        if (msg.role === 'user') {
+          const isNegative = /(?:never|dislike|don't like|i hate|avoid|can't stand|stop doing|don't want)\b/.test(lo);
+          const isPositive = /(?:i prefer|i like|i want|i always|my favorite|please always)\b/.test(lo);
+
+          if (isNegative) {
+            antiPreferences.add(trimmed);
+          } else if (isPositive) {
+            preferences.add(trimmed);
+          }
         }
-        // Named entities (proper nouns after common patterns)
-        const entityMatch = s.match(/(?:name is|called|known as|I'm|I am)\s+([A-Z][a-zA-Z]+)/);
-        if (entityMatch) entities.add(entityMatch[1]);
+
+        // P5: Named entities — require stricter patterns to avoid false matches
+        // "I'm tired" shouldn't extract "tired" as entity
+        const entityPatterns = [
+          /(?:my name is|i'm called|known as)\s+([A-Z][a-zA-Z]{2,}(?:\s+[A-Z][a-zA-Z]+)?)/,
+          /(?:this is|meet)\s+([A-Z][a-zA-Z]{2,}(?:\s+[A-Z][a-zA-Z]+)?)/,
+          /(?:the project is called|project name:?)\s+([A-Z][a-zA-Z0-9_-]+)/i,
+        ];
+        for (const pat of entityPatterns) {
+          const match = s.match(pat);
+          if (match?.[1] && match[1].length > 2) entities.add(match[1]);
+        }
       }
 
       // Topic keywords
@@ -611,6 +637,11 @@ export class SessionManager {
         for (const p of [...preferences].slice(0, 5)) {
           memRepo.set(agentId, `preference_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, p, 'preference', 0.9, undefined, { source: 'compaction_extract' });
           extractedFacts.push({ key: 'preference', value: p, type: 'preference' });
+        }
+        // P5: Persist anti-preferences as corrections (was detected but never stored)
+        for (const ap of [...antiPreferences].slice(0, 5)) {
+          memRepo.set(agentId, `correction_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, `[AVOID] ${ap}`, 'correction', 0.95, undefined, { source: 'compaction_extract', tags: ['anti_preference'] });
+          extractedFacts.push({ key: 'anti_preference', value: ap, type: 'correction' });
         }
         for (const e of [...entities].slice(0, 5)) {
           memRepo.set(agentId, `entity_${e}`, e, 'entity', 0.9, undefined, { source: 'compaction_extract' });
