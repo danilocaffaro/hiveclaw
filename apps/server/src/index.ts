@@ -62,6 +62,10 @@ import { registerAnalyticsRoutes } from './api/analytics.js';
 import { registerEmbeddingRoutes } from './api/embeddings.js';
 import { registerChannelRoutes } from './api/channels.js';
 import { registerChannelV2Routes } from './api/channels-v2.js';
+import { registerNodeRoutes } from './api/nodes.js';
+import { NodeRepository } from './engine/nodes/node-repository.js';
+import { createNodeRPCHost, resetNodeRPCHost } from './engine/nodes/rpc-host.js';
+import { NodeControlTool } from './engine/nodes/node-tool.js';
 import { registerN8nRoutes } from './api/n8n.js';
 import { registerExternalAgentRoutes } from './api/external-agents.js';
 import { registerSearchRoutes } from './api/search.js';
@@ -407,6 +411,7 @@ async function main() {
         '/n8n', '/preview', '/audit', '/integrations', '/webhooks',
         '/public', '/shared-links', '/backlog', '/routing', '/analytics',
         '/channels', '/embeddings', '/data', '/events', '/models', '/status', '/external-agents',
+        '/nodes', '/canvas',
         '/engine', '/search', '/preview/og', '/messages', '/starred', '/canvas'];
       if (apiPrefixes.some(p => req.url.startsWith(p))) return;
 
@@ -479,6 +484,7 @@ async function main() {
   registerEmbeddingRoutes(app);
   registerChannelRoutes(app, db);
   registerChannelV2Routes(app, db);
+  registerNodeRoutes(app, db);
   registerExternalAgentRoutes(app);
   registerSearchRoutes(app, db);
   registerOGPreviewRoutes(app);
@@ -506,6 +512,14 @@ async function main() {
 
     // Start automation cron scheduler (R6)
     startCronScheduler(db);
+
+    // Start Node RPC Host (Phase 3 — Platform Blueprint)
+    {
+      const nodeRepo = new NodeRepository(db);
+      const rpcHost = createNodeRPCHost(nodeRepo);
+      rpcHost.attach(app.server);
+      logger.info('[Nodes] RPC host attached');
+    }
 
     // Start channel adapters v2 (Phase 1 — Platform Blueprint)
     {
@@ -556,6 +570,7 @@ async function main() {
     watchdog.stop();
     resetCanvasHost();
     resetChannelRouter();
+    resetNodeRPCHost();
     db.close();
     process.exit(0);
   };

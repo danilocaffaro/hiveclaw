@@ -1,0 +1,23 @@
+{
+  "name": "@hiveclaw/node-client",
+  "version": "1.0.0",
+  "description": "HiveClaw node client — pairs a Mac/Linux machine as a remote node",
+  "type": "module",
+  "bin": {
+    "hiveclaw-node": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.14",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.2"
+  }
+}
