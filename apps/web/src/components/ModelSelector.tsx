@@ -90,15 +90,23 @@ export default function ModelSelector() {
           setModels(fetched);
           // If selected model is not in the list, auto-select a good default
           if (fetched.length > 0 && !fetched.find((m) => m.id === selectedModel)) {
-            // Prefer sonnet > opus > gemini-pro > first available (avoid cheapest local)
+            // Prefer best-quality models in priority order, covering all major providers
             const preferred = [
               'github-copilot/claude-sonnet-4.6',
               'github-copilot/claude-opus-4.6',
               'anthropic/claude-sonnet-4-6-20250725',
+              'anthropic/claude-sonnet-4-5-20250514',
+              'anthropic/claude-opus-4-6-20250725',
+              'anthropic/claude-haiku-4-5-20250514',
+              'openai/gpt-4o',
               'google/gemini-2.5-pro',
+              'google/gemini-2.5-flash',
+              'deepseek/deepseek-chat',
             ];
             const best = preferred.find((p) => fetched.some((m) => m.id === p));
-            setSelectedModel(best ?? fetched[0].id);
+            // Fallback: pick first non-local model, then first available
+            const nonLocal = fetched.find((m) => !['ollama', 'local', 'lmstudio'].some(l => m.provider.toLowerCase().includes(l)));
+            setSelectedModel(best ?? nonLocal?.id ?? fetched[0].id);
           }
           setLoading(false);
         }

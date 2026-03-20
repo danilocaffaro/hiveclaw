@@ -534,6 +534,7 @@ export async function* runAgentV2(
     let iterationTokensIn = 0;
     let iterationTokensOut = 0;
     let finishReason: 'stop' | 'tool_calls' | 'max_tokens' | 'max_tokens_tool_call' | 'error' = 'stop';
+    let lastAdapterError = '';
     let contextOverflowCompacted = false; // R22: set when context was compacted due to token limit
 
     // Sprint 80 stream buffer: truncation detection safety net
@@ -627,8 +628,9 @@ export async function* runAgentV2(
             }
 
             case 'error': {
-              // Adapter-level error — try next provider in chain
+              // Adapter-level error — log and capture detail for user-facing message
               logger.warn(`[AgentRunner-v2] Adapter ${providerId} error: ${evt.error}`);
+              lastAdapterError = typeof evt.error === 'string' ? evt.error : 'Unknown adapter error';
               break;
             }
           }
@@ -722,7 +724,7 @@ export async function* runAgentV2(
       // Before this fix, the runner persisted via persistPartialResponse() then returned
       // without emitting message.finish, so channel-responder's error fallback would
       // persist again (runnerAlreadyPersisted was never set to true).
-      yield { event: 'error', data: { message: 'Provider returned an error', code: 'PROVIDER_ERROR', __persisted: alreadyPersisted } };
+      yield { event: 'error', data: { message: lastAdapterError ? `Provider error: ${lastAdapterError}` : 'Provider returned an error', code: 'PROVIDER_ERROR', __persisted: alreadyPersisted } };
       return;
     }
 
