@@ -94,7 +94,7 @@ export const TOOL_LIMITS = {
   // Safety net only — the ProgressChecker's intelligent guards (stall, loop,
   // token budget, time budget) are the real stopping mechanism.  This hard cap
   // exists solely to prevent infinite loops if ProgressChecker itself fails.
-  MAX_TOOL_ITERATIONS: 30,
+  MAX_TOOL_ITERATIONS: 50, // safety net until robust compaction replaces hardcap
   SMART_COMPACT_TOKENS: 80_000,
 };
 
