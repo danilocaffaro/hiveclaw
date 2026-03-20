@@ -35,7 +35,7 @@ cd apps/web && pnpm dev
 ### Running Tests
 
 ```bash
-pnpm test                    # All 424 tests (22 files)
+pnpm test                    # All 432 tests (22 files)
 pnpm test nodes              # Run specific test file
 ```
 
@@ -119,7 +119,7 @@ When an agent requests a destructive command (rm, kill, sudo, etc.):
 ### Testing
 - **Vitest** for all tests
 - Tests live in `apps/server/src/__tests__/`
-- Every commit must maintain **0 TS errors** and **all 424 tests passing**
+- Every commit must maintain **0 TS errors** and **all 432 tests passing**
 - Key test files:
   - `nodes.test.ts` — command classifier (all 5 tiers) + node repository
   - `channel-hardening.test.ts` — rate limiter, circuit breaker, debouncer, webhook validation

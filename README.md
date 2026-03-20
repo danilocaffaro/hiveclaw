@@ -43,7 +43,7 @@ Not just chat history — a full cognitive architecture:
 | Auto-Compaction | LLM-powered context compression |
 | Session Consolidation | End-of-session fact extraction |
 
-### 📡 4 Channel Adapters (v1.1)
+### 📡 4 Channel Adapters
 Native multi-platform messaging — no external orchestrator required:
 
 | Channel | Library | Key Features |
@@ -53,7 +53,7 @@ Native multi-platform messaging — no external orchestrator required:
 | **Discord** | discord.js v14 | Gateway, threads, buttons, streaming |
 | **Slack** | @slack/bolt v4 | Socket Mode, Block Kit, threads, file upload |
 
-### 🖥️ Remote Node Execution (v1.1)
+### 🖥️ Remote Node Execution
 Pair Mac/Linux devices as remote nodes. Agents can run commands, take screenshots, snap photos, and more — all with a 5-tier security model:
 
 | Tier | Risk | Approval | Examples |
@@ -64,8 +64,29 @@ Pair Mac/Linux devices as remote nodes. Agents can run commands, take screenshot
 | 3 | Destructive | Owner | rm, kill, sudo, reboot |
 | 4 | Blocked | Never | pipe-to-shell, `$()` |
 
-### 🎨 Canvas Host (v1.1)
+### 🎨 Canvas Host
 Serve HTML dashboards, live-reload via WebSocket, push A2UI content from agents.
+
+### 🔍 7-Provider Search Intelligence (v1.3)
+Cascading search with automatic fallback — if any provider fails or returns zero results, the next one kicks in:
+
+| # | Provider | Type | Key Required |
+|---|----------|------|-------------|
+| 1 | **Gemini Search Grounding** | Google + LLM context | `GEMINI_API_KEY` |
+| 2 | **Brave Search** | Web API | `BRAVE_API_KEY` |
+| 3 | **Serper** | Google via API | `SERPER_API_KEY` |
+| 4 | **Tavily** | Research API | `TAVILY_API_KEY` |
+| 5 | **Google HTML** | Scrape (free) | None |
+| 6 | **DuckDuckGo** | Scrape (free) | None |
+| 7 | **GitHub Search** | Auto-fallback | `GH_TOKEN` |
+
+Works with **zero API keys** — Google HTML + DDG provide a free baseline. Add keys for better quality.
+
+### 🛡️ Operational Awareness
+Agents don't have artificial blocklists — they have **intelligence**:
+- Anti-fabrication rules: never make up code, outputs, or verification
+- OSINT source awareness: GitHub API, HN, Reddit, Shodan, URLScan, HIBP
+- Post-operation verification: always confirm results after git/deploy operations
 
 ### 🛠️ 21 Agent Tools
 
@@ -174,7 +195,7 @@ packages/
 
 ```bash
 # Run tests
-pnpm test         # 424 tests across 22 files
+pnpm test         # 432 tests across 22 files
 
 # Type check
 pnpm build        # 0 TS errors
