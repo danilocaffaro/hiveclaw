@@ -510,6 +510,7 @@ export async function* runAgentV2(
     let iterationTokensIn = 0;
     let iterationTokensOut = 0;
     let finishReason: 'stop' | 'tool_calls' | 'max_tokens' | 'max_tokens_tool_call' | 'error' = 'stop';
+    let contextOverflowCompacted = false; // R22: set when context was compacted due to token limit
 
     // Sprint 80 stream buffer: truncation detection safety net
     const TRUNCATION_NEEDLE = '⚠️ Summarize progress';
@@ -611,7 +612,30 @@ export async function* runAgentV2(
         streamSuccess = true;
         break; // Success — don't try other providers
       } catch (err) {
-        logger.warn(`[AgentRunner-v2] Adapter ${providerId} threw: ${(err as Error).message}`);
+        const errMsg = (err as Error).message;
+        logger.warn(`[AgentRunner-v2] Adapter ${providerId} threw: ${errMsg}`);
+
+        // R22: Context overflow recovery — if provider rejects with token limit exceeded,
+        // compact messages in-memory and signal a retry via the outer iteration loop.
+        if (/exceeds the limit|max_prompt_tokens|context.length|too many tokens/i.test(errMsg) && messages.length > 4) {
+          logger.warn('[AgentRunner-v2] Context overflow detected (%d msgs) — compacting and retrying', messages.length);
+          const keepFirst = Math.min(2, messages.length);
+          const keepLast = Math.min(4, messages.length - keepFirst);
+          const middleEnd = messages.length - keepLast;
+          if (middleEnd > keepFirst) {
+            const removed = middleEnd - keepFirst;
+            messages = [
+              ...messages.slice(0, keepFirst),
+              { role: 'user' as const, content: `[SYSTEM] Context compacted: ${removed} earlier messages removed to fit provider token limit.` },
+              ...messages.slice(middleEnd),
+            ];
+            logger.info('[AgentRunner-v2] Compacted %d messages, %d remaining', removed, messages.length);
+            contextOverflowCompacted = true;
+            streamSuccess = true; // Treat as handled — use retry path below
+          }
+          break; // exit provider loop, fall into the streamSuccess=true path
+        }
+
         continue; // Try next provider
       }
     }
@@ -631,6 +655,13 @@ export async function* runAgentV2(
     totalTokensIn += iterationTokensIn;
     totalTokensOut += iterationTokensOut;
     progressChecker.recordTokens(iterationTokensIn, iterationTokensOut);
+
+    // R22: Context overflow was compacted — skip normal finish processing and retry the provider call
+    if (contextOverflowCompacted) {
+      contextOverflowCompacted = false;
+      logger.info('[AgentRunner-v2] Retrying after context compaction at iteration %d', iteration);
+      continue;
+    }
 
     // ── Handle finish reasons ─────────────────────────────────────────────────
 

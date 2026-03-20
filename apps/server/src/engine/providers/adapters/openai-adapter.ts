@@ -188,8 +188,14 @@ export class OpenAIAdapter implements ProviderAdapter {
     }
 
     let res: Response;
+    const payloadStr = JSON.stringify(body);
+    const payloadChars = payloadStr.length;
+    const msgCount = (body.messages as unknown[])?.length ?? 0;
+    const toolCount = (body.tools as unknown[])?.length ?? 0;
+    logger.info('[OpenAI] Request: %d chars (~%dk tokens), %d msgs, %d tools, model=%s', 
+      payloadChars, Math.round(payloadChars / 4000), msgCount, toolCount, body.model);
     try {
-      res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal: options.signal });
+      res = await fetch(url, { method: 'POST', headers, body: payloadStr, signal: options.signal });
     } catch (err: unknown) {
       if ((err as Error).name === 'AbortError') {
         yield { type: 'error', error: 'Request aborted' };
