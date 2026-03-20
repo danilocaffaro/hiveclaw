@@ -296,6 +296,12 @@ export class OpenAIAdapter implements ProviderAdapter {
               finishReason = 'stop';
             } else if (choice?.finish_reason === 'length') {
               finishReason = 'max_tokens';
+            } else if (choice?.finish_reason === 'content_filter') {
+              logger.warn('[OpenAI] Content filter triggered (finish_reason=content_filter)');
+              finishReason = 'error';
+            } else if (choice?.finish_reason && choice.finish_reason !== 'null') {
+              logger.warn('[OpenAI] Unknown finish_reason: %s — defaulting to stop', choice.finish_reason);
+              finishReason = 'stop';
             }
 
             // Usage tracking

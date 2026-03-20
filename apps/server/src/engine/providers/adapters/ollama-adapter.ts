@@ -96,6 +96,7 @@ export class OllamaAdapter implements ProviderAdapter {
     const decoder = new TextDecoder();
     let buffer = '';
     let tokensIn = 0, tokensOut = 0;
+    let ollamaDoneReason: 'stop' | 'tool_calls' | 'max_tokens' = 'stop';
     const collectedToolCalls: Array<{ id: string; name: string; arguments: string }> = [];
 
     try {
@@ -118,6 +119,7 @@ export class OllamaAdapter implements ProviderAdapter {
                 }>;
               };
               done?: boolean;
+              done_reason?: string;
               prompt_eval_count?: number;
               eval_count?: number;
             };
@@ -146,6 +148,10 @@ export class OllamaAdapter implements ProviderAdapter {
             if (data.done) {
               tokensIn = data.prompt_eval_count ?? 0;
               tokensOut = data.eval_count ?? 0;
+              // Ollama done_reason: 'stop' | 'length' | 'load' | 'unload'
+              if (data.done_reason === 'length') {
+                ollamaDoneReason = 'max_tokens';
+              }
             }
           } catch {
             /* skip malformed NDJSON lines */
@@ -162,7 +168,8 @@ export class OllamaAdapter implements ProviderAdapter {
     }
 
     yield { type: 'usage', inputTokens: tokensIn, outputTokens: tokensOut };
-    yield { type: 'finish', reason: collectedToolCalls.length > 0 ? 'tool_calls' : 'stop' };
+    const reason = collectedToolCalls.length > 0 ? 'tool_calls' : ollamaDoneReason;
+    yield { type: 'finish', reason };
 
     logger.debug(`[OllamaAdapter] Turn complete: ${tokensIn}in/${tokensOut}out tokens`);
   }

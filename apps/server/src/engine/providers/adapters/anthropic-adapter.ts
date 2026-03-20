@@ -230,14 +230,26 @@ export class AnthropicAdapter implements ProviderAdapter {
               tokensOut = data.usage.output_tokens ?? tokensOut;
             }
 
-            // Anthropic stop reason
+            // Anthropic stop reason — complete mapping per
+            // https://docs.anthropic.com/en/api/messages#response-stop-reason
+            // and Vercel AI SDK map-anthropic-stop-reason.ts
             if (data.type === 'message_delta' && data.delta?.stop_reason) {
               const stopReason = data.delta.stop_reason;
               if (stopReason === 'tool_use') {
                 finishReason = 'tool_calls';
-              } else if (stopReason === 'max_tokens') {
+              } else if (stopReason === 'max_tokens' || stopReason === 'model_context_window_exceeded') {
                 finishReason = 'max_tokens';
-              } else if (stopReason === 'end_turn') {
+              } else if (stopReason === 'end_turn' || stopReason === 'pause_turn' || stopReason === 'stop_sequence') {
+                finishReason = 'stop';
+              } else if (stopReason === 'refusal') {
+                logger.warn('[Anthropic] Model refused to respond (stop_reason=refusal)');
+                finishReason = 'error';
+              } else if (stopReason === 'compaction') {
+                // Anthropic internal context compaction — treat as stop, model may continue
+                logger.info('[Anthropic] Server-side compaction triggered (stop_reason=compaction)');
+                finishReason = 'stop';
+              } else {
+                logger.warn('[Anthropic] Unknown stop_reason: %s — defaulting to stop', stopReason);
                 finishReason = 'stop';
               }
             }
