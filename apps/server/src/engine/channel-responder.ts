@@ -161,6 +161,8 @@ export interface ChannelInbound {
   senderName?: string;
   isGroup?: boolean;
   groupTitle?: string;
+  channelType?: string;  // e.g. 'telegram', 'whatsapp', 'discord', 'slack'
+  channelName?: string;  // e.g. 'Clark Telegram'
 }
 
 /**
@@ -216,11 +218,24 @@ async function _handleChannelInboundInner(inbound: ChannelInbound): Promise<stri
     logger.info('[channel-responder] Created session %s for %s', sessionId, sessionKey);
   }
 
-  // 3. Build temporal prefix (inject time gap notice if >30min since last message)
+  // 3. Build context prefixes
   const temporalPrefix = buildTemporalPrefix(sessionId);
-  const userMessageWithContext = temporalPrefix
-    ? `${temporalPrefix}${inbound.text}`
-    : inbound.text;
+
+  // 3b. Channel awareness — let the agent know which channel it's responding on
+  //     and what capabilities are available (send audio, images, etc.)
+  let channelContext = '';
+  if (inbound.channelType) {
+    const caps: Record<string, string> = {
+      telegram: 'You can send text, audio (voice messages), images, documents, and use inline keyboards.',
+      whatsapp: 'You can send text, audio, images, and documents.',
+      discord: 'You can send text, embeds, and files.',
+      slack: 'You can send text, blocks, and files.',
+    };
+    const capStr = caps[inbound.channelType] ?? 'You can send text messages.';
+    channelContext = `[📡 Channel: ${inbound.channelType}${inbound.channelName ? ` (${inbound.channelName})` : ''}. ${capStr}]\n`;
+  }
+
+  const userMessageWithContext = `${temporalPrefix}${channelContext}${inbound.text}`;
 
   // 4. Run agent loop, collect full response.
   //    runAgent internally saves the user message + assistant response.

@@ -326,6 +326,8 @@ export class ChannelRouter {
         senderName: msg.senderName,
         isGroup: msg.isGroup,
         groupTitle: msg.groupTitle,
+        channelType: entry.type,
+        channelName: entry.name,
       });
 
       // Stop typing
