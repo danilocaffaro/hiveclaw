@@ -1,4 +1,15 @@
 # Changelog
+## [1.3.3] — 2026-03-20
+
+### Fixed
+- **Anthropic model IDs**: Removed invalid snapshot dates (`-20250725`, `-20250514`) from model catalog — these IDs don't exist in Anthropic's API and caused 400 errors
+- **Auto-migration**: Server startup now auto-corrects invalid model IDs in both `providers.config_json` and `agents.model_preference` — no manual DB edits needed
+- **`normalizeModelId()` v2**: Now strips/corrects invalid snapshot dates in addition to dot→hyphen conversion
+- **Setup wizard**: Test model changed to `claude-haiku-4-5` (always-valid alias)
+- **Smart router**: Quality scores updated to correct snapshot dates
+
+### Added
+- Federation test plan (89 test cases) and implementation plan (16 steps)
 
 All notable changes to HiveClaw are documented here.
 
