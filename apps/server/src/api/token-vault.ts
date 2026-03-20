@@ -72,18 +72,18 @@ export function registerTokenVaultRoutes(app: FastifyInstance, db: Database.Data
     const labelValue = label ?? `${service}/${account}`;
 
     try {
-      db.prepare(
-        `INSERT INTO credential_vault
-           (id, label, service, account, encrypted_value, iv, salt, scopes, owner_agent_id, one_time, used, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
-         ON CONFLICT(service, account) DO UPDATE SET
-           encrypted_value = excluded.encrypted_value,
-           iv = excluded.iv,
-           salt = excluded.salt,
-           scopes = excluded.scopes,
-           owner_agent_id = excluded.owner_agent_id,
-           updated_at = excluded.updated_at`,
-      ).run(id, labelValue, service, account, encrypted, iv, salt, scopes ?? '', ownerAgentId ?? null, now, now);
+      // Upsert: delete existing entry for this service+account, then insert fresh
+      const upsert = db.transaction(() => {
+        db.prepare(
+          `DELETE FROM credential_vault WHERE service = ? AND account = ?`,
+        ).run(service, account);
+        db.prepare(
+          `INSERT INTO credential_vault
+             (id, label, service, account, encrypted_value, iv, salt, scopes, owner_agent_id, one_time, used, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
+        ).run(id, labelValue, service, account, encrypted, iv, salt, scopes ?? '', ownerAgentId ?? null, now, now);
+      });
+      upsert();
 
       return reply.status(201).send({ data: { id, service, account, label: labelValue } });
     } catch (err) {
