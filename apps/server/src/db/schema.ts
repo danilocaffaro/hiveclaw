@@ -705,7 +705,7 @@ export function initDatabase(): Database.Database {
     )
   `);
   // Current schema version: bump when adding migrations
-  const CURRENT_SCHEMA = 4;
+  const CURRENT_SCHEMA = 5;
   const sv = db.prepare("SELECT version FROM schema_version WHERE id=1").get() as { version: number } | undefined;
   if (!sv) {
     db.prepare("INSERT INTO schema_version (id, version, applied_at) VALUES (1, ?, datetime('now'))").run(CURRENT_SCHEMA);
@@ -721,6 +721,22 @@ export function initDatabase(): Database.Database {
   if (!userCols.includes('invited_by')) {
     db.exec("ALTER TABLE users ADD COLUMN invited_by TEXT DEFAULT ''");
   }
+
+
+  // ─── v5 Migration: Token Vault — add account/scopes/owner_agent_id to credential_vault ───
+  const vaultCols5 = (db.prepare("PRAGMA table_info(credential_vault)").all() as Array<{ name: string }>).map(c => c.name);
+  if (!vaultCols5.includes('account')) {
+    db.exec("ALTER TABLE credential_vault ADD COLUMN account TEXT DEFAULT ''");
+  }
+  if (!vaultCols5.includes('scopes')) {
+    db.exec("ALTER TABLE credential_vault ADD COLUMN scopes TEXT DEFAULT ''");
+  }
+  if (!vaultCols5.includes('owner_agent_id')) {
+    db.exec("ALTER TABLE credential_vault ADD COLUMN owner_agent_id TEXT DEFAULT NULL");
+  }
+  try {
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_cred_vault_svc_acct ON credential_vault(service, account) WHERE account != ''");
+  } catch { /* already exists */ }
 
   // No default agent seed — the setup wizard creates the first agent
   // This ensures a 100% virgin setup experience

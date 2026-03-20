@@ -50,6 +50,7 @@ import { registerInviteRoutes } from './api/invites.js';
 import { registerAutomationRoutes, startCronScheduler } from './api/automations.js';
 import { registerFinetuneRoutes } from './api/finetune.js';
 import { registerCredentialRoutes } from './api/credentials.js';
+import { registerTokenVaultRoutes } from './api/token-vault.js';
 import { CredentialRepository } from './db/credentials.js';
 import { registerPreviewRoutes } from './api/preview.js';
 import { registerConsoleRoutes } from './api/console.js';
@@ -405,7 +406,7 @@ async function main() {
 
       const apiPrefixes = ['/healthz', '/agents', '/sessions', '/squads', '/tasks',
         '/providers', '/config', '/sse', '/memory', '/plans', '/skills', '/heartbeat',
-        '/questions', '/credentials', '/files', '/artifacts', '/browser', '/mcp',
+        '/questions', '/credentials', '/token-vault', '/files', '/artifacts', '/browser', '/mcp',
         '/datasets', '/presentation', '/marketplace', '/auth', '/finetune',
         '/workflows', '/workflow-runs', '/setup', '/debug', '/console',
         '/n8n', '/preview', '/audit', '/integrations', '/webhooks',
@@ -473,7 +474,8 @@ async function main() {
   registerAutomationRoutes(app, db);
   registerFinetuneRoutes(app, finetuneDatasets, finetuneJobs);
   registerConsoleRoutes(app);
-  registerCredentialRoutes(app, credentialRepo);
+  registerCredentialRoutes(app, credentialRepo)
+  registerTokenVaultRoutes(app, db);
   registerPreviewRoutes(app);
   registerWorkflowRoutes(app, workflowRepo);
   registerSetupRoutes(app, providers);
