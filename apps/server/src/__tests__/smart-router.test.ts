@@ -88,7 +88,7 @@ describe('SmartRouter — getModelQuality', () => {
   });
 
   it('fuzzy match', () => {
-    expect(getModelQuality('anthropic', 'claude-sonnet-4-5-20250514')).toBe(88);
+    expect(getModelQuality('anthropic', 'claude-sonnet-4-5-20250929')).toBe(88);
   });
 
   it('infer from pricing for unknown', () => {

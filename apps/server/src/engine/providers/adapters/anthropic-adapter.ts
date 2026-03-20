@@ -305,17 +305,54 @@ export class AnthropicAdapter implements ProviderAdapter {
   /**
    * Normalize model ID to Anthropic API format.
    * Users may store "claude-opus-4.6" (dot notation) but Anthropic expects "claude-opus-4-6" (hyphens).
-   * Also maps common aliases to valid API model IDs.
+   * Also strips invalid snapshot dates — only known valid dates are kept.
+   * Maps common aliases to valid API model IDs.
    */
   private normalizeModelId(model: string): string {
+    // 1. Direct alias mapping (dot notation, common names)
     const ALIASES: Record<string, string> = {
       'claude-opus-4.6': 'claude-opus-4-6',
       'claude-sonnet-4.6': 'claude-sonnet-4-6',
-      'claude-sonnet-4.5': 'claude-sonnet-4-5-20250514',
+      'claude-sonnet-4.5': 'claude-sonnet-4-5-20250929',
       'claude-haiku-4.5': 'claude-haiku-4-5',
       'claude-opus-4.5': 'claude-opus-4-5',
     };
-    return ALIASES[model] ?? model;
+    if (ALIASES[model]) return ALIASES[model];
+
+    // 2. Known valid snapshot dates per model family
+    const VALID_SNAPSHOTS: Record<string, string[]> = {
+      'claude-opus-4-6': [],                   // no snapshot date published yet — use alias
+      'claude-sonnet-4-6': [],                 // no snapshot date published yet — use alias
+      'claude-haiku-4-5': ['20251001'],
+      'claude-sonnet-4-5': ['20250929'],
+      'claude-opus-4-5': ['20251101'],
+      'claude-opus-4-1': ['20250805'],
+      'claude-sonnet-4': ['20250514'],
+      'claude-opus-4': ['20250514'],
+    };
+
+    // 3. Check if model has an invalid snapshot date — strip it
+    const snapshotMatch = model.match(/^(claude-[\w-]+?)-(\d{8})$/);
+    if (snapshotMatch) {
+      const base = snapshotMatch[1];
+      const snapshot = snapshotMatch[2];
+      const validDates = VALID_SNAPSHOTS[base];
+      if (validDates !== undefined) {
+        if (validDates.length === 0) {
+          // No valid snapshot dates — use base alias
+          logger.info('[AnthropicAdapter] Stripped invalid snapshot date from %s → %s', model, base);
+          return base;
+        }
+        if (!validDates.includes(snapshot)) {
+          // Invalid snapshot date — use the correct one
+          const corrected = `${base}-${validDates[0]}`;
+          logger.info('[AnthropicAdapter] Corrected snapshot date: %s → %s', model, corrected);
+          return corrected;
+        }
+      }
+    }
+
+    return model;
   }
 
   /**

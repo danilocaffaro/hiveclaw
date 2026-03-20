@@ -725,6 +725,42 @@ export function initDatabase(): Database.Database {
   // No default agent seed — the setup wizard creates the first agent
   // This ensures a 100% virgin setup experience
 
+  // ─── v1.3.3 Migration: Fix invalid Anthropic model IDs ─────────────────────
+  // Snapshot dates like -20250725 and -20250514 were incorrect.
+  // This migration patches provider config_json and agent model_preference in-place.
+  try {
+    const anthRow = db.prepare("SELECT config_json FROM providers WHERE id='anthropic'").get() as { config_json: string } | undefined;
+    if (anthRow?.config_json) {
+      const INVALID_MODELS: Record<string, string> = {
+        'claude-sonnet-4-5-20250514': 'claude-sonnet-4-5-20250929',
+        'claude-sonnet-4-6-20250725': 'claude-sonnet-4-6',
+        'claude-opus-4-6-20250725': 'claude-opus-4-6',
+        'claude-haiku-4-5-20250514': 'claude-haiku-4-5',
+      };
+      let json = anthRow.config_json;
+      let changed = false;
+      for (const [bad, good] of Object.entries(INVALID_MODELS)) {
+        if (json.includes(bad)) {
+          json = json.replaceAll(bad, good);
+          changed = true;
+        }
+      }
+      if (changed) {
+        db.prepare("UPDATE providers SET config_json=? WHERE id='anthropic'").run(json);
+      }
+    }
+    // Also fix agent model_preference
+    const AGENT_MODEL_FIXES: Record<string, string> = {
+      'claude-sonnet-4-5-20250514': 'claude-sonnet-4-5-20250929',
+      'claude-sonnet-4-6-20250725': 'claude-sonnet-4-6',
+      'claude-opus-4-6-20250725': 'claude-opus-4-6',
+      'claude-haiku-4-5-20250514': 'claude-haiku-4-5',
+    };
+    for (const [bad, good] of Object.entries(AGENT_MODEL_FIXES)) {
+      db.prepare("UPDATE agents SET model_preference=? WHERE model_preference=?").run(good, bad);
+    }
+  } catch { /* non-fatal migration */ }
+
   _dbInstance = db;
   return db;
 }
