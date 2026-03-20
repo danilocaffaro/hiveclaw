@@ -424,8 +424,15 @@ export async function* runAgentV2(
   }
 
   // ── Helper: persist partial response ───────────────────────────────────────
+  // R22-P1 Bug 2: prevent double persist within the runner itself.
+  // persistPartialResponse (abort/error paths) + final persist (line ~901)
+  // could both fire when the loop breaks after a partial persist.
+  let alreadyPersisted = false;
+
   const persistPartialResponse = (reason: string) => {
+    if (alreadyPersisted) return;
     if (!fullAssistantText.trim()) return;
+    alreadyPersisted = true;
     try {
       sessionManager.addMessage(sessionId, {
         role: 'assistant', content: fullAssistantText,
@@ -894,18 +901,21 @@ export async function* runAgentV2(
   // ── 10. Persist final assistant message ──────────────────────────────────────
   const PERSIST_STRIP_PATTERN = /⚠️?\s*(Summarize progress|continue in a new iteration)[^]*/gi;
   fullAssistantText = fullAssistantText.replace(PERSIST_STRIP_PATTERN, '').trim();
-
   const cost = estimateTokenCost(agentConfig.providerId, agentConfig.modelId, totalTokensIn, totalTokensOut);
 
-  try {
-    sessionManager.addMessage(sessionId, {
-      role: 'assistant', content: fullAssistantText,
-      agent_id: agentConfig.id, agent_name: agentConfig.name ?? '',
-      agent_emoji: agentConfig.emoji ?? '', sender_type: 'agent',
-      tokens_in: totalTokensIn, tokens_out: totalTokensOut, cost,
-    });
-  } catch (dbErr) {
-    logger.error('[AgentRunner-v2] Failed to persist assistant message: %s', (dbErr as Error).message);
+  // R22-P1 Bug 2: skip if already persisted via persistPartialResponse (abort/error)
+  if (!alreadyPersisted) {
+    try {
+      sessionManager.addMessage(sessionId, {
+        role: 'assistant', content: fullAssistantText,
+        agent_id: agentConfig.id, agent_name: agentConfig.name ?? '',
+        agent_emoji: agentConfig.emoji ?? '', sender_type: 'agent',
+        tokens_in: totalTokensIn, tokens_out: totalTokensOut, cost,
+      });
+      alreadyPersisted = true;
+    } catch (dbErr) {
+      logger.error('[AgentRunner-v2] Failed to persist assistant message: %s', (dbErr as Error).message);
+    }
   }
 
   // ── 11. Finish event ────────────────────────────────────────────────────────
