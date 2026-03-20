@@ -199,23 +199,42 @@ export class TelegramAdapter implements ChannelAdapter {
       }
     });
 
-    // ─── Start ──────────────────────────────────────────────────────
+    // ─── Start (with retry + backoff) ─────────────────────────────
 
-    try {
-      const me = await this.bot.api.getMe();
-      logger.info('[Telegram] Connected as @%s (id: %d)', me.username, me.id);
+    const MAX_CONNECT_RETRIES = 3;
+    const RETRY_DELAYS_MS = [5_000, 15_000, 30_000];
+    let lastErr: Error | null = null;
 
-      // Start long polling (non-blocking)
-      this.bot.start({
-        onStart: () => {
-          this._status = 'connected';
-          logger.info('[Telegram] Long polling started for channel %s', config.channelId);
-        },
-        allowed_updates: ['message', 'edited_message', 'callback_query', 'message_reaction'],
-      });
-    } catch (err) {
+    for (let attempt = 1; attempt <= MAX_CONNECT_RETRIES; attempt++) {
+      try {
+        const me = await this.bot.api.getMe();
+        logger.info('[Telegram] Connected as @%s (id: %d)', me.username, me.id);
+
+        // Start long polling (non-blocking)
+        this.bot.start({
+          onStart: () => {
+            this._status = 'connected';
+            logger.info('[Telegram] Long polling started for channel %s', config.channelId);
+          },
+          allowed_updates: ['message', 'edited_message', 'callback_query', 'message_reaction'],
+        });
+
+        lastErr = null;
+        break; // success
+      } catch (err) {
+        lastErr = err as Error;
+        if (attempt < MAX_CONNECT_RETRIES) {
+          const delay = RETRY_DELAYS_MS[attempt - 1] ?? 30_000;
+          logger.warn('[Telegram] Connect attempt %d/%d failed: %s — retrying in %ds',
+            attempt, MAX_CONNECT_RETRIES, lastErr.message, delay / 1000);
+          await new Promise(r => setTimeout(r, delay));
+        }
+      }
+    }
+
+    if (lastErr) {
       this._status = 'error';
-      throw new Error(`[Telegram] Failed to connect: ${(err as Error).message}`);
+      throw new Error(`[Telegram] Failed to connect after ${MAX_CONNECT_RETRIES} attempts: ${lastErr.message}`);
     }
   }
 
