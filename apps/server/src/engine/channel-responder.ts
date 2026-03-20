@@ -249,9 +249,11 @@ async function _handleChannelInboundInner(inbound: ChannelInbound): Promise<stri
         const finishData = event.data as { __persisted?: boolean };
         if (finishData?.__persisted) runnerAlreadyPersisted = true;
       } else if (event.event === 'error') {
-        const errData = event.data as { message?: string };
+        const errData = event.data as { message?: string; __persisted?: boolean };
         const errMsg = errData?.message ?? 'Unknown error';
         logger.error('[channel-responder] Agent error: %s', errMsg);
+        // R22: Check __persisted on error events too (runner may have persisted before yielding error)
+        if (errData?.__persisted) runnerAlreadyPersisted = true;
         // runAgent already saved user message but may NOT have saved assistant message.
         // If we have partial text, use it; otherwise use the error message.
         if (!fullResponse.trim()) {

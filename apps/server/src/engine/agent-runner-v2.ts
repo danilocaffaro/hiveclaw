@@ -624,7 +624,7 @@ export async function* runAgentV2(
         break;
       }
       persistPartialResponse('all-providers-exhausted');
-      yield { event: 'error', data: { message: 'All providers failed', code: 'PROVIDER_ERROR' } };
+      yield { event: 'error', data: { message: 'All providers failed', code: 'PROVIDER_ERROR', __persisted: alreadyPersisted } };
       return;
     }
 
@@ -643,7 +643,11 @@ export async function* runAgentV2(
 
     if (finishReason === 'error') {
       persistPartialResponse('provider-finish-error');
-      yield { event: 'error', data: { message: 'Provider returned an error', code: 'PROVIDER_ERROR' } };
+      // R22: Include __persisted flag so channel-responder doesn't double-persist.
+      // Before this fix, the runner persisted via persistPartialResponse() then returned
+      // without emitting message.finish, so channel-responder's error fallback would
+      // persist again (runnerAlreadyPersisted was never set to true).
+      yield { event: 'error', data: { message: 'Provider returned an error', code: 'PROVIDER_ERROR', __persisted: alreadyPersisted } };
       return;
     }
 
