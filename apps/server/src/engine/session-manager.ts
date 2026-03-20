@@ -269,10 +269,15 @@ export class SessionManager {
     for (const table of ['artifacts', 'tasks', 'episodes', 'compaction_log', 'credential_requests', 'session_chain']) {
       try { this.db.prepare(`DELETE FROM ${table} WHERE session_id = ?`).run(id); } catch { /* table may not exist */ }
     }
-    // FTS delete trigger can fail if content is out of sync — temporarily drop it
+    // R22: Manually delete FTS entries BEFORE deleting messages, to avoid orphans.
+    // The FTS delete trigger can fail if content is out of sync — doing it manually
+    // with a rebuild is more reliable than relying on the trigger during cascade.
     try { this.db.exec('DROP TRIGGER IF EXISTS messages_fts_delete'); } catch { /* ignore */ }
     // messages + session_usage + working_memory cascade via FK ON DELETE CASCADE
     this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+    // Rebuild FTS index to purge orphaned entries (Adler fix: delete cascade
+    // doesn't fire triggers, leaving stale FTS rows that block future inserts)
+    try { this.db.exec(`INSERT INTO messages_fts(messages_fts) VALUES('rebuild')`); } catch { /* ignore */ }
     // Recreate FTS trigger
     try {
       this.db.exec(`CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN

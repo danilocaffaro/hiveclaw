@@ -1,0 +1,5 @@
+{"test":"C1_recovery","time_ms":13000,"status":"yes","detail":""}
+{"test":"C2_isolation","time_ms":0,"status":"3/3","detail":""}
+{"test":"C3_pressure","time_ms":6000,"status":"recall=yes,math=no","detail":""}
+{"test":"D1_large_html","time_ms":94000,"status":"no-0B","detail":"size=0B"}
+{"test":"D2_large_json","time_ms":59000,"status":"yes","detail":"employees=   10098B"}

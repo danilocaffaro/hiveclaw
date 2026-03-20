@@ -1,0 +1,30 @@
+{
+  "departments": [
+    {
+      "name": "Engineering",
+      "count": 26,
+      "avgSalary": 98269
+    },
+    {
+      "name": "Marketing",
+      "count": 14,
+      "avgSalary": 67714
+    },
+    {
+      "name": "Sales",
+      "count": 14,
+      "avgSalary": 60786
+    },
+    {
+      "name": "HR",
+      "count": 13,
+      "avgSalary": 50308
+    },
+    {
+      "name": "Finance",
+      "count": 13,
+      "avgSalary": 86538
+    }
+  ],
+  "generatedAt": "2026-03-20T00:33:53Z"
+}

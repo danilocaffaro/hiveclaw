@@ -1,0 +1,6 @@
+{"test":"A1_debug","platform":"hiveclaw","time_ms":39000,"status":"1/3","detail":"compiles=yes"}
+{"test":"A2_pipeline","platform":"hiveclaw","time_ms":90000,"status":"pass","detail":"Fetching data from IBGE SIDRA API \u2026"}
+{"test":"A3_analysis","platform":"hiveclaw","time_ms":48000,"status":"yes","detail":"lines=      91"}
+{"test":"A4_conditional","platform":"hiveclaw","time_ms":18000,"status":"yes","detail":"HEALTH REPORT \u2014 HiveClaw :4070"}
+{"test":"B1_roundtrip","platform":"hiveclaw","time_ms":2000,"status":"yes","detail":"2000 ms"}
+{"test":"B2_rich","platform":"hiveclaw","time_ms":21000,"status":"table_rows=7,code_blocks=2","detail":""}
