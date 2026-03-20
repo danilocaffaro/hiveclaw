@@ -20,6 +20,11 @@ const BASE_DELAY_MS = 1000;
 const MAX_DELAY_MS = 15000;
 
 function isRetryableError(err: unknown): boolean {
+  // Never retry 400/401/403/404 — these are permanent client errors
+  if (err && typeof err === 'object' && 'statusCode' in err) {
+    const status = (err as { statusCode: number }).statusCode;
+    if (status >= 400 && status < 500 && status !== 429) return false;
+  }
   const msg = err instanceof Error ? err.message : String(err);
   if (/ECONNRESET|ECONNREFUSED|ETIMEDOUT|UND_ERR_SOCKET|fetch failed|network/i.test(msg)) return true;
   for (const code of RETRYABLE_STATUS_CODES) {
@@ -79,7 +84,7 @@ export class AnthropicAdapter implements ProviderAdapter {
       }
     }
 
-    yield { type: 'error', error: `Anthropic adapter failed after ${MAX_RETRIES + 1} attempts: ${lastErr?.message}` };
+    yield { type: 'error', error: `Anthropic adapter error: ${lastErr?.message}` };
     yield { type: 'finish', reason: 'error' };
   }
 
@@ -142,6 +147,15 @@ export class AnthropicAdapter implements ProviderAdapter {
       headers['x-api-key'] = this.apiKey ?? '';
     }
 
+    // Debug: log request details for diagnosing 400 errors
+    logger.info('[AnthropicAdapter] Request: model=%s max_tokens=%d messages=%d tools=%d system=%s',
+      normalizedModel, body.max_tokens as number, anthropicMsgs.length, Array.isArray(body.tools) ? (body.tools as unknown[]).length : 0,
+      systemPrompt ? `${systemPrompt.length} chars` : 'none');
+    if (anthropicMsgs.length > 0) {
+      const roles = anthropicMsgs.map(m => m.role).join(',');
+      logger.info('[AnthropicAdapter] Message roles: [%s]', roles);
+    }
+
     let res: Response;
     try {
       res = await fetch(url, {
@@ -161,7 +175,10 @@ export class AnthropicAdapter implements ProviderAdapter {
 
     if (!res.ok) {
       const text = await res.text().catch(() => 'unknown');
-      throw new Error(`Anthropic error ${res.status}: ${text.slice(0, 300)}`);
+      const err = new Error(`Anthropic error ${res.status}: ${text.slice(0, 500)}`);
+      // Tag the error with the status code for retry logic
+      (err as Error & { statusCode?: number }).statusCode = res.status;
+      throw err;
     }
     if (!res.body) {
       throw new Error('No response body');
@@ -305,15 +322,16 @@ export class AnthropicAdapter implements ProviderAdapter {
    * Convert LLMMessage[] to Anthropic message format.
    * - Tool results become user-role messages with tool_result content blocks
    * - Assistant messages with tool_calls become content blocks with text + tool_use
+   * - Ensures first message is user role and roles alternate (Anthropic requirement)
    */
   private buildAnthropicMessages(
     messages: LLMMessage[],
   ): Array<Record<string, unknown>> {
-    return messages.map(m => {
+    const raw = messages.map(m => {
       if (m.role === 'tool') {
         // Tool results go as user messages with tool_result content blocks
         return {
-          role: 'user',
+          role: 'user' as const,
           content: [{
             type: 'tool_result',
             tool_use_id: m.tool_call_id ?? '',
@@ -337,14 +355,46 @@ export class AnthropicAdapter implements ProviderAdapter {
             try { input = JSON.parse(call.function.arguments); } catch { /* empty */ }
             blocks.push({ type: 'tool_use', id: call.id, name: call.function.name, input });
           }
-          return { role: 'assistant', content: blocks };
+          return { role: 'assistant' as const, content: blocks };
         }
       }
 
       return {
-        role: m.role as 'user' | 'assistant',
+        role: (m.role === 'user' || m.role === 'assistant' ? m.role : 'user') as 'user' | 'assistant',
         content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
       };
     });
+
+    // Anthropic requires: (1) first message is user role, (2) roles alternate.
+    // Merge consecutive same-role messages to fix violations.
+    const merged: Array<Record<string, unknown>> = [];
+    for (const msg of raw) {
+      const prev = merged[merged.length - 1];
+      if (prev && prev.role === msg.role) {
+        // Merge: append content to previous message
+        const prevContent = prev.content;
+        const curContent = msg.content;
+        if (Array.isArray(prevContent) && Array.isArray(curContent)) {
+          prev.content = [...prevContent, ...curContent];
+        } else if (Array.isArray(prevContent)) {
+          prev.content = [...prevContent, { type: 'text', text: String(curContent) }];
+        } else if (Array.isArray(curContent)) {
+          prev.content = [{ type: 'text', text: String(prevContent) }, ...curContent];
+        } else {
+          prev.content = `${String(prevContent)}\n\n${String(curContent)}`;
+        }
+        logger.debug('[AnthropicAdapter] Merged consecutive %s messages', msg.role);
+      } else {
+        merged.push({ ...msg });
+      }
+    }
+
+    // Ensure first message is user role
+    if (merged.length > 0 && merged[0].role !== 'user') {
+      logger.warn('[AnthropicAdapter] First message was %s, prepending empty user message', merged[0].role);
+      merged.unshift({ role: 'user', content: 'Continue.' });
+    }
+
+    return merged;
   }
 }
