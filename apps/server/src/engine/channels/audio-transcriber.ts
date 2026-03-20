@@ -41,25 +41,45 @@ function findBinary(paths: string[]): string | null {
   return null;
 }
 
+// ─── ffmpeg paths (launchd doesn't inherit shell PATH) ───
+const FFMPEG_PATHS = [
+  '/opt/homebrew/bin/ffmpeg',
+  '/usr/local/bin/ffmpeg',
+  '/usr/bin/ffmpeg',
+];
+
 /**
  * Convert audio to 16kHz mono WAV using macOS afconvert or ffmpeg.
+ * Note: afconvert does NOT support .ogg (opus) — Telegram voice format.
+ * So for .ogg files, we skip straight to ffmpeg.
  */
 function convertToWav(inputPath: string): string | null {
   const wavPath = join(tmpdir(), `hiveclaw-stt-${Date.now()}.wav`);
-  try {
-    // Try afconvert (macOS built-in)
-    execSync(`afconvert "${inputPath}" "${wavPath}" -d LEI16@16000 -c 1`, { timeout: 15000, stdio: 'pipe' });
-    return wavPath;
-  } catch {
+  const isOgg = inputPath.endsWith('.ogg') || inputPath.endsWith('.oga') || inputPath.endsWith('.opus');
+
+  // Try afconvert first (macOS built-in) — but NOT for ogg/opus (unsupported)
+  if (!isOgg) {
     try {
-      // Fallback to ffmpeg
-      execSync(`ffmpeg -y -i "${inputPath}" -ar 16000 -ac 1 -f wav "${wavPath}"`, { timeout: 15000, stdio: 'pipe' });
+      execSync(`afconvert "${inputPath}" "${wavPath}" -d LEI16@16000 -c 1`, { timeout: 15000, stdio: 'pipe' });
       return wavPath;
     } catch {
-      logger.warn('[Transcriber] Cannot convert audio to WAV — no afconvert or ffmpeg');
-      return null;
+      logger.debug('[Transcriber] afconvert failed for %s, trying ffmpeg...', basename(inputPath));
     }
   }
+
+  // Fallback to ffmpeg (with full path resolution)
+  const ffmpeg = findBinary(FFMPEG_PATHS);
+  if (ffmpeg) {
+    try {
+      execSync(`"${ffmpeg}" -y -i "${inputPath}" -ar 16000 -ac 1 -f wav "${wavPath}"`, { timeout: 15000, stdio: 'pipe' });
+      return wavPath;
+    } catch (err) {
+      logger.warn('[Transcriber] ffmpeg failed: %s', (err as Error).message?.slice(0, 200));
+    }
+  }
+
+  logger.warn('[Transcriber] Cannot convert audio to WAV — afconvert (no ogg) and ffmpeg (%s)', ffmpeg ? 'failed' : 'not found');
+  return null;
 }
 
 /**
