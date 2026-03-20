@@ -2,6 +2,32 @@
 
 All notable changes to HiveClaw are documented here.
 
+## [1.3.2] — 2026-03-20
+
+### 🔧 Onboarding & Provider Fixes
+
+#### Anthropic Model ID Fix (Bug 2 — Critical)
+- **Root cause**: Model IDs like `claude-opus-4.6` (dot notation) sent raw to Anthropic API, which only accepts `claude-opus-4-6` (hyphens). Result: all Sonnet/Opus requests silently failed with "model not found".
+- **normalizeModelId()** in `AnthropicAdapter` — automatically maps dot-notation aliases to valid API IDs
+- Added official alias model IDs (`claude-sonnet-4-6`, `claude-opus-4-6`, `claude-haiku-4-5`) to the provider catalog
+- Updated context windows: Sonnet/Opus 4.6 → 1M tokens (was 200K)
+- Updated max output: Opus 128K, Sonnet 64K, Haiku 64K (were 8–32K)
+- Fixed pricing: Opus 4.6 is $5/$25 per MTok (was incorrectly $15/$75 from Opus 4.5)
+
+#### Default Model Selector Fix (Bug 1)
+- Users with Ollama running locally would get Llama as default even after configuring Anthropic
+- Expanded preferred model list to cover all major providers (Anthropic, OpenAI, Google, DeepSeek)
+- Added non-local fallback: if no preferred model found, pick first non-Ollama model before falling back to `fetched[0]`
+
+#### Better Error Messages (Bug 2b)
+- `agent-runner-v2.ts` now propagates actual adapter error details to frontend
+- Before: "Provider returned an error" — After: "Provider error: Anthropic error 404: model not found"
+
+#### Setup Wizard — Gemini Search Tip (Bug 3)
+- When user configures a non-Google provider, a blue tip box appears recommending a free Google AI key for better search quality
+- Links directly to [Google AI Studio](https://aistudio.google.com/apikey)
+- Tip disappears once Google AI provider is added
+
 ## [1.2.0] — 2026-03-20
 
 ### 🎤 Audio Support — Inbound & Outbound

@@ -5,7 +5,7 @@
 HiveClaw is a self-hosted personal AI platform with a native LLM engine, deep agent memory, squad orchestration, channel adapters, remote node execution, and full desktop automation. No cloud dependency, no vendor lock-in — your data stays on your hardware.
 
 [![Tests](https://img.shields.io/badge/tests-432%2F432-brightgreen)](https://github.com/danilocaffaro/hiveclaw)
-[![Version](https://img.shields.io/badge/version-1.3.1-blue)](https://github.com/danilocaffaro/hiveclaw/releases)
+[![Version](https://img.shields.io/badge/version-1.3.2-blue)](https://github.com/danilocaffaro/hiveclaw/releases)
 [![Tools](https://img.shields.io/badge/tools-21-orange)](https://github.com/danilocaffaro/hiveclaw)
 [![Node](https://img.shields.io/badge/node-%3E%3D18-green)](https://nodejs.org)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)](https://github.com/danilocaffaro/hiveclaw)
@@ -153,7 +153,7 @@ docker compose up -d
 
 | Provider | Models | Auth |
 |----------|--------|------|
-| **Anthropic** | Claude Opus, Sonnet, Haiku | API key or OAuth token (`sk-ant-oat*`) |
+| **Anthropic** | Claude Opus 4.6, Sonnet 4.6, Haiku 4.5 | API key or OAuth token (`sk-ant-oat*`) |
 | **GitHub Copilot** | Claude 3/4 series via Copilot | Bearer token |
 | **OpenAI** | GPT-4o, o1, o3 | API key |
 | **Google AI** | Gemini 1.5/2.0/2.5 | API key |
