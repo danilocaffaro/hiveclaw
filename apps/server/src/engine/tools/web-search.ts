@@ -46,26 +46,63 @@ export class WebSearchTool implements Tool {
     const count = Math.min((input['count'] as number) ?? 5, 10);
 
     try {
+      let result: ToolOutput;
+
       // Priority 1: Brave API (if key is set)
       const braveKey = process.env['BRAVE_API_KEY'] ?? process.env['BRAVE_SEARCH_API_KEY'];
       if (braveKey) {
-        return this.searchBrave(query, count, braveKey);
+        result = await this.searchBrave(query, count, braveKey);
       }
-
       // Priority 2: Serper.dev (if key is set)
-      const serperKey = process.env['SERPER_API_KEY'];
-      if (serperKey) {
-        return this.searchSerper(query, count, serperKey);
+      else {
+        const serperKey = process.env['SERPER_API_KEY'];
+        if (serperKey) {
+          result = await this.searchSerper(query, count, serperKey);
+        }
+        // Priority 3: Tavily (if key is set)
+        else {
+          const tavilyKey = process.env['TAVILY_API_KEY'];
+          if (tavilyKey) {
+            result = await this.searchTavily(query, count, tavilyKey);
+          }
+          // Priority 4: DuckDuckGo HTML scraping (free, no API key)
+          else {
+            result = await this.searchDuckDuckGo(query, count);
+          }
+        }
       }
 
-      // Priority 3: Tavily (if key is set)
-      const tavilyKey = process.env['TAVILY_API_KEY'];
-      if (tavilyKey) {
-        return this.searchTavily(query, count, tavilyKey);
+      // ── GitHub Search fallback ──────────────────────────────────────────────
+      // If primary search returned few/no results, try GitHub Search API.
+      // This catches project names, repos, and tools that web search engines miss.
+      const primaryResults = (result.result as { results?: SearchResult[] })?.results ?? [];
+      const hasRelevantResults = primaryResults.length >= 2 &&
+        primaryResults.some(r => r.title.toLowerCase().includes(query.toLowerCase().split(/\s+/)[0]));
+
+      if (!hasRelevantResults) {
+        try {
+          const ghResults = await this.searchGitHub(query, Math.min(count, 3));
+          if (ghResults.length > 0) {
+            const engine = (result.result as { engine?: string })?.engine ?? 'unknown';
+            const merged = [...ghResults, ...primaryResults].slice(0, count);
+            logger.info('[WebSearch] GitHub fallback added %d results for "%s"', ghResults.length, query);
+            return {
+              success: true,
+              result: {
+                engine: `${engine}+github`,
+                query,
+                count: merged.length,
+                results: merged,
+                note: 'Primary search had weak results — GitHub Search added as fallback.',
+              },
+            };
+          }
+        } catch (err) {
+          logger.debug('[WebSearch] GitHub fallback failed: %s', (err as Error).message);
+        }
       }
 
-      // Priority 4: DuckDuckGo HTML scraping (free, no API key)
-      return this.searchDuckDuckGo(query, count);
+      return result;
     } catch (err) {
       return { success: false, error: `Search failed: ${(err as Error).message}` };
     }
@@ -187,6 +224,47 @@ export class WebSearchTool implements Tool {
         results,
       },
     };
+  }
+
+  // ── GitHub Search API (free, no key required for public repos) ─────────────
+
+  private async searchGitHub(query: string, count: number): Promise<SearchResult[]> {
+    const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&sort=stars&order=desc&per_page=${count}`;
+    const headers: Record<string, string> = {
+      'Accept': 'application/vnd.github.v3+json',
+      'User-Agent': 'HiveClaw/1.2',
+    };
+    // Use GitHub token if available (higher rate limit)
+    const ghToken = process.env['GITHUB_TOKEN'] ?? process.env['GH_TOKEN'];
+    if (ghToken) {
+      headers['Authorization'] = `Bearer ${ghToken}`;
+    }
+
+    const res = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (!res.ok) {
+      throw new Error(`GitHub API error: ${res.status}`);
+    }
+
+    const data = await res.json() as {
+      items?: Array<{
+        full_name: string;
+        html_url: string;
+        description: string | null;
+        stargazers_count: number;
+        language: string | null;
+        topics?: string[];
+      }>;
+    };
+
+    return (data.items ?? []).slice(0, count).map((r) => ({
+      title: `${r.full_name} ⭐${r.stargazers_count}${r.language ? ` (${r.language})` : ''}`,
+      url: r.html_url,
+      snippet: r.description ?? 'No description',
+    }));
   }
 
   // ── DuckDuckGo HTML (free, no API key) ────────────────────────────────────────
