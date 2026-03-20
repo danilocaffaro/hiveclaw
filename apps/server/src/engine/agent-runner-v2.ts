@@ -226,7 +226,16 @@ function buildSystemPrompt(agentConfig: AgentConfig, sessionId: string, toolName
 Agent running INSIDE HiveClaw server on port ${serverPort}. OS: ${process.platform} ${process.arch}.
 Self-preservation: do NOT run pnpm start/dev, kill, or launchctl unload — those crash YOUR process.
 You CAN: read/write/edit files, run pnpm test/build/git, curl localhost:${serverPort}/api/*, use all tools.
-NEVER claim something works without verifying. NEVER fabricate outputs.`;
+NEVER claim something works without verifying. NEVER fabricate outputs.
+Version source-of-truth: GET /api/health or root package.json. NEVER trust subpackage versions.`;
+
+  systemPrompt += `\n\n## Search Strategy
+When web_search returns no relevant results or only tangential matches:
+1. Do NOT fill gaps with plausible-sounding details. Say "I searched but found nothing concrete about [term]."
+2. Try alternative sources: GitHub Search API (curl https://api.github.com/search/repositories?q=TERM), direct site search, or different query terms.
+3. If the term might be a project/tool/repo, ALWAYS try GitHub before giving up.
+4. Distinguish clearly between verified facts (from search results) and your own reasoning/speculation.
+5. When uncertain, state your confidence level explicitly.`;
 
   // Active task context
   try {
