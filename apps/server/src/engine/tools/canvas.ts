@@ -46,10 +46,25 @@ export class CanvasTool implements Tool {
   };
 
   async execute(input: ToolInput, _context?: ToolContext): Promise<ToolOutput> {
-    const action = input.action as string;
+    const action = input.action as string | undefined;
     const content = input.content as string | undefined;
     const path = input.path as string | undefined;
     const title = input.title as string | undefined;
+
+    // R22: Graceful handling for missing/empty action (truncated tool call or model probing)
+    if (!action) {
+      return {
+        success: false,
+        error: [
+          'Missing required parameter "action". Available actions:',
+          '  • present — push HTML content and open it (requires "content")',
+          '  • update  — update existing canvas (requires "content" + "path")',
+          '  • navigate — switch to existing canvas (requires "path")',
+          '  • status  — list all canvas files',
+          'Example: canvas({ action: "present", content: "<h1>Hello</h1>", title: "My Dashboard" })',
+        ].join('\n'),
+      };
+    }
 
     const canvas = getCanvasHost();
 
