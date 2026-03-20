@@ -616,24 +616,44 @@ export async function* runAgentV2(
         logger.warn(`[AgentRunner-v2] Adapter ${providerId} threw: ${errMsg}`);
 
         // R22: Context overflow recovery — if provider rejects with token limit exceeded,
-        // compact messages in-memory and signal a retry via the outer iteration loop.
-        if (/exceeds the limit|max_prompt_tokens|context.length|too many tokens/i.test(errMsg) && messages.length > 4) {
-          logger.warn('[AgentRunner-v2] Context overflow detected (%d msgs) — compacting and retrying', messages.length);
-          const keepFirst = Math.min(2, messages.length);
-          const keepLast = Math.min(4, messages.length - keepFirst);
-          const middleEnd = messages.length - keepLast;
-          if (middleEnd > keepFirst) {
-            const removed = middleEnd - keepFirst;
-            messages = [
-              ...messages.slice(0, keepFirst),
-              { role: 'user' as const, content: `[SYSTEM] Context compacted: ${removed} earlier messages removed to fit provider token limit.` },
-              ...messages.slice(middleEnd),
-            ];
-            logger.info('[AgentRunner-v2] Compacted %d messages, %d remaining', removed, messages.length);
-            contextOverflowCompacted = true;
-            streamSuccess = true; // Treat as handled — use retry path below
+        // truncate large tool results in-memory and retry. Falls back to message compaction.
+        if (/exceeds the limit|max_prompt_tokens|context.length|too many tokens/i.test(errMsg) && messages.length > 2) {
+          logger.warn('[AgentRunner-v2] Context overflow detected (%d msgs) — applying recovery', messages.length);
+          
+          // Phase 1: Aggressively truncate large tool results
+          let truncated = 0;
+          const OVERFLOW_TRUNCATE_LIMIT = 2_000; // Much more aggressive during overflow recovery
+          for (const msg of messages) {
+            if (msg.role === 'tool' && typeof msg.content === 'string' && msg.content.length > OVERFLOW_TRUNCATE_LIMIT) {
+              const orig = msg.content.length;
+              msg.content = msg.content.slice(0, OVERFLOW_TRUNCATE_LIMIT) +
+                `\n[AGGRESSIVELY TRUNCATED during context overflow recovery: ${orig.toLocaleString()} → ${OVERFLOW_TRUNCATE_LIMIT.toLocaleString()} chars]`;
+              truncated++;
+            }
           }
-          break; // exit provider loop, fall into the streamSuccess=true path
+          
+          // Phase 2: If still too many messages, drop middle ones
+          if (truncated === 0 && messages.length > 6) {
+            const keepFirst = Math.min(2, messages.length);
+            const keepLast = Math.min(4, messages.length - keepFirst);
+            const middleEnd = messages.length - keepLast;
+            if (middleEnd > keepFirst) {
+              const removed = middleEnd - keepFirst;
+              messages = [
+                ...messages.slice(0, keepFirst),
+                { role: 'user' as const, content: `[SYSTEM] Context compacted: ${removed} earlier messages removed to fit provider token limit.` },
+                ...messages.slice(middleEnd),
+              ];
+              logger.info('[AgentRunner-v2] Compacted %d messages, %d remaining', removed, messages.length);
+            }
+          }
+          
+          if (truncated > 0) {
+            logger.info('[AgentRunner-v2] Truncated %d large tool results during overflow recovery', truncated);
+          }
+          contextOverflowCompacted = true;
+          streamSuccess = true;
+          break; // exit provider loop, retry iteration
         }
 
         continue; // Try next provider
@@ -878,6 +898,20 @@ export async function* runAgentV2(
         tool_call_id: tc.id,
         name: tc.name,
       };
+
+      // R22: Truncate oversized tool results to prevent context overflow.
+      // Screenshot base64, large HTML, etc. can easily exceed 500KB+ and blow up
+      // the provider's token limit (168K for Copilot ≈ 672K chars).
+      // Truncate at 100K chars (~25K tokens) and notify the model.
+      const MAX_TOOL_RESULT_CHARS = 100_000;
+      if (typeof toolMsg.content === 'string' && toolMsg.content.length > MAX_TOOL_RESULT_CHARS) {
+        const originalLen = toolMsg.content.length;
+        toolMsg.content = toolMsg.content.slice(0, MAX_TOOL_RESULT_CHARS) +
+          `\n\n[TRUNCATED: Tool output was ${originalLen.toLocaleString()} chars, reduced to ${MAX_TOOL_RESULT_CHARS.toLocaleString()} to fit context window. ` +
+          `If the full output is needed, save it to disk first and reference the file path.]`;
+        logger.info('[AgentRunner-v2] Truncated tool "%s" output: %d → %d chars', tc.name, originalLen, MAX_TOOL_RESULT_CHARS);
+      }
+
       // Tag for R20.2c in-flight pruning
       (toolMsg as unknown as Record<string, unknown>)._iter = iteration;
       toolResultMessages.push(toolMsg);
