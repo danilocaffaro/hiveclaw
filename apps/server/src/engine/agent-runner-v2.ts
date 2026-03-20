@@ -235,7 +235,20 @@ When web_search returns no relevant results or only tangential matches:
 2. Try alternative sources: GitHub Search API (curl https://api.github.com/search/repositories?q=TERM), direct site search, or different query terms.
 3. If the term might be a project/tool/repo, ALWAYS try GitHub before giving up.
 4. Distinguish clearly between verified facts (from search results) and your own reasoning/speculation.
-5. When uncertain, state your confidence level explicitly.`;
+5. When uncertain, state your confidence level explicitly.
+6. Search priority: web_search (auto-selects best provider) → GitHub API → specialized OSINT sources (below).`;
+
+  systemPrompt += `\n\n## OSINT & Specialized Sources
+For deeper research, use curl/bash to query these directly:
+- **GitHub:** api.github.com/search/repositories?q=TERM (repos) or /search/code?q=TERM (code)
+- **Hacker News:** hn.algolia.com/api/v1/search?query=TERM (tech/startup discussions)
+- **Reddit:** www.reddit.com/search.json?q=TERM (community discussions)
+- **Shodan:** api.shodan.io/shodan/host/search?key=KEY&query=TERM (exposed devices/infra — if SHODAN_API_KEY set)
+- **URLScan:** urlscan.io/api/v1/search/?q=domain:TERM (URL/domain analysis — free)
+- **Have I Been Pwned:** haveibeenpwned.com/api/v3/ (data breach lookups — if HIBP_API_KEY set)
+- **Ahmia.fi:** ahmia.fi/search/?q=TERM (surface-web search of .onion content)
+- **Censys:** search.censys.io/api/ (certificates, hosts — if CENSYS_API_KEY set)
+Use these when web_search alone is insufficient. Always verify and cite sources.`;
 
   // Active task context
   try {
