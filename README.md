@@ -1,11 +1,11 @@
-# 🐝 HiveClaw v1.1
+# 🐝 HiveClaw v1.3
 
 > Your private AI team — multi-agent, multi-model, self-hosted. Runs anywhere.
 
 HiveClaw is a self-hosted personal AI platform with a native LLM engine, deep agent memory, squad orchestration, channel adapters, remote node execution, and full desktop automation. No cloud dependency, no vendor lock-in — your data stays on your hardware.
 
-[![Tests](https://img.shields.io/badge/tests-424%2F424-brightgreen)](https://github.com/danilocaffaro/hiveclaw)
-[![Version](https://img.shields.io/badge/version-1.1.0-blue)](https://github.com/danilocaffaro/hiveclaw/releases)
+[![Tests](https://img.shields.io/badge/tests-432%2F432-brightgreen)](https://github.com/danilocaffaro/hiveclaw)
+[![Version](https://img.shields.io/badge/version-1.3.1-blue)](https://github.com/danilocaffaro/hiveclaw/releases)
 [![Tools](https://img.shields.io/badge/tools-21-orange)](https://github.com/danilocaffaro/hiveclaw)
 [![Node](https://img.shields.io/badge/node-%3E%3D18-green)](https://nodejs.org)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)](https://github.com/danilocaffaro/hiveclaw)
