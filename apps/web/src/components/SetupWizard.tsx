@@ -1126,6 +1126,28 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               </div>
             )}
 
+            {/* Search Enhancement tip — show after at least one non-Google provider is configured */}
+            {configuredProviders.size > 0 && !configuredProviders.has('google') && (
+              <div style={{
+                padding: '12px 14px', borderRadius: 8, marginBottom: 16,
+                background: 'rgba(66, 133, 244, 0.08)',
+                border: '1px solid rgba(66, 133, 244, 0.25)',
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text, #e6edf3)', marginBottom: 4 }}>
+                  💡 Pro tip: Add a free Google AI key for better search
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted, #8b949e)', lineHeight: 1.6 }}>
+                  HiveClaw uses <strong>Gemini Search Grounding</strong> as its top-quality web search engine.
+                  Without it, search falls back to DuckDuckGo (lower quality). Get a free API key at{' '}
+                  <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer"
+                    style={{ color: 'var(--blue, #58a6ff)', textDecoration: 'underline' }}>
+                    Google AI Studio
+                  </a>{' '}
+                  and add the <strong>Google AI</strong> provider above.
+                </div>
+              </div>
+            )}
+
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 20 }}>
               <button type="button" onClick={() => setStep(1)} style={btnSecondary}>
                 ← Back
