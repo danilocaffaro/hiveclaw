@@ -46,30 +46,24 @@ export class WebSearchTool implements Tool {
     const count = Math.min((input['count'] as number) ?? 5, 10);
 
     try {
-      let result: ToolOutput;
+      let result: ToolOutput | null = null;
 
-      // Priority 1: Brave API (if key is set)
+      // Priority cascade: Gemini Grounding > Brave > Serper > Tavily > DuckDuckGo
+      const geminiKey = process.env['GEMINI_API_KEY'] ?? process.env['GOOGLE_API_KEY'] ?? process.env['GOOGLE_GENERATIVE_AI_API_KEY'];
       const braveKey = process.env['BRAVE_API_KEY'] ?? process.env['BRAVE_SEARCH_API_KEY'];
-      if (braveKey) {
+      const serperKey = process.env['SERPER_API_KEY'];
+      const tavilyKey = process.env['TAVILY_API_KEY'];
+
+      if (geminiKey) {
+        result = await this.searchGeminiGrounding(query, count, geminiKey);
+      } else if (braveKey) {
         result = await this.searchBrave(query, count, braveKey);
-      }
-      // Priority 2: Serper.dev (if key is set)
-      else {
-        const serperKey = process.env['SERPER_API_KEY'];
-        if (serperKey) {
-          result = await this.searchSerper(query, count, serperKey);
-        }
-        // Priority 3: Tavily (if key is set)
-        else {
-          const tavilyKey = process.env['TAVILY_API_KEY'];
-          if (tavilyKey) {
-            result = await this.searchTavily(query, count, tavilyKey);
-          }
-          // Priority 4: DuckDuckGo HTML scraping (free, no API key)
-          else {
-            result = await this.searchDuckDuckGo(query, count);
-          }
-        }
+      } else if (serperKey) {
+        result = await this.searchSerper(query, count, serperKey);
+      } else if (tavilyKey) {
+        result = await this.searchTavily(query, count, tavilyKey);
+      } else {
+        result = await this.searchDuckDuckGo(query, count);
       }
 
       // ── GitHub Search fallback ──────────────────────────────────────────────
@@ -106,6 +100,75 @@ export class WebSearchTool implements Tool {
     } catch (err) {
       return { success: false, error: `Search failed: ${(err as Error).message}` };
     }
+  }
+
+  // ── Gemini Search Grounding (Google Search via Gemini API) ─────────────────
+
+  private async searchGeminiGrounding(query: string, count: number, apiKey: string): Promise<ToolOutput> {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: `Search the web and return factual results for: ${query}` }] }],
+        tools: [{ google_search: {} }],
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      logger.warn('[WebSearch] Gemini Grounding error (%d): %s', res.status, errText.slice(0, 200));
+      throw new Error(`Gemini API error: ${res.status}`);
+    }
+
+    const data = await res.json() as {
+      candidates?: Array<{
+        content?: { parts?: Array<{ text?: string }> };
+        groundingMetadata?: {
+          groundingChunks?: Array<{
+            web?: { uri?: string; title?: string };
+          }>;
+          searchEntryPoint?: { renderedContent?: string };
+          webSearchQueries?: string[];
+        };
+      }>;
+    };
+
+    const candidate = data.candidates?.[0];
+    const groundingChunks = candidate?.groundingMetadata?.groundingChunks ?? [];
+    const answerText = candidate?.content?.parts?.map(p => p.text).join('\n') ?? '';
+
+    const results: SearchResult[] = groundingChunks.slice(0, count).map((chunk) => ({
+      title: chunk.web?.title ?? 'Result',
+      url: chunk.web?.uri ?? '',
+      snippet: '',
+    }));
+
+    // If we got grounding chunks, add the synthesized answer as context
+    if (results.length > 0 && answerText) {
+      results[0].snippet = answerText.slice(0, 500);
+    }
+
+    // Fallback: if no grounding chunks but we got a text answer, return it as a single result
+    if (results.length === 0 && answerText) {
+      results.push({
+        title: `Gemini answer for: ${query}`,
+        url: '',
+        snippet: answerText.slice(0, 1000),
+      });
+    }
+
+    return {
+      success: true,
+      result: {
+        engine: 'gemini-grounding',
+        query,
+        count: results.length,
+        results,
+      },
+    };
   }
 
   // ── Brave Search API ──────────────────────────────────────────────────────────
