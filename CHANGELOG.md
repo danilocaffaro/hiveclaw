@@ -2,6 +2,29 @@
 
 All notable changes to HiveClaw are documented here.
 
+## [1.2.0] — 2026-03-20
+
+### 🎤 Audio Support — Inbound & Outbound
+
+Platform-level audio handling for all agents — no per-agent configuration needed.
+
+#### Inbound (Voice → Text)
+- Voice messages and audio files auto-transcribed via OpenAI Whisper API
+- Transcription injected as `[🎤 Voice message: "..."]` before the user's text
+- Telegram adapter: `downloadFile()` downloads media by `file_id`
+- Graceful fallback when Whisper unavailable
+
+#### Outbound (Text → Voice)
+- Agents include `[VOICE:/path/to/file]` in response → sent as voice message
+- Remaining text sent as caption; falls back to text-only on failure
+
+## [1.1.3] — 2026-03-20
+
+### 📡 Channel Awareness + Agent Resourcefulness
+
+- **Channel context injection** — agents know which channel they're on and what capabilities are available
+- **Clark system prompt** — resourcefulness + media handling guidance
+
 ## [1.1.2] — 2026-03-20
 
 ### 🔌 Connection Resilience

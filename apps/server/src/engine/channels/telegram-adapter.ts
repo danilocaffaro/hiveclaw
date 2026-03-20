@@ -17,7 +17,8 @@
  */
 
 import { Bot, type Context, GrammyError, HttpError, InputFile } from 'grammy';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { logger } from '../../lib/logger.js';
 import type {
   ChannelAdapter,
@@ -76,6 +77,7 @@ export class TelegramAdapter implements ChannelAdapter {
   get status(): AdapterStatus { return this._status; }
 
   private bot: Bot | null = null;
+  private botToken: string | null = null;
   private config: AdapterConfig | null = null;
   private platformConfig: TelegramPlatformConfig | null = null;
   private messageHandlers: InboundHandler[] = [];
@@ -94,6 +96,7 @@ export class TelegramAdapter implements ChannelAdapter {
     }
 
     this._status = 'connecting';
+    this.botToken = this.platformConfig.botToken;
     this.bot = new Bot(this.platformConfig.botToken);
 
     // ─── Register handlers ──────────────────────────────────────────
@@ -392,6 +395,33 @@ export class TelegramAdapter implements ChannelAdapter {
       chatId: String(result.chat.id),
       timestamp: result.date,
     };
+  }
+
+  /**
+   * Download a file from Telegram by file_id.
+   * Returns local path to the downloaded file.
+   */
+  async downloadFile(fileId: string, ext = '.ogg'): Promise<string> {
+    this.ensureConnected();
+    const file = await this.bot!.api.getFile(fileId);
+    if (!file.file_path) throw new Error('Telegram did not return file_path');
+
+    const token = this.botToken!;
+    const url = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
+
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`Failed to download file: HTTP ${resp.status}`);
+
+    const mediaDir = join(process.env.HOME ?? '/tmp', '.hiveclaw', 'media', 'inbound');
+    mkdirSync(mediaDir, { recursive: true });
+
+    const filename = `telegram-${fileId.slice(0, 16)}-${Date.now()}${ext}`;
+    const localPath = join(mediaDir, filename);
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    writeFileSync(localPath, buffer);
+
+    logger.info('[Telegram] Downloaded file %s (%d bytes) → %s', fileId.slice(0, 16), buffer.length, localPath);
+    return localPath;
   }
 
   async sendTyping(chatId: string, action: 'start' | 'stop'): Promise<void> {

@@ -30,6 +30,7 @@ import { TelegramAdapter } from './telegram-adapter.js';
 import { WhatsAppAdapter } from './whatsapp-adapter.js';
 import { DiscordAdapter } from './discord-adapter.js';
 import { SlackAdapter } from './slack-adapter.js';
+import { transcribeAudio } from './audio-transcriber.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -316,13 +317,40 @@ export class ChannelRouter {
       void adapter.sendTyping(msg.chatId, 'start');
     }
 
+    // ─── Audio transcription: download + transcribe voice/audio ───
+    let audioTranscription = '';
+    const audioMedia = msg.media?.filter(m => m.type === 'voice' || m.type === 'audio');
+    if (audioMedia?.length && adapter instanceof TelegramAdapter) {
+      for (const media of audioMedia) {
+        try {
+          const ext = media.mimeType?.includes('ogg') ? '.ogg'
+            : media.mimeType?.includes('mp4') ? '.m4a'
+            : media.mimeType?.includes('mpeg') ? '.mp3' : '.ogg';
+          const localPath = await adapter.downloadFile(media.fileId!, ext);
+          const text = await transcribeAudio(localPath);
+          if (text) {
+            audioTranscription += `[🎤 Voice message: "${text}"]\n`;
+          } else {
+            audioTranscription += '[🎤 Voice message — transcription unavailable]\n';
+          }
+        } catch (err) {
+          logger.error('[Router] Failed to transcribe audio: %s', (err as Error).message);
+          audioTranscription += '[🎤 Voice message — transcription failed]\n';
+        }
+      }
+    }
+
+    const messageText = audioTranscription
+      ? `${audioTranscription}${msg.text ? '\n' + msg.text : ''}`
+      : msg.text;
+
     try {
       // Route to engine — get agent response
       const response = await getEngineService().channels.handleInbound({
         channelId: entry.id,
         agentId: entry.agentId,
         fromId: msg.senderId,
-        text: msg.text,
+        text: messageText,
         senderName: msg.senderName,
         isGroup: msg.isGroup,
         groupTitle: msg.groupTitle,
@@ -337,10 +365,32 @@ export class ChannelRouter {
 
       // Send response back
       if (response) {
-        await adapter.sendMessage(msg.chatId, {
-          text: response,
-          replyToMessageId: msg.messageId,
-        });
+        // ─── Outbound audio: detect [VOICE:/path] or [AUDIO:/path] tags ───
+        const voiceMatch = response.match(/\[(?:VOICE|AUDIO):([^\]]+)\]/);
+        if (voiceMatch && adapter.capabilities.media.includes('voice')) {
+          const audioPath = voiceMatch[1].trim();
+          const textWithout = response.replace(voiceMatch[0], '').trim();
+
+          try {
+            await adapter.sendMedia(msg.chatId, {
+              type: 'voice',
+              source: { kind: 'path', path: audioPath },
+              caption: textWithout || undefined,
+              replyToMessageId: msg.messageId,
+            });
+          } catch (err) {
+            logger.error('[Router] Failed to send voice: %s — falling back to text', (err as Error).message);
+            await adapter.sendMessage(msg.chatId, {
+              text: textWithout || response,
+              replyToMessageId: msg.messageId,
+            });
+          }
+        } else {
+          await adapter.sendMessage(msg.chatId, {
+            text: response,
+            replyToMessageId: msg.messageId,
+          });
+        }
       }
     } catch (err) {
       logger.error({ err }, '[Router] Engine error for inbound on %s', entry.name);
