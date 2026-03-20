@@ -104,8 +104,11 @@ export class AnthropicAdapter implements ProviderAdapter {
     const anthropicMsgs = this.buildAnthropicMessages(chatMsgs);
 
     // Build request body
+    // Normalize model ID: users may store "claude-opus-4.6" (dot) but Anthropic API
+    // expects "claude-opus-4-6" (hyphen). Also handle common aliases.
+    const normalizedModel = this.normalizeModelId(options.model);
     const body: Record<string, unknown> = {
-      model: options.model,
+      model: normalizedModel,
       max_tokens: options.maxTokens ?? 4096,
       stream: true,
       messages: anthropicMsgs,
@@ -280,6 +283,22 @@ export class AnthropicAdapter implements ProviderAdapter {
 
     yield { type: 'usage', inputTokens: tokensIn, outputTokens: tokensOut };
     yield { type: 'finish', reason: finishReason };
+  }
+
+  /**
+   * Normalize model ID to Anthropic API format.
+   * Users may store "claude-opus-4.6" (dot notation) but Anthropic expects "claude-opus-4-6" (hyphens).
+   * Also maps common aliases to valid API model IDs.
+   */
+  private normalizeModelId(model: string): string {
+    const ALIASES: Record<string, string> = {
+      'claude-opus-4.6': 'claude-opus-4-6',
+      'claude-sonnet-4.6': 'claude-sonnet-4-6',
+      'claude-sonnet-4.5': 'claude-sonnet-4-5-20250514',
+      'claude-haiku-4.5': 'claude-haiku-4-5',
+      'claude-opus-4.5': 'claude-opus-4-5',
+    };
+    return ALIASES[model] ?? model;
   }
 
   /**
