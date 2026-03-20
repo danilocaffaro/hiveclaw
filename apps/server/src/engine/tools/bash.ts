@@ -46,7 +46,12 @@ export class BashTool implements Tool {
     const cwd = (input['cwd'] as string) ?? process.cwd();
 
     if (!command || typeof command !== 'string') {
-      return { success: false, error: 'command must be a non-empty string' };
+      return {
+        success: false,
+        error: 'command must be a non-empty string. '
+          + 'If your command is very long, consider splitting into multiple bash calls. '
+          + 'Usage: bash({ command: "your-command-here" })',
+      };
     }
 
     // Safety: block dangerous commands

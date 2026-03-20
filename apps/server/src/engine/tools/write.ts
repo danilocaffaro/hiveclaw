@@ -21,11 +21,22 @@ export class WriteTool implements Tool {
     const filePath = input['path'] as string;
     const content = input['content'] as string;
 
+    // R22: Detect empty/truncated tool call — provide actionable guidance
+    if (!filePath && (content === undefined || content === null)) {
+      return {
+        success: false,
+        error: 'Tool call appears incomplete (no path or content received). '
+          + 'If the content is large (>8KB), split it into multiple write calls '
+          + 'or use bash with heredoc/echo to write in chunks. '
+          + 'Required params: path (string), content (string).',
+      };
+    }
+
     if (!filePath) {
-      return { success: false, error: 'path is required' };
+      return { success: false, error: 'path is required. Usage: write({ path: "/path/to/file", content: "..." })' };
     }
     if (content === undefined || content === null) {
-      return { success: false, error: 'content is required' };
+      return { success: false, error: 'content is required. Usage: write({ path: "/path/to/file", content: "..." })' };
     }
 
     // Workspace sandbox check (write mode — stricter)
