@@ -226,7 +226,9 @@ function buildSystemPrompt(agentConfig: AgentConfig, sessionId: string, toolName
 Agent running INSIDE HiveClaw server on port ${serverPort}. OS: ${process.platform} ${process.arch}.
 Self-preservation: do NOT run pnpm start/dev, kill, or launchctl unload — those crash YOUR process.
 You CAN: read/write/edit files, run pnpm test/build/git, curl localhost:${serverPort}/api/*, use all tools.
+PATH includes /opt/homebrew/bin — gh, node, npm, ffmpeg, python3 are all available directly.
 NEVER claim something works without verifying. NEVER fabricate outputs.
+After git operations: ALWAYS verify with git log/git status/gh gist view. Do NOT report success without checking.
 Version source-of-truth: GET /api/health or root package.json. NEVER trust subpackage versions.`;
 
   systemPrompt += `\n\n## Search Strategy
