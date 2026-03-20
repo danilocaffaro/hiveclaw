@@ -54,23 +54,29 @@ export class WebSearchTool implements Tool {
       const serperKey = process.env['SERPER_API_KEY'];
       const tavilyKey = process.env['TAVILY_API_KEY'];
 
-      if (geminiKey) {
-        result = await this.searchGeminiGrounding(query, count, geminiKey);
-      } else if (braveKey) {
-        result = await this.searchBrave(query, count, braveKey);
-      } else if (serperKey) {
-        result = await this.searchSerper(query, count, serperKey);
-      } else if (tavilyKey) {
-        result = await this.searchTavily(query, count, tavilyKey);
-      } else {
-        // Free tier: try Google HTML scrape first, fall back to DDG
+      // Priority cascade with fallback: if a provider fails, try the next one
+      const providers: Array<[string, () => Promise<ToolOutput>]> = [];
+
+      if (geminiKey) providers.push(['gemini', () => this.searchGeminiGrounding(query, count, geminiKey)]);
+      if (braveKey)  providers.push(['brave', () => this.searchBrave(query, count, braveKey)]);
+      if (serperKey) providers.push(['serper', () => this.searchSerper(query, count, serperKey)]);
+      if (tavilyKey) providers.push(['tavily', () => this.searchTavily(query, count, tavilyKey)]);
+      providers.push(['google-html', () => this.searchGoogleHTML(query, count)]);
+      providers.push(['duckduckgo', () => this.searchDuckDuckGo(query, count)]);
+
+      for (const [name, searchFn] of providers) {
         try {
-          result = await this.searchGoogleHTML(query, count);
-          const googleResults = (result.result as { results?: SearchResult[] })?.results ?? [];
-          if (googleResults.length === 0) throw new Error('No Google HTML results');
-        } catch {
-          result = await this.searchDuckDuckGo(query, count);
+          result = await searchFn();
+          const results = (result.result as { results?: SearchResult[] })?.results ?? [];
+          if (results.length > 0) break; // Got results, stop cascading
+          logger.info('[WebSearch] %s returned 0 results, trying next provider', name);
+        } catch (err) {
+          logger.warn('[WebSearch] %s failed: %s — falling through', name, (err as Error).message?.slice(0, 100));
         }
+      }
+
+      if (!result) {
+        result = { success: true, result: { engine: 'none', query, count: 0, results: [] } };
       }
 
       // ── GitHub Search fallback ──────────────────────────────────────────────
