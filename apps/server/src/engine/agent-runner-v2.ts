@@ -792,7 +792,24 @@ export async function* runAgentV2(
       const tool = toolsByName.get(tc.name);
       let resultContent: string;
 
-      if (!tool) {
+      // R22: Detect empty/truncated tool call args before execution.
+      // When Copilot proxy truncates a large tool call, it emits content_block_stop
+      // with empty args ({}) instead of keeping inToolUse=true. The adapter can't
+      // distinguish this from a legitimate empty-args call. We detect it here by
+      // checking if the tool has required params but received empty input.
+      const inputKeys = Object.keys(tc.input ?? {});
+      const toolDef = tool?.definition as ToolDefinition | undefined;
+      const requiredParams = toolDef?.parameters?.required as string[] | undefined;
+      const hasRequiredParams = requiredParams && requiredParams.length > 0;
+      const isLikelyTruncated = hasRequiredParams && inputKeys.length === 0;
+
+      if (isLikelyTruncated) {
+        logger.warn(`[AgentRunner-v2] Tool "${tc.name}" called with empty args but has required params [${requiredParams?.join(', ')}] — likely truncated tool call`);
+        resultContent = `ERROR: Tool call appears truncated — received empty arguments but "${tc.name}" requires: ${requiredParams?.join(', ')}. ` +
+          `This usually means the output token budget was exceeded while generating tool call arguments. ` +
+          `Try: (1) split large content into multiple smaller tool calls, (2) use bash with heredoc for large writes, or (3) reduce the payload size.`;
+        yield { event: 'tool.finish', data: { id: tc.id, name: tc.name, output: resultContent, error: true } };
+      } else if (!tool) {
         resultContent = `ERROR: Tool "${tc.name}" not found in registry.`;
         yield { event: 'tool.finish', data: { id: tc.id, name: tc.name, output: resultContent, error: true } };
       } else {
