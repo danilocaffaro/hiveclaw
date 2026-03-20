@@ -2,6 +2,37 @@
 
 All notable changes to HiveClaw are documented here.
 
+## [1.1.1] — 2026-03-20
+
+### 🛡️ R22 Reliability Sprint — "Clark Never Dies"
+
+Comprehensive fix for agent tool-call truncation, context overflow, and message persistence bugs.
+Root cause: oversized tool results (e.g. 666KB screenshot base64) blowing the provider's context window.
+
+#### Context Overflow Defense (4 layers)
+- **Tool result truncation** — results > 100K chars auto-truncated before entering messages array
+- **Empty args detection** — tool calls with required params but `{}` args caught pre-execution
+- **Overflow recovery** — when provider rejects with token limit, aggressively truncate tool results (2K) and retry
+- **Recovery prompt** — `max_tokens_tool_call` finish reason triggers retry with chunking guidance
+
+#### Message Persistence
+- **Double-persist eliminated** — `__persisted` flag propagated on error paths (`provider-finish-error`, `all-providers-exhausted`)
+- **FTS orphan rows** — `messages_fts` rebuilt after cascade delete to prevent constraint errors
+
+#### Provider Adapters
+- **Complete stop reason mapping** — all Anthropic (`pause_turn`, `stop_sequence`, `refusal`, `compaction`, `model_context_window_exceeded`) and OpenAI (`content_filter`) reasons now mapped
+- **Ollama `done_reason=length`** — now correctly maps to `max_tokens`
+- **Payload size logging** — every OpenAI/Copilot request logs chars, estimated tokens, message count, tool count
+- **Unknown stop reasons** — logged with warning instead of silent default
+
+#### Tool Resilience
+- **Canvas graceful error** — `canvas({})` returns usage guide instead of cryptic "Unknown action: undefined"
+- **Actionable error messages** — write, bash, canvas tools detect empty input and explain truncation cause + chunking suggestions
+
+#### Security (Sherlock Audit)
+- **Docker bind** — `0.0.0.0:4070` → `127.0.0.1:4070`
+- **Interpreter blocking** — `python -c`, `node -e`, etc. classified as Tier 4 (blocked)
+
 ## [1.1.0] — 2026-03-19
 
 ### 🚀 Platform Blueprint — "Own Everything"
