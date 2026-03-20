@@ -2,6 +2,12 @@
 
 All notable changes to HiveClaw are documented here.
 
+## [1.1.2] — 2026-03-20
+
+### 🔌 Connection Resilience
+
+- **Telegram connect retry** — `getMe()` and `bot.start()` now retry 3× with exponential backoff (5s/15s/30s) on transient failures (ETIMEDOUT, network blips). Previously a single timeout permanently disabled the channel.
+
 ## [1.1.1] — 2026-03-20
 
 ### 🛡️ R22 Reliability Sprint — "Clark Never Dies"
