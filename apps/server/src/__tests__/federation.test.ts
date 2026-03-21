@@ -351,10 +351,7 @@ describe('Federation Protocol', () => {
 
 describe('Federation Squad Integration', () => {
   it('AgentConfig supports federation fields', async () => {
-    // Import dynamically to test the interface extension
-    const { type } = await import('../engine/agent-runner.js');
-
-    // Shadow agent config should be creatable
+    // Shadow agent config should be creatable with federation fields
     const config = {
       id: 'fed:peer1:agent1',
       name: 'Shadow Agent',

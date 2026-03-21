@@ -8,7 +8,13 @@
 import { WebSocket, type RawData } from 'ws';
 import { randomBytes } from 'node:crypto';
 import { FederationRepository } from '../../db/federation.js';
+import { AgentRepository } from '../../db/agents.js';
 import { getDb } from '../../db/schema.js';
+import { runAgentV2 } from '../agent-runner-v2.js';
+import { runAgent } from '../agent-runner.js';
+import type { AgentConfig } from '../agent-runner.js';
+import { getSessionManager } from '../session-manager.js';
+import { getProviderRouter } from '../providers/index.js';
 import {
   type FederationMessage,
   type FederationHello,
@@ -18,6 +24,8 @@ import {
   type AgentDelta,
   type AgentFinish,
   type FederationError,
+  type MessageSync,
+  type SquadEvent,
   validateMessage,
   serializeMessage,
   FEDERATION_ENABLED,
@@ -381,26 +389,168 @@ export class FederationManager {
   }
 
   private handleMessageSync(linkId: string, msg: FederationMessage): void {
-    // TODO Phase 2: persist synced message and broadcast via SSE
-    logger.info('Message sync received on link %s', linkId);
+    const sync = msg as MessageSync;
+    const sm = getSessionManager();
+
+    // Persist the synced message into the local session
+    try {
+      sm.addMessage(sync.sessionId, {
+        role: sync.role,
+        content: sync.content,
+        agent_id: sync.agentId,
+        agent_name: sync.agentName,
+        agent_emoji: sync.agentEmoji,
+        sender_type: sync.origin === 'guest' ? 'external_agent' : 'agent',
+      });
+      logger.info('Message synced from link %s: session=%s role=%s', linkId, sync.sessionId, sync.role);
+    } catch (err) {
+      logger.error(err, 'Failed to persist synced message on link %s', linkId);
+    }
   }
 
   private handleInvoke(linkId: string, invoke: AgentInvoke): void {
-    // TODO Phase 3: run local agent and stream back
-    logger.info('Agent invoke received on link %s for agent %s', linkId, invoke.agentId);
-
-    // For now, send an error
     const link = this.links.get(linkId);
     if (!link) return;
 
+    logger.info('Agent invoke received on link %s for agent %s (req %s)', linkId, invoke.agentId, invoke.requestId);
+
+    // Run asynchronously — don't block the message handler
+    this.executeLocalAgent(link, invoke).catch(err => {
+      logger.error(err, 'Failed to execute local agent for invoke %s', invoke.requestId);
+      const finish: AgentFinish = {
+        type: 'agent.finish',
+        requestId: invoke.requestId,
+        agentId: invoke.agentId,
+        fullText: '',
+        error: (err as Error).message,
+      };
+      if (link.ws.readyState === WebSocket.OPEN) {
+        link.ws.send(serializeMessage(finish));
+      }
+    });
+  }
+
+  /**
+   * Execute a local agent on behalf of a remote host.
+   * Streams agent.delta events back through the federation WS,
+   * finishes with agent.finish containing the full response text.
+   */
+  private async executeLocalAgent(link: ActiveLink, invoke: AgentInvoke): Promise<void> {
+    const db = getDb();
+    const agentRepo = new AgentRepository(db);
+
+    // Find the local agent by ID
+    const agentRow = agentRepo.getById(invoke.agentId);
+    if (!agentRow) {
+      const finish: AgentFinish = {
+        type: 'agent.finish',
+        requestId: invoke.requestId,
+        agentId: invoke.agentId,
+        fullText: '',
+        error: `Agent ${invoke.agentId} not found on this instance`,
+      };
+      link.ws.send(serializeMessage(finish));
+      return;
+    }
+
+    // Build agent config
+    const router = getProviderRouter();
+    const defaultProvider = router.getDefault();
+    const resolvedProvider = (agentRow.providerPreference as string) || defaultProvider?.id || 'unknown';
+    const agentConfig: AgentConfig = {
+      id: agentRow.id,
+      name: agentRow.name,
+      emoji: agentRow.emoji ?? '🤖',
+      systemPrompt: agentRow.systemPrompt ?? 'You are a helpful AI assistant.',
+      providerId: resolvedProvider,
+      modelId: (agentRow.modelPreference as string) || 'default',
+      temperature: (agentRow.temperature as number) ?? 0.7,
+      maxTokens: 4096,
+      engineVersion: agentRow.engineVersion ?? 2,
+    };
+
+    // Inject previous responses context if provided
+    let systemPrompt = agentConfig.systemPrompt;
+    if (invoke.context?.previousResponses?.length) {
+      systemPrompt += '\n\n## Previous Agent Responses (ECHO-FREE: do not repeat)\n'
+        + invoke.context.previousResponses.join('\n');
+    }
+
+    // Create a temporary federation session
+    const sm = getSessionManager();
+    const sessionId = `fed-invoke-${invoke.requestId}`;
+
+    // Seed the session with the conversation messages
+    for (const msg of invoke.messages) {
+      sm.addMessage(sessionId, {
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content,
+      });
+    }
+
+    // Select runner based on engine version
+    const runner = agentConfig.engineVersion === 2 ? runAgentV2 : runAgent;
+    const userMessage = invoke.messages[invoke.messages.length - 1]?.content ?? '';
+
+    let fullText = '';
+    let inputTokens = 0;
+    let outputTokens = 0;
+
+    try {
+      for await (const event of runner(sessionId, userMessage, { ...agentConfig, systemPrompt }, { skipPersistUserMessage: true })) {
+        if (event.event === 'message.delta') {
+          const data = event.data as Record<string, unknown>;
+          const text = typeof data.text === 'string' ? data.text : '';
+          if (text && !(data.isHeader as boolean)) {
+            fullText += text;
+
+            // Stream delta back to host
+            if (link.ws.readyState === WebSocket.OPEN) {
+              const delta: AgentDelta = {
+                type: 'agent.delta',
+                requestId: invoke.requestId,
+                agentId: invoke.agentId,
+                text,
+              };
+              link.ws.send(serializeMessage(delta));
+            }
+          }
+        }
+
+        if (event.event === 'message.finish') {
+          const data = event.data as Record<string, unknown>;
+          inputTokens = (data.inputTokens as number) ?? 0;
+          outputTokens = (data.outputTokens as number) ?? 0;
+        }
+      }
+    } catch (err) {
+      logger.error(err, 'Agent execution failed for invoke %s', invoke.requestId);
+      fullText = '';
+    }
+
+    // Send finish
     const finish: AgentFinish = {
       type: 'agent.finish',
       requestId: invoke.requestId,
       agentId: invoke.agentId,
-      fullText: '',
-      error: 'Agent invocation not yet implemented (Phase 3)',
+      fullText,
+      usage: { inputTokens, outputTokens },
+      error: fullText ? undefined : 'Agent produced no output',
     };
-    link.ws.send(serializeMessage(finish));
+
+    if (link.ws.readyState === WebSocket.OPEN) {
+      link.ws.send(serializeMessage(finish));
+    }
+
+    // Cleanup temp session (don't persist federation invoke sessions)
+    try {
+      sm.deleteSession(sessionId);
+    } catch {
+      // Session might not need cleanup
+    }
+
+    logger.info('Agent invoke %s completed: %d chars, %d in/%d out tokens',
+      invoke.requestId, fullText.length, inputTokens, outputTokens);
   }
 
   private handleDelta(delta: AgentDelta): void {
@@ -424,9 +574,38 @@ export class FederationManager {
     }
   }
 
-  private handleSquadEvent(_linkId: string, _msg: FederationMessage): void {
-    // TODO Phase 2: handle squad membership changes
-    logger.info('Squad event received');
+  private handleSquadEvent(linkId: string, msg: FederationMessage): void {
+    const event = msg as SquadEvent;
+    logger.info('Squad event on link %s: %s squad=%s agent=%s',
+      linkId, event.event, event.squadId, event.agentId ?? 'n/a');
+
+    switch (event.event) {
+      case 'agent_added':
+        // Peer added a new agent — update shadow agents via manifest refresh
+        logger.info('Peer added agent %s — will be synced on next manifest exchange', event.agentId);
+        break;
+      case 'agent_removed':
+        // Peer removed an agent — remove corresponding shadow
+        if (event.agentId) {
+          const shadows = this.repo.getShadowAgents(linkId);
+          const shadow = shadows.find(s => s.remoteAgentId === event.agentId);
+          if (shadow) {
+            const db = getDb();
+            db.prepare('DELETE FROM agents WHERE id = ?').run(shadow.id);
+            logger.info('Removed shadow agent %s (remote %s) from link %s', shadow.id, event.agentId, linkId);
+          }
+        }
+        break;
+      case 'squad_deleted':
+        // Peer deleted the squad — revoke the link
+        logger.warn('Peer deleted squad %s — revoking link %s', event.squadId, linkId);
+        this.repo.revokeLink(linkId);
+        const link = this.links.get(linkId);
+        if (link) link.ws.close(4010, 'Squad deleted by peer');
+        break;
+      default:
+        logger.info('Unhandled squad event: %s', event.event);
+    }
   }
 
   // ── Agent Invocation (Host → Guest) ──────────────────────────────────────
