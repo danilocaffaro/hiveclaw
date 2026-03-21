@@ -6,6 +6,7 @@ import { useUIStore } from '@/stores/ui-store';
 import { useRSPStore } from '@/stores/rsp-store';
 import type { Squad } from '@/stores/squad-store';
 import type { Agent } from '@/stores/agent-store';
+import { HybridSquadBadge } from '../federation/FederationBadge';
 
 interface SquadItemProps {
   squad: Squad;
@@ -33,6 +34,12 @@ export function SquadItem({ squad, agents }: SquadItemProps) {
   const resolvedMembers = visibleIds.map((agentId) =>
     agents.find((a) => a.id === agentId)
   );
+
+  // Check if squad has any federated (shadow) agents
+  const hasFederatedAgents = agentIds.some(id => {
+    const agent = agents.find(a => a.id === id);
+    return agent?.isShadow;
+  });
 
   return (
     <div
@@ -71,6 +78,11 @@ export function SquadItem({ squad, agents }: SquadItemProps) {
           }}
         >
           {squad.name}
+          {hasFederatedAgents && (
+            <span style={{ marginLeft: 6, verticalAlign: 'middle' }}>
+              <HybridSquadBadge />
+            </span>
+          )}
         </div>
 
         {/* Mini member avatar row */}

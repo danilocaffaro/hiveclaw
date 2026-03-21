@@ -6,6 +6,7 @@ import { AgentCard } from './agents/AgentCard';
 import { AgentEditModal } from './agents/AgentEditModal';
 import { InviteAgentModal } from './agents/InviteAgentModal';
 import ExternalAgentsPanel from './ExternalAgentsPanel';
+import { FederationPanel } from '../federation/FederationPanel';
 import type { AgentRow, WorkerAgentStatus, PoolStatusData } from './agents/types';
 
 export default function AgentsTab() {
@@ -342,6 +343,12 @@ export default function AgentsTab() {
       <div style={{ marginTop: 24 }}>
         <SectionTitle title="External Agents" desc="Manage agents connected via webhook (OpenClaw, custom bots, third-party AI)." />
         <ExternalAgentsPanel />
+      </div>
+
+      {/* Federation section */}
+      <div style={{ marginTop: 24 }}>
+        <SectionTitle title="Federation" desc="Link squads with other HiveClaw instances for cross-instance collaboration." />
+        <FederationPanel />
       </div>
 
       <style>{`

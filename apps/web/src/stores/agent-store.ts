@@ -20,6 +20,10 @@ export interface Agent {
   source?: 'hiveclaw';
   isExternal?: boolean;
   tier?: string;
+  // Federation fields
+  isShadow?: boolean;
+  federationLinkId?: string;
+  remoteAgentId?: string;
 }
 
 export interface AgentCreateInput {

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { AgentRow, WorkerAgentStatus } from './types';
 import { WORKER_STATE_DOT } from './types';
 import { StatusBadge } from './StatusBadge';
+import { FederationBadge } from '../../federation/FederationBadge';
 
 export function AgentCard({
   agent,
@@ -84,6 +85,7 @@ export function AgentCard({
             Protected
           </span>
         )}
+        {(agent as unknown as Record<string, unknown>).is_shadow === 1 && <FederationBadge />}
       </div>
 
       {/* Status badge — live from worker pool or fallback to DB status */}
