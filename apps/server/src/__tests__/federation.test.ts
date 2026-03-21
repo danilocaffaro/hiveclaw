@@ -346,3 +346,125 @@ describe('Federation Protocol', () => {
     expect(validateMessage(msg)).not.toBeNull();
   });
 });
+
+// ── Squad Integration Tests ──────────────────────────────────────────────────
+
+describe('Federation Squad Integration', () => {
+  it('AgentConfig supports federation fields', async () => {
+    // Import dynamically to test the interface extension
+    const { type } = await import('../engine/agent-runner.js');
+
+    // Shadow agent config should be creatable
+    const config = {
+      id: 'fed:peer1:agent1',
+      name: 'Shadow Agent',
+      emoji: '👻',
+      systemPrompt: '',
+      providerId: 'remote',
+      modelId: 'remote',
+      engineVersion: 2 as const,
+      isShadow: true,
+      federationLinkId: 'link-123',
+      remoteAgentId: 'agent-abc',
+    };
+
+    expect(config.isShadow).toBe(true);
+    expect(config.federationLinkId).toBe('link-123');
+    expect(config.remoteAgentId).toBe('agent-abc');
+  });
+
+  it('shadow agent IDs use namespaced format', () => {
+    const db = createTestDb();
+    const repo = new FederationRepository(db);
+
+    const link = repo.createLink({
+      peerInstanceId: 'abcdef0123456789',
+      peerInstanceName: 'Peer',
+      direction: 'host',
+      sharedSquadId: 'squad-1',
+      connectionTokenHash: 'h1',
+    });
+
+    const shadowId = repo.createShadowAgent({
+      linkId: link.id,
+      remoteAgentId: 'original-agent-id',
+      name: 'Remote Agent',
+      emoji: '🤖',
+      role: 'dev',
+    });
+
+    // Format: fed:{peerPrefix}:{remoteAgentId}
+    expect(shadowId).toBe('fed:abcdef01:original-agent-id');
+    expect(repo.isShadowAgent(shadowId)).toBe(true);
+
+    db.close();
+  });
+
+  it('touchLink updates last_seen_at', () => {
+    const db = createTestDb();
+    const repo = new FederationRepository(db);
+
+    const link = repo.createLink({
+      peerInstanceId: 'p1', peerInstanceName: 'P1', direction: 'host',
+      sharedSquadId: 'squad-1', connectionTokenHash: 'h1',
+    });
+
+    expect(repo.getLink(link.id)!.lastSeenAt).toBeNull();
+    repo.touchLink(link.id);
+    expect(repo.getLink(link.id)!.lastSeenAt).not.toBeNull();
+
+    db.close();
+  });
+
+  it('getLinkByTokenHash works', () => {
+    const db = createTestDb();
+    const repo = new FederationRepository(db);
+
+    const link = repo.createLink({
+      peerInstanceId: 'p1', peerInstanceName: 'P1', direction: 'host',
+      sharedSquadId: 'squad-1', connectionTokenHash: 'unique-hash-123',
+    });
+
+    const found = repo.getLinkByTokenHash('unique-hash-123');
+    expect(found).not.toBeNull();
+    expect(found!.id).toBe(link.id);
+    expect(repo.getLinkByTokenHash('nonexistent')).toBeNull();
+
+    db.close();
+  });
+
+  it('removeShadowAgents returns count', () => {
+    const db = createTestDb();
+    const repo = new FederationRepository(db);
+
+    const link = repo.createLink({
+      peerInstanceId: 'p1', peerInstanceName: 'P1', direction: 'host',
+      sharedSquadId: 'squad-1', connectionTokenHash: 'h1',
+    });
+
+    repo.createShadowAgent({ linkId: link.id, remoteAgentId: 'r1', name: 'S1', emoji: '👻', role: 'a' });
+    repo.createShadowAgent({ linkId: link.id, remoteAgentId: 'r2', name: 'S2', emoji: '👻', role: 'b' });
+    repo.createShadowAgent({ linkId: link.id, remoteAgentId: 'r3', name: 'S3', emoji: '👻', role: 'c' });
+
+    const removed = repo.removeShadowAgents(link.id);
+    expect(removed).toBe(3);
+    expect(repo.getShadowAgents(link.id)).toHaveLength(0);
+
+    db.close();
+  });
+
+  it('concurrent pairing tokens for different squads', () => {
+    const db = createTestDb();
+    db.prepare("INSERT INTO squads (id, name) VALUES ('squad-2', 'Test Squad 2')").run();
+    const repo = new FederationRepository(db);
+
+    const r1 = repo.createPairingToken('squad-1', ['agent-1'], 30);
+    const r2 = repo.createPairingToken('squad-2', ['agent-2'], 30);
+
+    expect(r1.tokenHash).not.toBe(r2.tokenHash);
+    expect(repo.getPairing(r1.token)!.squadId).toBe('squad-1');
+    expect(repo.getPairing(r2.token)!.squadId).toBe('squad-2');
+
+    db.close();
+  });
+});

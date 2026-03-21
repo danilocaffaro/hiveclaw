@@ -95,6 +95,10 @@ export interface AgentConfig {
   tools?: string[]; // tool names to enable (undefined = all tools)
   fallbackProviders?: string[]; // ordered fallback provider IDs
   engineVersion?: 1 | 2; // default 1 for existing agents; 2 = native tool loop (agent-runner-v2)
+  // Federation fields (shadow agents)
+  isShadow?: boolean;
+  federationLinkId?: string;
+  remoteAgentId?: string;
 }
 
 // ─── Tool Registry ────────────────────────────────────────────────────────────

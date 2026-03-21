@@ -37,6 +37,8 @@ import {
   type MentionParseResult,
 } from './archer-router.js';
 import { ExternalAgentRepository } from '../db/external-agents.js';
+import { FederationRepository } from '../db/federation.js';
+import { getFederationManager } from './federation/federation-manager.js';
 import { initDatabase } from '../db/index.js';
 import { ENABLE_MESSAGE_BUS, DEFAULT_PORT } from '../config/defaults.js';
 
@@ -330,6 +332,87 @@ async function* runExternalAgent(
   }
 }
 
+// ─── Federation Agent Support ─────────────────────────────────────────────────
+
+/**
+ * Check if an agent is a federated shadow agent (is_shadow === 1).
+ */
+function isFederatedAgent(agent: AgentConfig): boolean {
+  return (agent as unknown as Record<string, unknown>).isShadow === true
+    || String((agent as unknown as Record<string, unknown>).isShadow) === '1';
+}
+
+/**
+ * Invoke a remote agent via federation link.
+ * Streams deltas as SSE events, persists the final response.
+ */
+async function* runFederatedAgent(
+  sessionId: string,
+  message: string,
+  agent: AgentConfig,
+  previousResponses: Array<{ agentId: string; name: string; emoji: string; text: string }> = [],
+): AsyncGenerator<SSEEvent> {
+  const db = initDatabase();
+  const fedRepo = new FederationRepository(db);
+  const fedManager = getFederationManager();
+
+  const link = fedRepo.getShadowAgentLink(agent.id);
+  if (!link) {
+    yield { event: 'message.delta', data: { text: `⚠️ Federation link not found for ${agent.name}`, agentId: agent.id } };
+    return;
+  }
+
+  if (!fedManager.isLinkActive(link.id)) {
+    yield { event: 'message.delta', data: { text: `⚠️ ${agent.name} is offline (federation link disconnected)`, agentId: agent.id } };
+    return;
+  }
+
+  yield {
+    event: 'message.delta',
+    data: { text: `\n\n**${agent.emoji ?? '🤖'} ${agent.name}** _(federated)_\n\n`, agentId: agent.id, isHeader: true },
+  };
+
+  const remoteAgentId = (agent as unknown as Record<string, unknown>).remoteAgentId as string ?? agent.id;
+
+  try {
+    const fullText = await fedManager.invokeRemoteAgent(
+      link.id,
+      remoteAgentId,
+      [{ role: 'user', content: message }],
+      { previousResponses: previousResponses.map(r => `${r.emoji} ${r.name}: ${r.text}`) },
+      // Stream deltas are handled separately below — we can't yield from inside the callback
+      // so we buffer and yield the full response at the end
+    );
+
+    yield {
+      event: 'message.delta',
+      data: { text: fullText, agentId: agent.id, agentName: agent.name, agentEmoji: agent.emoji },
+    };
+
+    // Persist
+    const sm = getSessionManager();
+    try {
+      sm.addMessage(sessionId, {
+        role: 'assistant',
+        content: fullText,
+        agent_id: agent.id,
+        agent_name: agent.name,
+        agent_emoji: agent.emoji ?? '',
+        sender_type: 'external_agent',  // federated agents use external_agent sender type
+      });
+    } catch (err) {
+      logger.error('[SquadRunner] Failed to persist federated agent message: %s', (err as Error).message);
+    }
+  } catch (err) {
+    const errMsg = (err as Error).message;
+    logger.error('[SquadRunner] Federated agent %s failed: %s', agent.name, errMsg);
+    yield {
+      event: 'message.delta',
+      data: { text: `⚠️ ${agent.name} federation error: ${errMsg}`, agentId: agent.id },
+    };
+  }
+}
+
 // ─── Main entry point ─────────────────────────────────────────────────────────
 
 export async function* runSquad(
@@ -485,9 +568,11 @@ async function* runRoundRobin(
     return;
   }
 
-  // Fallback: direct runAgent() or external dispatch
+  // Fallback: direct runAgent() or external/federated dispatch
   if (isExternalAgent(agent)) {
     yield* runExternalAgent(sessionId, message, agent, config);
+  } else if (isFederatedAgent(agent)) {
+    yield* runFederatedAgent(sessionId, message, agent);
   } else {
     const rrOpts: Record<string, unknown> = { skipPersistUserMessage: true };
     if (agent.engineVersion === 2) {
@@ -943,6 +1028,14 @@ async function* runSequential(
 
     if (isExternalAgent(agent)) {
       for await (const event of runExternalAgent(sessionId, prompt, agent, config, previousResponses, turnInPass)) {
+        yield enrichEvent(event);
+        if (event.event === 'message.delta') {
+          const d = event.data as Record<string, unknown>;
+          if (typeof d.text === 'string' && !d.isHeader) response += d.text;
+        }
+      }
+    } else if (isFederatedAgent(agent)) {
+      for await (const event of runFederatedAgent(sessionId, prompt, agent, previousResponses)) {
         yield enrichEvent(event);
         if (event.event === 'message.delta') {
           const d = event.data as Record<string, unknown>;

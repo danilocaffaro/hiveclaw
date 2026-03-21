@@ -58,6 +58,7 @@ const DEFAULT_AGENT_CONFIG: Omit<AgentConfig, 'id' | 'name'> = {
 
 function agentRowToConfig(agent: Agent): AgentConfig {
   const resolvedProvider = (agent.providerPreference as string) || getDefaultProviderId();
+  const isShadow = (agent as unknown as Record<string, unknown>).is_shadow === 1;
   return {
     id: agent.id,
     name: agent.name,
@@ -70,6 +71,9 @@ function agentRowToConfig(agent: Agent): AgentConfig {
     maxToolIterations: (agent as unknown as Record<string, unknown>).max_tool_iterations as number | undefined,
     fallbackProviders: agent.fallbackProviders ?? [],
     engineVersion: agent.engineVersion ?? 1,
+    isShadow,
+    federationLinkId: isShadow ? (agent as unknown as Record<string, unknown>).federation_link_id as string : undefined,
+    remoteAgentId: isShadow ? (agent as unknown as Record<string, unknown>).remote_agent_id as string : undefined,
   };
 }
 
