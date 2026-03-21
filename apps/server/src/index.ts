@@ -57,6 +57,10 @@ import { registerConsoleRoutes } from './api/console.js';
 import { registerWorkflowRoutes } from './api/workflows.js';
 import { registerSetupRoutes } from './api/setup.js';
 import { registerPublicChatRoutes } from './api/public-chat.js';
+import { registerFederationRoutes } from './api/federation.js';
+import { FederationRepository } from './db/federation.js';
+import { getFederationManager } from './engine/federation/federation-manager.js';
+import { FEDERATION_ENABLED, FEDERATION_WS_PATH } from './engine/federation/federation-protocol.js';
 import { registerBacklogRoutes } from './api/backlog.js';
 import { registerRoutingRoutes } from './api/routing.js';
 import { registerAnalyticsRoutes } from './api/analytics.js';
@@ -495,18 +499,41 @@ async function main() {
   registerSkillScoutRoutes(app, db);
   registerCanvasRoutes(app);
 
+  // ─── Federation (feature-flagged) ──────────────────────────────────────
+  const federationRepo = new FederationRepository(db);
+  registerFederationRoutes(app, federationRepo);
+
   // ─── Start ────────────────────────────────────────────────────────────
   // R16: Rotate log files before startup (keeps them < 10MB each)
   rotateAllLogs();
 
   try {
     await app.listen({ port: PORT, host: HOST });
+
+    // Attach federation WS upgrade handler (after server is listening)
+    if (FEDERATION_ENABLED) {
+      const server = app.server;
+      const fedManager = getFederationManager();
+
+      server.on('upgrade', (request, socket, head) => {
+        if (request.url?.startsWith(FEDERATION_WS_PATH)) {
+          const { WebSocketServer } = require('ws') as typeof import('ws');
+          const wss = new WebSocketServer({ noServer: true });
+          wss.handleUpgrade(request, socket, head, (ws) => {
+            fedManager.handleConnection(ws);
+          });
+        }
+        // Other upgrade handlers (RPC, etc.) are already attached elsewhere
+      });
+    }
+
     console.log('');
     console.log(`  ✨ HiveClaw v${VERSION}`);
     console.log(`  → http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
     console.log(`  → Engine: Native (direct LLM)`);
     console.log(`  → Providers: ${enabledProviders.length > 0 ? enabledProviders.map(p => p.name).join(', ') : 'None (run Setup Wizard)'}`);
     console.log(`  → Agents: ${agents.list().length}`);
+    if (FEDERATION_ENABLED) console.log(`  → Federation: enabled`);
     console.log('');
 
     // Start weekly skill discovery cron (Sprint 78)

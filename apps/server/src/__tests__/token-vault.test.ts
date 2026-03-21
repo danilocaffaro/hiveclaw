@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { verifyPublicUrl } from '../engine/token-vault.js';
 
 // ── Layer 3: verifyPublicUrl tests ─────────────────────────────────────────

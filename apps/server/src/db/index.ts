@@ -25,3 +25,5 @@ export { SessionUsageRepository } from './session-usage.js';
 export type { UsageRecord, UsageSummary } from './session-usage.js';
 export { WorkflowRepository } from './workflow-repository.js';
 export type { WorkflowTemplate, WorkflowStep, WorkflowRun, WorkflowRunStep } from './workflow-repository.js';
+export { FederationRepository } from './federation.js';
+export type { FederationLink, FederationPairing, LinkDirection, LinkStatus, CreatePairingResult } from './federation.js';

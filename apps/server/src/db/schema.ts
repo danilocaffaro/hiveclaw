@@ -696,6 +696,49 @@ export function initDatabase(): Database.Database {
     // Non-fatal — FTS repair can be retried
   }
 
+  // ── Federation tables (v1.4.0) ───────────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS federation_links (
+      id TEXT PRIMARY KEY,
+      peer_instance_id TEXT NOT NULL,
+      peer_instance_name TEXT NOT NULL,
+      peer_url TEXT,
+      direction TEXT CHECK(direction IN ('host', 'guest')),
+      shared_squad_id TEXT NOT NULL,
+      connection_token_hash TEXT NOT NULL,
+      status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'active', 'disconnected', 'revoked')),
+      last_seen_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (shared_squad_id) REFERENCES squads(id)
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS federation_pairing (
+      token_hash TEXT PRIMARY KEY,
+      squad_id TEXT NOT NULL,
+      contributed_agent_ids TEXT DEFAULT '[]',
+      expires_at DATETIME NOT NULL,
+      accepted INTEGER DEFAULT 0,
+      accepted_link_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (squad_id) REFERENCES squads(id)
+    )
+  `);
+
+  // Extend agents table for federation shadow agents
+  const agentCols2 = (db.prepare("PRAGMA table_info(agents)").all() as Array<{ name: string }>).map(c => c.name);
+  if (!agentCols2.includes('is_shadow')) {
+    try { db.exec("ALTER TABLE agents ADD COLUMN is_shadow INTEGER DEFAULT 0"); } catch { /* */ }
+  }
+  if (!agentCols2.includes('federation_link_id')) {
+    try { db.exec("ALTER TABLE agents ADD COLUMN federation_link_id TEXT"); } catch { /* */ }
+  }
+  if (!agentCols2.includes('remote_agent_id')) {
+    try { db.exec("ALTER TABLE agents ADD COLUMN remote_agent_id TEXT"); } catch { /* */ }
+  }
+
   // ── Schema versioning (R2) ────────────────────────────────────────────────
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_version (
@@ -705,7 +748,7 @@ export function initDatabase(): Database.Database {
     )
   `);
   // Current schema version: bump when adding migrations
-  const CURRENT_SCHEMA = 5;
+  const CURRENT_SCHEMA = 6;
   const sv = db.prepare("SELECT version FROM schema_version WHERE id=1").get() as { version: number } | undefined;
   if (!sv) {
     db.prepare("INSERT INTO schema_version (id, version, applied_at) VALUES (1, ?, datetime('now'))").run(CURRENT_SCHEMA);
