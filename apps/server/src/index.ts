@@ -61,6 +61,7 @@ import { registerFederationRoutes } from './api/federation.js';
 import { FederationRepository } from './db/federation.js';
 import { getFederationManager } from './engine/federation/federation-manager.js';
 import { FEDERATION_ENABLED, FEDERATION_WS_PATH } from './engine/federation/federation-protocol.js';
+import { WebSocketServer } from 'ws';
 import { registerBacklogRoutes } from './api/backlog.js';
 import { registerRoutingRoutes } from './api/routing.js';
 import { registerAnalyticsRoutes } from './api/analytics.js';
@@ -514,12 +515,11 @@ async function main() {
     if (FEDERATION_ENABLED) {
       const server = app.server;
       const fedManager = getFederationManager();
+      const federationWss = new WebSocketServer({ noServer: true });
 
       server.on('upgrade', (request, socket, head) => {
         if (request.url?.startsWith(FEDERATION_WS_PATH)) {
-          const { WebSocketServer } = require('ws') as typeof import('ws');
-          const wss = new WebSocketServer({ noServer: true });
-          wss.handleUpgrade(request, socket, head, (ws) => {
+          federationWss.handleUpgrade(request, socket, head, (ws) => {
             fedManager.handleConnection(ws);
           });
         }
@@ -597,6 +597,7 @@ async function main() {
   const shutdown = () => {
     logger.info('\n✨ Shutting down...');
     watchdog.stop();
+    if (FEDERATION_ENABLED) getFederationManager().shutdown();
     resetCanvasHost();
     resetChannelRouter();
     resetNodeRPCHost();

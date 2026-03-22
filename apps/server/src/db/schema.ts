@@ -738,6 +738,8 @@ export function initDatabase(): Database.Database {
   if (!agentCols2.includes('remote_agent_id')) {
     try { db.exec("ALTER TABLE agents ADD COLUMN remote_agent_id TEXT"); } catch { /* */ }
   }
+  // Index for shadow agent lookups by federation link
+  try { db.exec("CREATE INDEX IF NOT EXISTS idx_agents_federation_link ON agents(federation_link_id) WHERE federation_link_id IS NOT NULL"); } catch { /* */ }
 
   // ── Schema versioning (R2) ────────────────────────────────────────────────
   db.exec(`
