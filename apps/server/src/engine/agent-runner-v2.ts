@@ -259,6 +259,28 @@ For deeper research, use curl/bash to query these directly:
 - **Censys:** search.censys.io/api/ (certificates, hosts — if CENSYS_API_KEY set)
 Use these when web_search alone is insufficient. Always verify and cite sources.`;
 
+  // Teammate awareness — local agents + external agents
+  try {
+    const db = getDb();
+    const localAgents = db.prepare(
+      "SELECT id, name, emoji, role FROM agents WHERE status = 'active' AND id != ? AND is_shadow = 0"
+    ).all(agentConfig.id) as Array<{ id: string; name: string; emoji: string; role: string }>;
+    const externalAgents = db.prepare(
+      "SELECT id, name, emoji, description FROM external_agents"
+    ).all() as Array<{ id: string; name: string; emoji: string; description: string }>;
+
+    if (localAgents.length > 0 || externalAgents.length > 0) {
+      const lines: string[] = [];
+      for (const a of localAgents) {
+        lines.push(`- ${a.emoji} **${a.name}** (local) — ${a.role || 'agent'}. Contact: POST http://localhost:${serverPort}/sessions/{sessionId}/message with {"content":"your message"}`);
+      }
+      for (const a of externalAgents) {
+        lines.push(`- ${a.emoji} **${a.name}** (external) — ${a.description || 'external agent'}. Contact: POST http://localhost:${serverPort}/sessions/{sessionId}/message where session has agent_id=${a.id}`);
+      }
+      systemPrompt += `\n\n## Teammates\nYou can communicate with these agents via the HiveClaw API:\n${lines.join('\n')}\n\nTo message an agent: find or create a session with their agent_id, then POST /sessions/{sessionId}/message with {"content":"..."}. Use curl from the bash tool.`;
+    }
+  } catch { /* non-fatal */ }
+
   // Active task context
   try {
     const db = getDb();
