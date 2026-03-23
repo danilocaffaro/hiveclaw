@@ -129,6 +129,10 @@ function historyToLLMMessages(
     content: string;
     tool_name?: string;
     tool_result?: string;
+    sender_type?: string;
+    agent_name?: string;
+    agent_emoji?: string;
+    agent_id?: string;
   }>,
 ): LLMMessage[] {
   const out: LLMMessage[] = [];
@@ -142,7 +146,14 @@ function historyToLLMMessages(
         name: msg.tool_name ?? undefined,
       });
     } else {
-      out.push({ role, content: msg.content });
+      // Prefix user messages from agents so the model can distinguish them
+      let content = msg.content;
+      if (role === 'user' && msg.sender_type === 'agent' && msg.agent_name) {
+        content = `[Message from agent ${msg.agent_emoji ?? '🤖'} ${msg.agent_name}]\n${content}`;
+      } else if (role === 'user' && msg.sender_type === 'external_agent' && msg.agent_name) {
+        content = `[Message from external agent ${msg.agent_emoji ?? '🤖'} ${msg.agent_name}]\n${content}`;
+      }
+      out.push({ role, content });
     }
   }
   return out;
