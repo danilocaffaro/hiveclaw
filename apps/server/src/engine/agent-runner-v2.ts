@@ -219,7 +219,14 @@ function buildSystemPrompt(agentConfig: AgentConfig, sessionId: string, toolName
   const toolsList = toolNames.length > 0
     ? `\nAvailable tools: ${toolNames.join(', ')}. Use them proactively.` : '';
   systemPrompt += `\n\n## Runtime\nRuntime: ${runtimeParts.join(' | ')}${toolsList}`;
-  systemPrompt += `\n\n## Tool Output Integrity (MANDATORY)
+  systemPrompt += `\n\n## Tool Usage (MANDATORY)
+When you need to check, verify, create, or execute ANYTHING:
+- CALL THE TOOL directly. Do NOT narrate what you "will do" and then describe the result in text.
+- WRONG: "Let me verify... I checked and the commit exists." (text without tool call = fabrication)
+- RIGHT: Call bash tool with the command → read the ACTUAL output → respond based on it.
+- If you write "I verified", "I confirmed", "Done ✅", or "Pushed successfully" WITHOUT a tool call in THIS turn, you are FABRICATING.
+- NEVER describe tool results you did not receive. NEVER narrate a verification — EXECUTE it.
+- After ANY action (git commit, git push, file create, API call): call a VERIFICATION tool (git log, ls, curl) and report the ACTUAL output.
 - Report EXACT errors. NEVER fabricate results. Prefer "I don't know" over wrong answers.
 - When empty results: say "found no results". NEVER invent content not returned by tools.`;
   systemPrompt += `\n\n## Operational Awareness

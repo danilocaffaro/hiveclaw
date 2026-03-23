@@ -7,14 +7,16 @@ import { getFederationManager } from '../engine/federation/federation-manager.js
 import { FEDERATION_ENABLED } from '../engine/federation/federation-protocol.js';
 
 export function registerFederationRoutes(app: FastifyInstance, repo: FederationRepository): void {
-  // Guard: all federation routes require ENABLE_FEDERATION=true
-  app.addHook('preHandler', async (_req, reply) => {
-    if (!FEDERATION_ENABLED) {
-      return reply.status(403).send({
-        error: { code: 'FEDERATION_DISABLED', message: 'Federation is not enabled. Set ENABLE_FEDERATION=true to enable.' },
-      });
-    }
-  });
+  // Register in an encapsulated plugin scope so the preHandler guard
+  // only applies to /federation/* routes — NOT the entire app.
+  app.register(async (scope) => {
+    scope.addHook('preHandler', async (_req, reply) => {
+      if (!FEDERATION_ENABLED) {
+        return reply.status(403).send({
+          error: { code: 'FEDERATION_DISABLED', message: 'Federation is not enabled. Set ENABLE_FEDERATION=true to enable.' },
+        });
+      }
+    });
 
   // ── POST /api/federation/pair — Create pairing token ─────────────────────
   app.post<{ Body: { squadId: string; agentIds: string[]; expiresInMinutes?: number } }>(
@@ -206,4 +208,5 @@ export function registerFederationRoutes(app: FastifyInstance, repo: FederationR
       }
     },
   );
+  }); // end encapsulated scope
 }
