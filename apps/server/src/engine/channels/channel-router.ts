@@ -346,6 +346,7 @@ export class ChannelRouter {
 
     try {
       // Route to engine — get agent response
+      // Progressive delivery: send intermediate messages as the agent works step by step
       const response = await getEngineService().channels.handleInbound({
         channelId: entry.id,
         agentId: entry.agentId,
@@ -356,6 +357,14 @@ export class ChannelRouter {
         groupTitle: msg.groupTitle,
         channelType: entry.type,
         channelName: entry.name,
+        onProgress: async (text: string) => {
+          // Send intermediate step as a separate message (OpenClaw-style progressive delivery)
+          try {
+            await adapter.sendMessage(msg.chatId, { text });
+          } catch (err) {
+            logger.warn('[Router] Failed to send progress message: %s', (err as Error).message);
+          }
+        },
       });
 
       // Stop typing

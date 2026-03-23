@@ -167,6 +167,8 @@ export interface ChannelInbound {
   groupTitle?: string;
   channelType?: string;  // e.g. 'telegram', 'whatsapp', 'discord', 'slack'
   channelName?: string;  // e.g. 'Clark Telegram'
+  /** Optional callback for progressive message delivery (step-by-step UX). */
+  onProgress?: (text: string) => Promise<void>;
 }
 
 /**
@@ -245,6 +247,8 @@ async function _handleChannelInboundInner(inbound: ChannelInbound): Promise<stri
   //    runAgent internally saves the user message + assistant response.
   //    On ANY error path we fall through to the fallback persistence block below.
   let fullResponse = '';
+  let stepBuffer = '';       // Text accumulated in current step (between tool boundaries)
+  let progressSent = '';     // Text already sent via onProgress (to avoid re-sending at the end)
   let ranToCompletion = false;
   let runnerAlreadyPersisted = false; // R22-P1 Bug 2: track if runner persisted
 
@@ -261,7 +265,23 @@ async function _handleChannelInboundInner(inbound: ChannelInbound): Promise<stri
     for await (const event of runner(sessionId, userMessageWithContext, agentConfig)) {
       if (event.event === 'message.delta') {
         const delta = event.data as { text?: string };
-        if (delta.text) fullResponse += delta.text;
+        if (delta.text) {
+          fullResponse += delta.text;
+          stepBuffer += delta.text;
+        }
+      } else if (event.event === 'tool.start') {
+        // ── Progressive delivery: flush accumulated text before tool execution ──
+        // This gives the user step-by-step feedback like OpenClaw does,
+        // instead of one big message at the end.
+        if (inbound.onProgress && stepBuffer.trim()) {
+          try {
+            await inbound.onProgress(stepBuffer.trim());
+            progressSent += stepBuffer;
+          } catch (progressErr) {
+            logger.warn('[channel-responder] onProgress failed: %s', (progressErr as Error).message);
+          }
+          stepBuffer = '';
+        }
       } else if (event.event === 'message.finish') {
         ranToCompletion = true;
         // R22-P1 Bug 2: runner signals it already persisted the message
@@ -349,6 +369,13 @@ async function _handleChannelInboundInner(inbound: ChannelInbound): Promise<stri
 
   // P1: Cleanup run registry on normal completion
   if (agentConfig.engineVersion === 2) unregisterRun(sessionId);
+
+  // If progressive delivery was used, only return the unsent remainder.
+  // The channel-router will send this as the final message.
+  if (progressSent && inbound.onProgress) {
+    const remainder = fullResponse.slice(progressSent.length).trim();
+    return remainder || '';
+  }
 
   return fullResponse.trim();
 }
