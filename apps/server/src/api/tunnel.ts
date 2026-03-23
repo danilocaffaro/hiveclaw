@@ -14,6 +14,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { tunnelManager, type TunnelProvider } from '../lib/tunnel.js';
+import { getDb } from '../db/schema.js';
 
 export function registerTunnelRoutes(app: FastifyInstance) {
   const log = app.log.child({ module: 'tunnel' });
@@ -137,4 +138,21 @@ export function registerTunnelRoutes(app: FastifyInstance) {
       message: 'Tunnel stopped',
     };
   });
+
+  // POST /api/tunnel/discovery — configure Gist-based discovery
+  app.post<{ Body: { gistId?: string } }>(
+    '/api/tunnel/discovery',
+    async (req) => {
+      const { gistId } = (req.body as Record<string, unknown>) ?? {};
+      const db = getDb();
+      if (gistId) {
+        db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('tunnel_gist_id', String(gistId));
+        log.info({ gistId }, 'Discovery gist configured');
+        return { data: { gistId }, message: 'Discovery gist configured' };
+      }
+      // GET current config
+      const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('tunnel_gist_id') as { value: string } | undefined;
+      return { data: { gistId: row?.value ?? null } };
+    },
+  );
 }

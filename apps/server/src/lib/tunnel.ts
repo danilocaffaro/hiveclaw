@@ -14,10 +14,38 @@
  *   - ngrok auth token check + warning
  */
 
-import { spawn, type ChildProcess } from 'child_process';
-import { execSync } from 'child_process';
+import { spawn, execSync, type ChildProcess } from 'child_process';
 import { randomBytes } from 'crypto';
 import { getDb } from '../db/schema.js';
+
+/* ── Gist Discovery Publisher ──────────────────────────────────────────── */
+
+async function updateDiscoveryGist(
+  status: 'online' | 'offline',
+  url?: string | null,
+  token?: string | null,
+): Promise<void> {
+  try {
+    const gistId = loadSetting('tunnel_gist_id');
+    if (!gistId) return; // Gist discovery not configured
+
+    const payload = JSON.stringify({
+      url: status === 'online' ? url : null,
+      token: status === 'online' ? token : null,
+      updatedAt: new Date().toISOString(),
+      status,
+    });
+
+    // Use gh CLI to update the gist (inherits auth from environment)
+    execSync(
+      `echo '${payload.replace(/'/g, "'\\''")}' | gh gist edit ${gistId} -f hiveclaw-discovery.json -`,
+      { stdio: 'ignore', timeout: 10_000 },
+    );
+    console.log(`[tunnel] Discovery gist updated: ${status}`);
+  } catch (err) {
+    console.warn(`[tunnel] Failed to update discovery gist:`, err);
+  }
+}
 
 /* ── Types ─────────────────────────────────────────────────────────────── */
 
@@ -188,6 +216,8 @@ export class TunnelManager {
           saveSetting('tunnel_url', this._url);
           saveSetting('tunnel_provider', provider);
           saveSetting('tunnel_started_at', this._startedAt!);
+          // Publish to discovery gist (non-blocking)
+          updateDiscoveryGist('online', this._url, this._accessToken).catch(() => {});
           resolve(this._url);
         }
       };
@@ -292,6 +322,8 @@ export class TunnelManager {
   }
 
   private clearPersistedState(): void {
+    // Publish offline to discovery gist (non-blocking)
+    updateDiscoveryGist('offline').catch(() => {});
     this._accessToken = null;
     deleteSetting('tunnel_url');
     deleteSetting('tunnel_provider');
