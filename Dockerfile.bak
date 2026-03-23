@@ -41,16 +41,15 @@ RUN pnpm --filter @superclaw/web build
 
 # Stamp service worker with build timestamp
 RUN node -e "\
-  var fs=require('fs'),p=require('path');\
-  var ts=Date.now();\
-  var src='apps/web/public/sw.js';\
-  var dst='apps/web/out/sw.js';\
-  if(fs.existsSync(src)&&fs.existsSync(p.dirname(dst))){\
-    var c=fs.readFileSync(src,'utf8');\
+  const fs=require('fs');\
+  const ts=Date.now();\
+  const f='apps/web/public/sw.js';\
+  if(fs.existsSync(f)){\
+    let c=fs.readFileSync(f,'utf8');\
     c=c.replace(/v[0-9]+/,'v'+ts);\
-    fs.writeFileSync(dst,c);\
-    console.log('SW stamped',dst,ts);\
-  }else{console.log('SW skip');}"
+    fs.writeFileSync('apps/web/out/sw.js',c);\
+    console.log('SW stamped',ts);\
+  }"
 
 # ── Stage 2: Production deps ─────────────────────────────────────────────────
 FROM node:22-alpine AS deps

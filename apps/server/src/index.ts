@@ -203,6 +203,8 @@ async function main() {
     '/api/automations/',
     '/api/preview/',
     '/api/agents/status/stream',
+    '/api/tunnel/',
+    '/api/tunnel',
     // NOTE: /api/engine/ is intentionally NOT here — rewriteUrl strips /api prefix
     // so /api/engine/events/:id becomes /engine/events/:id, matching the registered route
   ];
