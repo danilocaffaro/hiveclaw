@@ -1,4 +1,18 @@
 # Changelog
+## [1.3.5] — 2026-03-23
+
+### Added
+- **Remote Access** — tunnel manager (cloudflared/ngrok) with auth middleware, auto-reconnect with exponential backoff, URL persistence, ngrok token check + warning
+- **Sender identity in LLM context** — agents see `[Message from agent 🐕 Alice]` prefix, distinguishing human vs agent messages
+- **Teammate awareness** — squad agents receive list of teammates in system prompt
+- **`ENABLE_FEDERATION=false`** in `.env.example` — federation feature flag documented
+
+### Fixed
+- **Anti-fabrication prompt** — enhanced tool usage instructions to prevent text-only fabrication in overloaded sessions
+- **Federation route scope isolation** — `preHandler` hook was global (blocked all routes when federation disabled), now scoped via `app.register()`
+- **Tunnel API routing** — `rewriteUrl` prefix stripping blocked `/api/tunnel/*` routes; added to `nativeApiPrefixes` allowlist
+- **Alice webhook bridge** — token mismatch + `X-HiveClaw-Agent-Id` header support added
+
 ## [1.3.3] — 2026-03-20
 
 ### Fixed
