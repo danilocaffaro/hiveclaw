@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { SectionTitle, SettingRow, Toggle } from './shared';
+import { RemoteAccessSection } from './RemoteAccessSection';
 
 // ─── General Tab (B068: App config only — no agent/engine config here) ────────
 // Agent config (name, prompt, temperature) → Agents tab → Agent detail
@@ -238,6 +239,9 @@ export default function GeneralTab() {
           Go to <strong>Agents</strong> tab → click an agent → Edit to configure name, system prompt, model, and parameters per agent.
         </div>
       </div>
+
+      {/* ── Remote Access ─────────────────────────────────────────── */}
+      <RemoteAccessSection />
 
       <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
         <button
