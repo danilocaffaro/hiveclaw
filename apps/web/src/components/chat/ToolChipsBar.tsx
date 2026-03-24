@@ -57,7 +57,7 @@ function ToolChip({ tool }: { tool: ActiveTool }) {
 
 export function ToolChipsBar() {
   const activeTools = useSessionStore((s) => s.activeTools);
-  const isStreaming = useSessionStore((s) => s.isStreaming);
+  const isStreaming = useSessionStore((s) => s.streamingSessions.has(s.activeSessionId ?? ''));
 
   // Only show during streaming, and only if there are tools
   if (!isStreaming || activeTools.length === 0) return null;

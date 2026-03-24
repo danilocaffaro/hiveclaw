@@ -30,7 +30,11 @@ import { SearchOverlay } from './chat/SearchOverlay';
 export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean } = {}) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const { activeSessionId, activeSquadId, isStreaming, sendMessage, createSession, messageQueue, setStreaming } = useSessionStore();
+  const { activeSessionId, activeSquadId, sendMessage, createSession, messageQueue, setStreaming } = useSessionStore();
+  // Fix: derive isStreaming from the active session, not a global flag.
+  // The old global `isStreaming` leaked across agent chats — if Clark was streaming,
+  // switching to Alice/Bolt would still show "thinking".
+  const isStreaming = useSessionStore((s) => s.streamingSessions.has(s.activeSessionId ?? ''));
   // B3: Read messages from message-store (keyed by sessionId) instead of session-store flat array
   const getMessages = useMessageStore((s) => s.getMessages);
   const addMessageToStore = useMessageStore((s) => s.addMessage);

@@ -12,7 +12,8 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 // ─── Squad Chat Header ──────────────────────────────────────────────────────────
 
 export function SquadChatHeader({ squad, agents, onSquadInfoClick }: { squad: Squad; agents: Agent[]; onSquadInfoClick?: () => void }) {
-  const { isStreaming, messages } = useSessionStore();
+  const { messages } = useSessionStore();
+  const isStreaming = useSessionStore((s) => s.streamingSessions.has(s.activeSessionId ?? ''));
   const { toggleRightPanel, toggleSettings, setMobileSidebarOpen, setMobileRightPanelOpen, interfaceMode } = useUIStore();
   const isMobile = useIsMobile();
 
@@ -159,7 +160,8 @@ export function SquadChatHeader({ squad, agents, onSquadInfoClick }: { squad: Sq
 // ─── Chat Header ────────────────────────────────────────────────────────────────
 
 export function ChatHeader({ onAgentInfoClick }: { onAgentInfoClick?: () => void }) {
-  const { activeSessionId, activeSquadId, isStreaming, sessions } = useSessionStore();
+  const { activeSessionId, activeSquadId, sessions } = useSessionStore();
+  const isStreaming = useSessionStore((s) => s.streamingSessions.has(s.activeSessionId ?? ''));
   const { toggleRightPanel, toggleSettings, setMobileSidebarOpen, setMobileRightPanelOpen, interfaceMode } = useUIStore();
   const squads = useSquadStore((s) => s.squads);
   const agents = useAgentStore((s) => s.agents);
