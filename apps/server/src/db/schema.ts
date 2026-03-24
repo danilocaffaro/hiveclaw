@@ -15,6 +15,7 @@ export function initDatabase(): Database.Database {
   const db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
+  db.pragma('trusted_schema = ON');   // Required: FTS5 triggers use virtual table writes (DELETE → fts('delete', ...))
   db.pragma('wal_autocheckpoint = 1000'); // S1: Auto-checkpoint every 1000 pages (~4MB)
 
   db.exec(`
