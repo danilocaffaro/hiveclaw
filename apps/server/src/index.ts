@@ -440,7 +440,13 @@ async function main() {
         const ext = extname(filePath);
         if (ext) {
           reply.header('Content-Type', mimeTypes[ext] || 'application/octet-stream');
-          if (ext !== '.html') reply.header('Cache-Control', 'public, max-age=31536000, immutable');
+          // sw.js and manifest.json must NOT be cached — browser needs to detect new builds
+          const noCacheFiles = ['/sw.js', '/manifest.json'];
+          if (ext === '.html' || noCacheFiles.includes(safePath)) {
+            reply.header('Cache-Control', 'no-cache');
+          } else {
+            reply.header('Cache-Control', 'public, max-age=31536000, immutable');
+          }
           return reply.send(readFileSync(filePath));
         }
       }
