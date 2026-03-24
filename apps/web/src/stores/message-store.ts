@@ -79,9 +79,19 @@ export const useMessageStore = create<MessageStore>((set, get) => ({
       const existing = next.get(sessionId) ?? [];
       if (existing.length === 0) return s;
       const msgs = [...existing];
-      const last = { ...msgs[msgs.length - 1] };
-      last.content += text;
-      msgs[msgs.length - 1] = last;
+      // Find the last assistant message — never append to a user bubble
+      let targetIdx = msgs.length - 1;
+      while (targetIdx >= 0 && msgs[targetIdx].role !== 'assistant') {
+        targetIdx--;
+      }
+      if (targetIdx < 0) {
+        // No assistant message — create one
+        msgs.push({ id: `temp-${Date.now()}`, session_id: sessionId, role: 'assistant', content: text, created_at: new Date().toISOString() });
+      } else {
+        const target = { ...msgs[targetIdx] };
+        target.content += text;
+        msgs[targetIdx] = target;
+      }
       next.set(sessionId, msgs);
       return { messages: next };
     });

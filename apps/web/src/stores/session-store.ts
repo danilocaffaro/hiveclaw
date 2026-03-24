@@ -181,9 +181,20 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     set((s) => {
       if (s.messages.length === 0) return s;
       const msgs = [...s.messages];
-      const last = { ...msgs[msgs.length - 1] };
-      last.content += text;
-      msgs[msgs.length - 1] = last;
+      // Find the last assistant message to append to — never append to a user bubble.
+      // Walk backwards to find the correct target (skip tool messages, etc.)
+      let targetIdx = msgs.length - 1;
+      while (targetIdx >= 0 && msgs[targetIdx].role !== 'assistant') {
+        targetIdx--;
+      }
+      if (targetIdx < 0) {
+        // No assistant message found — create one so text doesn't land on user bubble
+        msgs.push({ id: `temp-${Date.now()}`, session_id: activeSessionId ?? '', role: 'assistant', content: text, created_at: new Date().toISOString() });
+        return { messages: msgs };
+      }
+      const target = { ...msgs[targetIdx] };
+      target.content += text;
+      msgs[targetIdx] = target;
       return { messages: msgs };
     });
   },
