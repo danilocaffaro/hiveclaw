@@ -1,30 +1,46 @@
 'use client';
 
 import { create } from 'zustand';
+import { useSessionStore } from './session-store';
 
 // ─── RSP (Right-Side Panel) Context Store ─────────────────────────────────────
-// Provides scoped context for all right-panel components: which agent/squad/member
-// is currently active. Granular selectors prevent re-render cascades across panels.
+// S1+S2+X4 refactor: activeAgentId and activeSquadId are now DERIVED from
+// session-store (single source of truth). Only selectedMemberId is local state.
+//
+// The public API (enterDM, enterSquad, selectors) is preserved so all consumers
+// (RightPanel, AgentTabBar, CodePanel, SprintPanel, etc.) keep working unchanged.
 
 export interface RSPState {
-  /** ID of the active agent (DM or squad member) */
-  activeAgentId: string | null;
-  /** ID of the active squad (null when in DM mode) */
-  activeSquadId: string | null;
-  /** ID of selected member within a squad (for per-member view) */
+  /** Selected member within a squad (local UI state) */
   selectedMemberId: string | null;
+
+  /** @deprecated — derived from session-store, kept for selector compatibility */
+  activeAgentId: string | null;
+  /** @deprecated — derived from session-store, kept for selector compatibility */
+  activeSquadId: string | null;
 
   // ── Actions ──
   setActiveAgent: (agentId: string | null) => void;
   setActiveSquad: (squadId: string | null) => void;
   setSelectedMember: (memberId: string | null) => void;
 
-  /** Set DM context — clears squad/member */
+  /** Set DM context — delegates to session-store */
   enterDM: (agentId: string) => void;
-  /** Set squad context — selects first member by default */
+  /** Set squad context — delegates to session-store */
   enterSquad: (squadId: string, firstMemberId?: string) => void;
-  /** Clear all context */
+  /** Clear selected member */
   reset: () => void;
+}
+
+// Internal helper: sync derived fields from session-store into RSP for selector compatibility
+function derivedFromSession(): { activeAgentId: string | null; activeSquadId: string | null } {
+  const { activeSessionId, sessions, activeSquadId } = useSessionStore.getState();
+  let agentId: string | null = null;
+  if (activeSessionId) {
+    const session = sessions.find((s) => s.id === activeSessionId);
+    agentId = session?.agent_id ?? null;
+  }
+  return { activeAgentId: agentId, activeSquadId };
 }
 
 export const useRSPStore = create<RSPState>((set) => ({
@@ -32,33 +48,28 @@ export const useRSPStore = create<RSPState>((set) => ({
   activeSquadId: null,
   selectedMemberId: null,
 
-  setActiveAgent: (agentId) => set({ activeAgentId: agentId }),
-  setActiveSquad: (squadId) => set({ activeSquadId: squadId }),
+  setActiveAgent: (_agentId) => set({ ...derivedFromSession() }),
+  setActiveSquad: (_squadId) => set({ ...derivedFromSession() }),
   setSelectedMember: (memberId) => set({ selectedMemberId: memberId }),
 
-  enterDM: (agentId) =>
-    set({
-      activeAgentId: agentId,
-      activeSquadId: null,
-      selectedMemberId: null,
-    }),
+  enterDM: (_agentId) =>
+    set({ selectedMemberId: null, ...derivedFromSession() }),
 
-  enterSquad: (squadId, firstMemberId) =>
-    set({
-      activeSquadId: squadId,
-      activeAgentId: firstMemberId ?? null,
-      selectedMemberId: firstMemberId ?? null,
-    }),
+  enterSquad: (_squadId, firstMemberId) =>
+    set({ selectedMemberId: firstMemberId ?? null, ...derivedFromSession() }),
 
   reset: () =>
-    set({
-      activeAgentId: null,
-      activeSquadId: null,
-      selectedMemberId: null,
-    }),
+    set({ selectedMemberId: null, activeAgentId: null, activeSquadId: null }),
 }));
 
-// ── Granular selectors (minimize re-renders) ──────────────────────────────────
+// Keep RSP in sync when session-store changes (single subscription, minimal overhead)
+useSessionStore.subscribe((state, prev) => {
+  if (state.activeSessionId !== prev.activeSessionId || state.activeSquadId !== prev.activeSquadId) {
+    useRSPStore.setState(derivedFromSession());
+  }
+});
+
+// ── Granular selectors (same signature as before — consumers don't change) ────
 export const selectActiveAgentId = (s: RSPState) => s.activeAgentId;
 export const selectActiveSquadId = (s: RSPState) => s.activeSquadId;
 export const selectSelectedMemberId = (s: RSPState) => s.selectedMemberId;

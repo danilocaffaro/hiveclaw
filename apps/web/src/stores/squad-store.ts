@@ -25,9 +25,7 @@ export interface SquadCreateInput {
 
 interface SquadStore {
   squads: Squad[];
-  activeSquadId: string | null;
   setSquads: (squads: Squad[]) => void;
-  setActiveSquad: (id: string | null) => void;
   fetchSquads: () => Promise<void>;
   createSquad: (squad: SquadCreateInput) => Promise<Squad>;
   updateSquad: (id: string, updates: Partial<SquadCreateInput>) => Promise<Squad>;
@@ -50,10 +48,8 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const useSquadStore = create<SquadStore>((set) => ({
   squads: [],
-  activeSquadId: null,
 
   setSquads: (squads) => set({ squads }),
-  setActiveSquad: (id) => set({ activeSquadId: id }),
 
   fetchSquads: async () => {
     try {

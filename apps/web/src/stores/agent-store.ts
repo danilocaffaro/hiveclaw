@@ -41,8 +41,8 @@ export interface AgentCreateInput {
 
 interface AgentStore {
   agents: Agent[];
-  activeAgentId: string | null;
   setAgents: (agents: Agent[]) => void;
+  /** @deprecated — agent selection is now derived from session-store via rsp-store */
   setActiveAgent: (id: string | null) => void;
   fetchAgents: () => Promise<void>;
   createAgent: (agent: AgentCreateInput) => Promise<Agent>;
@@ -66,10 +66,10 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const useAgentStore = create<AgentStore>((set) => ({
   agents: [],
-  activeAgentId: null,
 
   setAgents: (agents) => set({ agents }),
-  setActiveAgent: (id) => set({ activeAgentId: id }),
+  /** @deprecated — no-op, agent selection derived from session-store */
+  setActiveAgent: (_id) => { /* no-op — derived from session-store via rsp-store */ },
 
   fetchAgents: async () => {
     try {
