@@ -45,6 +45,7 @@ import { registerMCPRoutes } from './api/mcp.js';
 import { registerDataRoutes } from './api/data.js';
 import { registerPresentationRoutes } from './api/presentations.js';
 import { registerTunnelRoutes } from './api/tunnel.js';
+import { registerConnectRoutes } from './api/connect.js';
 import { registerMarketplaceRoutes } from './api/marketplace.js';
 import { registerAuthRoutes } from './api/auth.js';
 import { registerInviteRoutes } from './api/invites.js';
@@ -483,6 +484,7 @@ async function main() {
   registerDataRoutes(app);
   registerPresentationRoutes(app);
   registerTunnelRoutes(app);
+  registerConnectRoutes(app);
   registerMarketplaceRoutes(app, db);
   registerAuthRoutes(app, db);
   registerInviteRoutes(app, db);
