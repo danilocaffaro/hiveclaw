@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HiveClaw — Self-Hosted AI Platform</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐝</text></svg>">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0D1117;color:#F0F6FC;min-height:100vh}
+    .hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 20px;background:linear-gradient(135deg,#0D1117,#161B22,#0D1117)}
+    .logo{font-size:72px;margin-bottom:16px}
+    h1{font-size:48px;font-weight:800;background:linear-gradient(135deg,#F59E0B,#D97706);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:12px}
+    .tagline{font-size:20px;color:#8B949E;max-width:600px;line-height:1.6;margin-bottom:40px}
+    .buttons{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+    .btn{padding:14px 32px;border-radius:8px;font-size:16px;font-weight:600;text-decoration:none;transition:all .2s;cursor:pointer;border:none}
+    .btn-primary{background:linear-gradient(135deg,#F59E0B,#D97706);color:#000}
+    .btn-primary:hover{opacity:.9;transform:translateY(-1px)}
+    .btn-secondary{background:transparent;color:#F59E0B;border:1px solid #F59E0B}
+    .btn-secondary:hover{background:rgba(245,158,11,.1)}
+    .features{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:24px;max-width:900px;margin:60px auto 0;padding:0 20px}
+    .feature{background:#161B22;border:1px solid #30363D;border-radius:12px;padding:24px;text-align:left}
+    .feature-icon{font-size:28px;margin-bottom:12px}
+    .feature h3{font-size:16px;margin-bottom:8px;color:#F0F6FC}
+    .feature p{font-size:13px;color:#8B949E;line-height:1.5}
+    .footer{text-align:center;padding:40px 20px;color:#6E7681;font-size:13px}
+    .footer a{color:#F59E0B;text-decoration:none}
+    @media(max-width:600px){h1{font-size:32px}.tagline{font-size:16px}}
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <div class="logo">🐝</div>
+    <h1>HiveClaw</h1>
+    <p class="tagline">Self-hosted AI platform with multi-agent squads, real-time streaming, tool execution, and memory. Your AI team, on your hardware.</p>
+    <div class="buttons">
+      <a href="./connect/" class="btn btn-primary">Remote Connect 🔗</a>
+      <a href="https://github.com/danilocaffaro/superclaw-pure" class="btn btn-secondary">GitHub ⭐</a>
+    </div>
+    <div class="features">
+      <div class="feature"><div class="feature-icon">🤖</div><h3>Multi-Agent Squads</h3><p>Create teams of AI agents with different specialties. Sequential, debate, round-robin strategies.</p></div>
+      <div class="feature"><div class="feature-icon">🔧</div><h3>Tool Execution</h3><p>Agents run code, manage files, search the web, control your desktop, and more.</p></div>
+      <div class="feature"><div class="feature-icon">🧠</div><h3>Persistent Memory</h3><p>Agents remember context across conversations. Facts, preferences, decisions — all persisted.</p></div>
+      <div class="feature"><div class="feature-icon">📱</div><h3>Access Anywhere</h3><p>Web UI, Telegram, Discord, Slack. Connect from your phone via Remote Access.</p></div>
+    </div>
+  </div>
+  <div class="footer"><p>Built with ❤️ — <a href="https://github.com/danilocaffaro/superclaw-pure">Open Source</a></p></div>
+</body>
+</html>
