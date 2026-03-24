@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useUIStore } from '@/stores/ui-store';
+import { useSessionStore } from '@/stores/session-store';
 import { VoiceRecorder } from './VoiceRecorder';
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
@@ -57,9 +58,29 @@ export function InputBar({ onSend }: { onSend: (text: string, attachments?: Atta
   const interfaceMode = useUIStore(s => s.interfaceMode);
   const isMobile = useIsMobile();
 
+  // Stop button: derive streaming state from active session
+  const activeSessionId = useSessionStore((s) => s.activeSessionId);
+  const isStreaming = useSessionStore((s) => s.streamingSessions.has(s.activeSessionId ?? ''));
+
+  const handleStop = useCallback(async () => {
+    if (!activeSessionId) return;
+    try {
+      await fetch(`/api/sessions/${activeSessionId}/cancel`, { method: 'POST' });
+    } catch (err) {
+      console.error('Failed to cancel run:', err);
+    }
+  }, [activeSessionId]);
+
   const handleSend = () => {
     if (!text.trim() && attachments.length === 0) return;
-    onSend(text.trim(), attachments.length > 0 ? attachments : undefined);
+    const trimmed = text.trim();
+    // Handle /stop command inline
+    if (trimmed.toLowerCase() === '/stop') {
+      handleStop();
+      setText('');
+      return;
+    }
+    onSend(trimmed, attachments.length > 0 ? attachments : undefined);
     setText('');
     setAttachments([]);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -209,8 +230,20 @@ export function InputBar({ onSend }: { onSend: (text: string, attachments?: Atta
             disabled={false}
           />
 
-          {/* Send or Mic button */}
-          {hasContent ? (
+          {/* Send, Stop, or Mic button */}
+          {isStreaming ? (
+            <button onClick={handleStop} aria-label="Stop generation" title="Stop generation (/stop)" style={{
+              width: 36, height: 36, borderRadius: '50%',
+              background: 'var(--error, #ef4444)',
+              color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 14, flexShrink: 0, transition: 'all 150ms',
+              cursor: 'pointer',
+              border: 'none',
+            }}>
+              ■
+            </button>
+          ) : hasContent ? (
             <button onClick={handleSend} style={{
               width: 36, height: 36, borderRadius: '50%',
               background: 'var(--coral)',
