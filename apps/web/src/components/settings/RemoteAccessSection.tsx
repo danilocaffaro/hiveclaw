@@ -5,30 +5,37 @@ import { SectionTitle, SettingRow, Toggle } from './shared';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? '/api';
 
-interface TunnelStatus {
-  active: boolean;
-  provider: string | null;
-  url: string | null;
-  startedAt: string | null;
-  pid: number | null;
-  error: string | null;
+interface ConnectStatus {
+  enabled: boolean;
+  connected: boolean;
+  instanceId: string | null;
+  broker: string | null;
+  devicesCount: number;
 }
 
-interface ProvidersInfo {
-  available: string[];
-  preferred: string | null;
+interface ConnectDevice {
+  id: string;
+  name: string;
+  userId: string;
+  pairedAt: string;
+  lastSeenAt: string;
+  revoked: boolean;
+  userAgent?: string;
 }
 
 export function RemoteAccessSection() {
-  const [status, setStatus] = useState<TunnelStatus | null>(null);
-  const [providers, setProviders] = useState<ProvidersInfo | null>(null);
+  const [status, setStatus] = useState<ConnectStatus | null>(null);
+  const [devices, setDevices] = useState<ConnectDevice[]>([]);
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copiedToken, setCopiedToken] = useState(false);
+  const [showToken, setShowToken] = useState(false);
+  const [generatingToken, setGeneratingToken] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/tunnel/status`);
+      const res = await fetch(`${API}/connect/status`);
       const json = await res.json();
       setStatus(json.data);
     } catch {
@@ -36,11 +43,11 @@ export function RemoteAccessSection() {
     }
   }, []);
 
-  const fetchProviders = useCallback(async () => {
+  const fetchDevices = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/tunnel/providers`);
+      const res = await fetch(`${API}/connect/devices`);
       const json = await res.json();
-      setProviders(json.data);
+      setDevices(json.data || []);
     } catch {
       // API not available
     }
@@ -48,42 +55,82 @@ export function RemoteAccessSection() {
 
   useEffect(() => {
     fetchStatus();
-    fetchProviders();
-    const interval = setInterval(fetchStatus, 10_000);
+    fetchDevices();
+    const interval = setInterval(() => {
+      fetchStatus();
+      fetchDevices();
+    }, 15_000);
     return () => clearInterval(interval);
-  }, [fetchStatus, fetchProviders]);
+  }, [fetchStatus, fetchDevices]);
 
   const handleToggle = async (enable: boolean) => {
     setLoading(true);
     setError(null);
     try {
-      const endpoint = enable ? 'start' : 'stop';
-      const res = await fetch(`${API}/tunnel/${endpoint}`, { method: 'POST' });
+      const endpoint = enable ? 'enable' : 'disable';
+      const res = await fetch(`${API}/connect/${endpoint}`, { method: 'POST' });
       const json = await res.json();
-      if (json.error) {
-        setError(json.error);
-      }
-      setStatus(json.data);
-    } catch (err: any) {
-      setError(err.message ?? 'Failed to toggle tunnel');
+      if (json.error) setError(json.error);
+      await fetchStatus();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to toggle');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCopy = () => {
-    if (status?.url) {
-      navigator.clipboard.writeText(status.url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+  const handleGenerateToken = async () => {
+    setGeneratingToken(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API}/connect/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'admin' }),
+      });
+      const json = await res.json();
+      if (json.error) {
+        setError(json.error);
+      } else {
+        setToken(json.data.token);
+        setShowToken(true);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to generate token');
+    } finally {
+      setGeneratingToken(false);
     }
   };
 
-  const isActive = status?.active ?? false;
-  const hasProvider = (providers?.available?.length ?? 0) > 0;
-  const uptime = status?.startedAt
-    ? Math.round((Date.now() - new Date(status.startedAt).getTime()) / 60_000)
-    : 0;
+  const handleCopyToken = () => {
+    if (token) {
+      navigator.clipboard.writeText(token);
+      setCopiedToken(true);
+      setTimeout(() => setCopiedToken(false), 2000);
+    }
+  };
+
+  const handleRevokeDevice = async (deviceId: string) => {
+    try {
+      await fetch(`${API}/connect/devices/${deviceId}`, { method: 'DELETE' });
+      await fetchDevices();
+    } catch {
+      // ignore
+    }
+  };
+
+  const isEnabled = status?.enabled ?? false;
+  const isConnected = status?.connected ?? false;
+
+  const timeAgo = (dateStr: string): string => {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  };
 
   return (
     <>
@@ -92,34 +139,28 @@ export function RemoteAccessSection() {
         textTransform: 'uppercase', letterSpacing: '0.6px',
         marginTop: 28, marginBottom: 8,
       }}>
-        🌐 Remote Access
+        🌐 HiveClaw Connect
       </div>
 
-      {!hasProvider && (
-        <div style={{
-          padding: '12px 14px', borderRadius: 'var(--radius-md)',
-          background: 'rgba(255,180,50,0.08)', border: '1px solid rgba(255,180,50,0.25)',
-          fontSize: 12, color: 'var(--fg-muted)', marginBottom: 12,
-        }}>
-          <strong style={{ color: 'var(--text)' }}>⚠️ No tunnel provider found.</strong><br />
-          Install <code style={{ background: 'var(--bg-secondary)', padding: '1px 5px', borderRadius: 4, fontSize: 11 }}>
-            cloudflared
-          </code> or <code style={{ background: 'var(--bg-secondary)', padding: '1px 5px', borderRadius: 4, fontSize: 11 }}>
-            ngrok
-          </code> to enable remote access.
-        </div>
-      )}
+      <div style={{
+        fontSize: 12, color: 'var(--fg-muted)', marginBottom: 12,
+        lineHeight: 1.5,
+      }}>
+        Access your AI team from any device. Uses encrypted MQTT relay — no ports exposed, no tunnels needed.
+      </div>
 
       <SettingRow
         label="Enable Remote Access"
         desc={
-          isActive
-            ? `Active via ${status?.provider} · ${uptime}min uptime`
-            : 'Expose this HiveClaw instance to the internet via secure tunnel'
+          isConnected
+            ? `● Connected to relay · ${status?.devicesCount || 0} device${(status?.devicesCount || 0) !== 1 ? 's' : ''} paired`
+            : isEnabled
+              ? '○ Connecting to relay…'
+              : 'Connect to MQTT relay for remote device access'
         }
       >
         <Toggle
-          checked={isActive}
+          checked={isEnabled}
           onChange={handleToggle}
         />
       </SettingRow>
@@ -134,7 +175,7 @@ export function RemoteAccessSection() {
             border: '2px solid var(--border)', borderTopColor: 'var(--coral)',
             borderRadius: '50%', animation: 'spin 1s linear infinite',
           }} />
-          Starting tunnel…
+          {isEnabled ? 'Disconnecting…' : 'Connecting…'}
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       )}
@@ -149,58 +190,134 @@ export function RemoteAccessSection() {
         </div>
       )}
 
-      {isActive && status?.url && (
-        <div style={{
-          marginTop: 8, padding: '14px 16px',
-          borderRadius: 'var(--radius-md)',
-          background: 'rgba(80,200,120,0.06)', border: '1px solid rgba(80,200,120,0.2)',
-        }}>
-          <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 6, fontWeight: 600 }}>
-            PUBLIC URL
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <code style={{
-              flex: 1, fontSize: 13, fontFamily: 'var(--font-mono)',
-              color: 'var(--text)', wordBreak: 'break-all',
-              background: 'var(--bg-secondary)', padding: '8px 12px',
-              borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+      {isEnabled && (
+        <>
+          {/* Generate Token Section */}
+          <div style={{
+            marginTop: 12, padding: '14px 16px',
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+          }}>
+            <div style={{
+              fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 8,
             }}>
-              {status.url}
-            </code>
-            <button
-              onClick={handleCopy}
-              style={{
-                padding: '8px 14px', borderRadius: 'var(--radius-md)',
-                background: copied ? 'var(--green)' : 'var(--bg-secondary)',
-                color: copied ? '#fff' : 'var(--text)',
-                border: '1px solid var(--border)',
-                fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                transition: 'all 0.2s',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {copied ? '✓ Copied' : '📋 Copy'}
-            </button>
+              📱 Connect a Device
+            </div>
+            <div style={{
+              fontSize: 12, color: 'var(--fg-muted)', marginBottom: 10, lineHeight: 1.5,
+            }}>
+              Generate a token, then open <strong>hiveclaw.github.io/connect</strong> on your phone or laptop and paste it.
+            </div>
+
+            {!showToken ? (
+              <button
+                onClick={handleGenerateToken}
+                disabled={generatingToken}
+                style={{
+                  padding: '8px 16px', borderRadius: 'var(--radius-md)',
+                  background: 'var(--coral)', color: '#fff',
+                  border: 'none', fontSize: 12, fontWeight: 600,
+                  cursor: generatingToken ? 'wait' : 'pointer',
+                  opacity: generatingToken ? 0.6 : 1,
+                }}
+              >
+                {generatingToken ? 'Generating…' : '🔑 Generate Token'}
+              </button>
+            ) : (
+              <div>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
+                }}>
+                  <code style={{
+                    flex: 1, fontSize: 11, fontFamily: 'var(--font-mono)',
+                    color: 'var(--text)', wordBreak: 'break-all',
+                    background: 'var(--bg)', padding: '10px 12px',
+                    borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+                    lineHeight: 1.4,
+                  }}>
+                    {token}
+                  </code>
+                  <button
+                    onClick={handleCopyToken}
+                    style={{
+                      padding: '8px 14px', borderRadius: 'var(--radius-md)',
+                      background: copiedToken ? '#50c878' : 'var(--bg)',
+                      color: copiedToken ? '#fff' : 'var(--text)',
+                      border: '1px solid var(--border)',
+                      fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {copiedToken ? '✓ Copied' : '📋 Copy'}
+                  </button>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>
+                  ⚠️ This token contains connection info. Share securely — don't post publicly.
+                </div>
+                <button
+                  onClick={() => { setShowToken(false); setToken(null); }}
+                  style={{
+                    marginTop: 8, padding: '4px 10px', borderRadius: 'var(--radius-sm)',
+                    background: 'transparent', color: 'var(--fg-muted)',
+                    border: '1px solid var(--border)', fontSize: 11,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Generate New
+                </button>
+              </div>
+            )}
           </div>
 
+          {/* Connected Devices */}
           <div style={{
-            marginTop: 10, fontSize: 11, color: 'var(--fg-muted)',
-            display: 'flex', gap: 16, flexWrap: 'wrap',
+            marginTop: 12, padding: '14px 16px',
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--bg-secondary)', border: '1px solid var(--border)',
           }}>
-            <span>Provider: <strong>{status.provider}</strong></span>
-            <span>PID: <strong>{status.pid}</strong></span>
-            <span>Uptime: <strong>{uptime}min</strong></span>
-          </div>
+            <div style={{
+              fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 8,
+            }}>
+              📋 Connected Devices
+            </div>
 
-          <div style={{
-            marginTop: 10, fontSize: 11, color: 'var(--fg-muted)',
-            padding: '8px 10px', background: 'var(--bg-secondary)',
-            borderRadius: 'var(--radius-sm)',
-          }}>
-            💡 Share this URL with anyone to give them access to this HiveClaw instance.
-            Use <strong>Invite Links</strong> (Users tab) to control who can connect.
+            {devices.length === 0 ? (
+              <div style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+                No devices connected yet.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {devices.map(d => (
+                  <div key={d.id} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '8px 10px', borderRadius: 'var(--radius-sm)',
+                    background: 'var(--bg)', border: '1px solid var(--border)',
+                  }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
+                        {d.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>
+                        Last seen: {timeAgo(d.lastSeenAt)} · Paired: {timeAgo(d.pairedAt)}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleRevokeDevice(d.id)}
+                      style={{
+                        padding: '4px 10px', borderRadius: 'var(--radius-sm)',
+                        background: 'rgba(255,80,80,0.1)', color: '#ff5050',
+                        border: '1px solid rgba(255,80,80,0.2)',
+                        fontSize: 11, cursor: 'pointer',
+                      }}
+                    >
+                      Revoke
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
+        </>
       )}
     </>
   );
