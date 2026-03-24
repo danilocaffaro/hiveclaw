@@ -132,10 +132,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const session = get().sessions.find((s) => s.id === id);
     // B6: Clear unread badge when opening a session
     if (id) useMessageStore.getState().clearUnread(id);
+    // Clear activeTools when switching sessions — prevents tool chips from
+    // leaking across agent chats (e.g. Clark's grep/read showing in Alice's view).
+    const isNewSessionStreaming = get().streamingSessions.has(id ?? '');
     set({
       activeSessionId: id,
       activeSquadId: session?.squad_id ?? null,
       messages: [],
+      activeTools: isNewSessionStreaming ? get().activeTools : [],
     });
     if (id) {
       try { localStorage.setItem('hiveclaw-active-session', id); } catch { /* noop */ }
