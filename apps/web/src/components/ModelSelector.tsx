@@ -228,7 +228,7 @@ export default function ModelSelector() {
           if (!open) e.currentTarget.style.borderColor = 'var(--border)';
         }}
       >
-        <span style={{ fontSize: 14, flexShrink: 0 }}>{currentModel.providerIcon}</span>
+        <span style={{ fontSize: 14, flexShrink: 0 }}>{activeAgent?.emoji ?? currentModel.providerIcon}</span>
         <span
           style={{
             flex: 1,

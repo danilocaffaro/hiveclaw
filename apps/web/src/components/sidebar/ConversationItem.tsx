@@ -54,11 +54,12 @@ export function ConversationItem({ agent, session, isActive, onEdit }: Conversat
 
   const handleClick = () => {
     setActiveAgent(agent.id);
-    useRSPStore.getState().enterDM(agent.id);
     if (session) {
       setActiveSession(session.id);
       clearUnread(session.id);
+      useRSPStore.getState().enterDM(agent.id);
     } else {
+      // createSession sets activeSessionId on completion → triggers rsp-store sync via subscribe
       void createSession({ title: `Chat with ${agent.name}`, agent_id: agent.id });
     }
     if (window.innerWidth < 768) {
