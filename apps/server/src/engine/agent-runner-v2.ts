@@ -388,19 +388,24 @@ export async function* runAgentV2(
     }
   }
 
-  // ── 3. Smart context compaction ─────────────────────────────────────────────
-  // Compact at 30K message tokens (~120K chars). System prompt + 21 tools add
-  // ~30K tokens overhead, so total context stays under ~60K — well within the
-  // Copilot proxy limit and the sweet spot for model accuracy.
-  try {
-    await sessionManager.smartCompact(sessionId, 30_000, agentConfig.id);
-  } catch { /* continue with full history */ }
-
-  // ── 4. Prepare tools & system prompt ────────────────────────────────────────
+  // ── 3. Prepare tools & system prompt (before compaction to measure overhead) ──
   const { tools: enabledTools, byName: toolsByName } = getToolsForAgent(agentConfig.tools);
   const toolDefs = toolsToAdapterDefinitions(enabledTools);
   const toolNames = enabledTools.map(t => t.definition.name);
   const systemPrompt = buildSystemPrompt(agentConfig, sessionId, toolNames);
+
+  // ── 4. Smart context compaction (total-context-aware, like OpenClaw) ────────
+  // Estimate overhead from system prompt + tool definitions so compaction
+  // considers the FULL context sent to the LLM, not just message content.
+  const toolDefsOverheadChars = JSON.stringify(toolDefs).length;
+  const fixedOverheadTokens = Math.ceil((systemPrompt.length + toolDefsOverheadChars) / 4);
+  // Target: keep total context under 50K tokens (sweet spot for accuracy).
+  // Message budget = 50K - fixed overhead.
+  const TARGET_TOTAL_TOKENS = 50_000;
+  const messageBudgetTokens = Math.max(10_000, TARGET_TOTAL_TOKENS - fixedOverheadTokens);
+  try {
+    await sessionManager.smartCompact(sessionId, messageBudgetTokens, agentConfig.id);
+  } catch { /* continue with full history */ }
 
   // ── 5. Build messages array ─────────────────────────────────────────────────
   const freshMessages = sessionManager.getMessages(sessionId);

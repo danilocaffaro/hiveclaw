@@ -462,10 +462,12 @@ export class SessionManager {
 
     const totalApproxTokens = allMessages.reduce((s, m) => s + Math.ceil(m.content.length / 4), 0);
     // Compact if token threshold exceeded OR if message count is too high.
-    // With 21 tools (~12K tokens overhead), 40+ messages means the total context
-    // sent to the LLM is likely >60K tokens even if message content alone looks small.
     const MAX_MESSAGES_BEFORE_COMPACT = 40;
-    if (totalApproxTokens <= maxTokens && allMessages.length <= MAX_MESSAGES_BEFORE_COMPACT) return;
+    const needsCompaction = totalApproxTokens > maxTokens || allMessages.length > MAX_MESSAGES_BEFORE_COMPACT;
+    if (!needsCompaction) return;
+
+    logger.info('[SmartCompact] Triggered: %d msgs, ~%dK msg tokens (budget: %dK). Compacting...',
+      allMessages.length, Math.round(totalApproxTokens / 1000), Math.round(maxTokens / 1000));
 
     const cutIndex = Math.ceil(allMessages.length * 0.6);
     if (cutIndex <= 1) return;
