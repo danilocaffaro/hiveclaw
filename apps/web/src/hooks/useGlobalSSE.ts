@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useSessionStore } from '@/stores/session-store';
 import { useMessageStore } from '@/stores/message-store';
+import { getApiBase, getAuthToken } from '@/lib/api-base';
 
 /**
  * K-3: Global SSE listener for unread badge updates.
@@ -11,7 +12,10 @@ import { useMessageStore } from '@/stores/message-store';
  */
 export function useGlobalSSE() {
   useEffect(() => {
-    const es = new EventSource('/api/events');
+    const base = getApiBase();
+    const token = getAuthToken();
+    const url = `${base}/events${token ? `?token=${token}` : ''}`;
+    const es = new EventSource(url);
 
     es.onmessage = (evt) => {
       try {

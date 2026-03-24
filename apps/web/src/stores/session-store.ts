@@ -84,11 +84,20 @@ interface SessionStore {
   sendMessage: (sessionId: string, content: string) => Promise<void>;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '/api';
+import { getApiBase, getAuthToken } from '../lib/api-base';
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+  const base = getApiBase();
+  const token = getAuthToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options?.headers as Record<string, string>),
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const res = await fetch(`${base}${path}`, {
+    headers,
     ...options,
   });
   if (!res.ok) {
@@ -283,9 +292,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         return;
       }
 
-      const res = await fetch(`${API_BASE}/sessions`, {
+      const token = getAuthToken();
+      const sessHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) sessHeaders['Authorization'] = `Bearer ${token}`;
+      
+      const res = await fetch(`${getApiBase()}/sessions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: sessHeaders,
         body: JSON.stringify({ squad_id: squadId, title: title ?? 'Squad Session', mode: 'squad' }),
       });
       if (!res.ok) throw new Error('Failed to create squad session');
@@ -399,9 +412,13 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
     try {
       // POST /sessions/:id/message returns SSE directly
-      const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/message`, {
+      const token = getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      
+      const res = await fetch(`${getApiBase()}/sessions/${encodeURIComponent(sessionId)}/message`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ content }),
       });
 

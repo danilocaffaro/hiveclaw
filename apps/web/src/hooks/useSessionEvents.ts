@@ -13,8 +13,8 @@
 // ============================================================
 
 import { useEffect, useRef, useCallback } from 'react';
+import { getApiBase, getAuthToken } from '@/lib/api-base';
 
-const API_BASE = '/api';
 const ENABLE_MESSAGE_BUS = process.env.NEXT_PUBLIC_ENABLE_MESSAGE_BUS === 'true';
 
 export interface SessionSSEEvent {
@@ -59,7 +59,9 @@ export function useSessionEvents(
       esRef.current = null;
     }
 
-    const url = `${API_BASE}/sessions/${encodeURIComponent(id)}/events`;
+    const base = getApiBase();
+    const token = getAuthToken();
+    const url = `${base}/sessions/${encodeURIComponent(id)}/events${token ? `?token=${token}` : ''}`;
     const es = new EventSource(url);
     esRef.current = es;
 

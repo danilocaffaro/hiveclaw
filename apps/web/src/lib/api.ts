@@ -1,8 +1,20 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '/api';
+import { getApiBase, getAuthToken } from './api-base';
+
+export const API_BASE = getApiBase();
 
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+  const base = getApiBase();
+  const token = getAuthToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options?.headers as Record<string, string>),
+  };
+  // Add auth token for remote connections
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const res = await fetch(`${base}${path}`, {
+    headers,
     ...options,
   });
   if (!res.ok) {

@@ -114,6 +114,10 @@ export class UserRepository {
     return result.changes > 0;
   }
 
+  updateLastLogin(userId: string): void {
+    this.db.prepare('UPDATE users SET last_login = ? WHERE id = ?').run(new Date().toISOString(), userId);
+  }
+
   generateApiKey(userId: string): string {
     const user = this.getById(userId);
     if (!user) throw new Error(`User '${userId}' not found`);

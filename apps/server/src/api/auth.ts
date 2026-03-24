@@ -363,6 +363,74 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database):
   app.delete<{ Params: { id: string } }>('/api/auth/sessions/:id', async (_req, reply) => {
     return reply.status(200).send({ data: { success: true } });
   });
+
+  // POST /auth/verify — remote login (email + api_key → validates and returns user + server info)
+  // Used by /connect page on GitHub Pages or any remote client
+  app.post<{ Body: { email?: string; token: string } }>('/auth/verify', async (req, reply) => {
+    try {
+      const { token } = req.body || {};
+      if (!token) {
+        return reply.status(400).send({ error: { code: 'MISSING_TOKEN', message: 'Token is required' } });
+      }
+
+      // Look up user by api_key (the instance token)
+      const user = users.getByApiKey(token);
+      if (!user) {
+        return reply.status(401).send({ error: { code: 'INVALID_TOKEN', message: 'Invalid token' } });
+      }
+
+      // If email provided, must match
+      const { email } = req.body || {};
+      if (email && user.email && user.email.toLowerCase() !== email.toLowerCase()) {
+        return reply.status(401).send({ error: { code: 'EMAIL_MISMATCH', message: 'Email does not match' } });
+      }
+
+      // Update last login
+      users.updateLastLogin(user.id);
+
+      // Audit log
+      audit.log({
+        userId: user.id,
+        action: 'remote_login',
+        resourceType: 'auth',
+        resourceId: user.id,
+        details: { ip: req.ip, userAgent: req.headers['user-agent'] },
+        ipAddress: req.ip ?? null,
+      });
+
+      // Return user info (without api_key) + server metadata
+      const { apiKey: _k, ...safeUser } = user;
+      const health = {
+        name: 'HiveClaw',
+        version: process.env.npm_package_version || '1.0.0',
+      };
+
+      return reply.status(200).send({
+        data: {
+          user: safeUser,
+          server: health,
+          authenticated: true,
+        },
+      });
+    } catch (err) {
+      app.log.error(err);
+      return reply.status(500).send({ error: { code: 'INTERNAL', message: String(err) } });
+    }
+  });
+
+  // GET /auth/instance-token — get current user's api_key (for showing in Settings)
+  app.get('/auth/instance-token', async (req, reply) => {
+    try {
+      const user = getAuthUser(req, users);
+      if (!user) {
+        return reply.status(401).send({ error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } });
+      }
+      return reply.status(200).send({ data: { token: user.apiKey } });
+    } catch (err) {
+      app.log.error(err);
+      return reply.status(500).send({ error: { code: 'INTERNAL', message: String(err) } });
+    }
+  });
 }
 
 // R4.4: Agent access control — checks if user can access a given agent

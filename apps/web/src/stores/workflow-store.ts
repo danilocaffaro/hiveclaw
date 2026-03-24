@@ -1,6 +1,5 @@
 import { create } from 'zustand';
-
-const API = process.env.NEXT_PUBLIC_API_URL || '/api';
+import { getApiBase, getAuthToken } from '../lib/api-base';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,7 +52,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
   activeRuns: [],
 
   fetchTemplates: () => {
-    fetch(`${API}/workflows`)
+    fetch(`${getApiBase()}/workflows`)
       .then((r) => r.json())
       .then((d) => {
         const templates = (d.data ?? []).map((t: Record<string, unknown>) => ({
@@ -68,7 +67,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
   },
 
   startWorkflow: (templateId: string) => {
-    fetch(`${API}/workflows/${templateId}/run`, {
+    fetch(`${getApiBase()}/workflows/${templateId}/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
@@ -94,7 +93,8 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
         set((s) => ({ activeRuns: [...s.activeRuns, run] }));
 
         // Subscribe to SSE for real-time updates
-        const es = new EventSource(`${API}/workflow-runs/${run.id}/stream`);
+        const token = getAuthToken();
+        const es = new EventSource(`${getApiBase()}/workflow-runs/${run.id}/stream${token ? `?token=${token}` : ''}`);
         activeSources.set(run.id, es);
 
         es.addEventListener('step.start', (e) => {
@@ -152,7 +152,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       activeSources.delete(runId);
     }
 
-    fetch(`${API}/workflow-runs/${runId}/cancel`, { method: 'POST' })
+    fetch(`${getApiBase()}/workflow-runs/${runId}/cancel`, { method: 'POST' })
       .then(() => {
         set((s) => ({
           activeRuns: s.activeRuns.filter((r) => r.id !== runId),

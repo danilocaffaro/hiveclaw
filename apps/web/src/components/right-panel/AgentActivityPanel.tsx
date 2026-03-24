@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { getApiBase, getAuthToken } from '../../lib/api-base';
 
 interface Activity {
   id: string;
@@ -75,7 +76,9 @@ export default function AgentActivityPanel({ sessionId }: { sessionId?: string }
 
     // Connect to session SSE stream for live activity
     // Server endpoint: /sessions/:id/events (rewriteUrl strips /api prefix)
-    const url = `/api/sessions/${sessionId}/events`;
+    const base = getApiBase();
+    const token = getAuthToken();
+    const url = `${base}/sessions/${sessionId}/events${token ? `?token=${token}` : ''}`;
     const es = new EventSource(url);
     esRef.current = es;
 
