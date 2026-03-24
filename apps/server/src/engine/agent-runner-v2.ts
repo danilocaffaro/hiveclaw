@@ -389,8 +389,11 @@ export async function* runAgentV2(
   }
 
   // ── 3. Smart context compaction ─────────────────────────────────────────────
+  // Compact at 30K message tokens (~120K chars). System prompt + 21 tools add
+  // ~30K tokens overhead, so total context stays under ~60K — well within the
+  // Copilot proxy limit and the sweet spot for model accuracy.
   try {
-    await sessionManager.smartCompact(sessionId, 80_000, agentConfig.id);
+    await sessionManager.smartCompact(sessionId, 30_000, agentConfig.id);
   } catch { /* continue with full history */ }
 
   // ── 4. Prepare tools & system prompt ────────────────────────────────────────
