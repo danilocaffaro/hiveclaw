@@ -4,195 +4,186 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HiveClaw — Remote Connect</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐝</text></svg>">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐝</text></svg>">
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#0D1117,#161B22,#0D1117);color:#F0F6FC;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-    .card{background:#161B22;border:1px solid #30363D;border-radius:16px;padding:40px;width:100%;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,.4)}
-    .logo-section{text-align:center;margin-bottom:32px}
-    .logo{font-size:48px;margin-bottom:8px}
-    h1{font-size:28px;font-weight:700;color:#F0F6FC;margin:0}
-    .subtitle{font-size:14px;color:#8B949E;margin:4px 0 0}
-    .form{display:flex;flex-direction:column;gap:20px}
-    .field{display:flex;flex-direction:column;gap:6px}
-    label{font-size:13px;font-weight:600;color:#C9D1D9}
-    input{padding:10px 14px;background:#0D1117;border:1px solid #30363D;border-radius:8px;color:#F0F6FC;font-size:14px;outline:none;transition:border-color .2s}
-    input:focus{border-color:#F59E0B}
-    .hint{font-size:11px;color:#6E7681;margin:0}
-    .error{font-size:13px;color:#F85149;background:rgba(248,81,73,.1);padding:8px 12px;border-radius:8px;display:none}
-    .btn{padding:12px 24px;background:linear-gradient(135deg,#F59E0B,#D97706);color:#000;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;transition:opacity .2s;margin-top:8px;width:100%}
-    .btn:hover{opacity:.9}
-    .btn:disabled{opacity:.5;cursor:not-allowed}
-    .btn-disconnect{padding:8px 16px;background:transparent;color:#F85149;border:1px solid #F85149;border-radius:8px;font-size:13px;cursor:pointer;margin-top:8px;width:100%}
-    .success{display:none;text-align:center;padding:20px 0}
-    .success-icon{font-size:48px;margin-bottom:12px}
-    .success h2{font-size:22px;font-weight:700;color:#F0F6FC;margin:0 0 8px}
-    .success p{font-size:14px;color:#8B949E}
-    .server-info{font-size:12px;color:#6E7681;margin-top:4px}
-    .spinner{display:none;text-align:center;padding:30px 0}
-    .spinner::after{content:'';display:inline-block;width:40px;height:40px;border:3px solid #30363D;border-top-color:#F59E0B;border-radius:50%;animation:spin 1s linear infinite}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0D1117;color:#C9D1D9;min-height:100vh;display:flex;align-items:center;justify-content:center}
+    .container{width:100%;max-width:420px;padding:24px}
+    .logo{text-align:center;margin-bottom:32px}
+    .logo-icon{font-size:48px;margin-bottom:8px}
+    .logo h1{font-size:24px;font-weight:700;color:#F0F6FC}
+    .logo p{font-size:14px;color:#8B949E;margin-top:4px}
+    .card{background:#161B22;border:1px solid #30363D;border-radius:12px;padding:24px}
+    .status{display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;margin-bottom:20px;font-size:13px}
+    .status.checking{background:#1a1a2e;color:#8B949E}
+    .status.online{background:#0d2818;border:1px solid #238636;color:#3FB950}
+    .status.offline{background:#2d1117;border:1px solid #DA3633;color:#F85149}
+    .status .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+    .status.checking .dot{background:#8B949E;animation:pulse 1.5s infinite}
+    .status.online .dot{background:#3FB950}
+    .status.offline .dot{background:#F85149}
+    @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+    .spinner{width:16px;height:16px;border:2px solid #30363D;border-top:2px solid #58A6FF;border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
     @keyframes spin{to{transform:rotate(360deg)}}
-    .footer{margin-top:24px;text-align:center}
-    .footer p{font-size:12px;color:#6E7681}
-    .footer a{color:#F59E0B;text-decoration:none}
-    .back-link{display:block;text-align:center;margin-top:16px;font-size:13px;color:#8B949E;text-decoration:none}
-    .back-link:hover{color:#F59E0B}
-    .token-display{display:none;background:#0D1117;border:1px solid #30363D;border-radius:8px;padding:10px 14px;font-family:monospace;font-size:13px;color:#8B949E;word-break:break-all;margin-top:8px;position:relative}
-    .copy-btn{position:absolute;top:6px;right:8px;background:#30363D;border:none;color:#C9D1D9;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer}
-    .copy-btn:hover{background:#484F58}
+    .field{margin-bottom:16px}
+    .field label{display:block;font-size:13px;font-weight:600;color:#C9D1D9;margin-bottom:6px}
+    .field input{width:100%;padding:10px 12px;background:#0D1117;border:1px solid #30363D;border-radius:8px;color:#F0F6FC;font-size:14px;outline:none;transition:border .2s}
+    .field input:focus{border-color:#58A6FF}
+    .field input::placeholder{color:#484F58}
+    .field .hint{font-size:11px;color:#8B949E;margin-top:4px}
+    .btn{width:100%;padding:12px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s}
+    .btn-primary{background:#238636;color:#fff}
+    .btn-primary:hover{background:#2EA043}
+    .btn-primary:disabled{background:#1a2e1a;color:#3d6b3d;cursor:not-allowed}
+    .btn-secondary{background:transparent;color:#58A6FF;border:1px solid #30363D;margin-top:8px}
+    .btn-secondary:hover{background:#161B22}
+    .divider{display:flex;align-items:center;gap:12px;margin:20px 0;color:#484F58;font-size:12px}
+    .divider::before,.divider::after{content:'';flex:1;height:1px;background:#30363D}
+    .error{background:#2d1117;border:1px solid #DA3633;color:#F85149;padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:16px;display:none}
+    .success-view{text-align:center;padding:20px 0}
+    .success-icon{font-size:48px;margin-bottom:12px}
+    .success-view h2{font-size:22px;font-weight:700;color:#F0F6FC;margin:0 0 8px}
+    .success-view p{font-size:14px;color:#8B949E}
+    .manual-toggle{text-align:center;margin-top:12px}
+    .manual-toggle a{font-size:12px;color:#58A6FF;cursor:pointer;text-decoration:none}
+    .manual-field{display:none;margin-bottom:16px}
+    .manual-field.show{display:block}
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="logo-section">
-      <div class="logo">🐝</div>
+  <div class="container">
+    <div class="logo">
+      <div class="logo-icon">🐝</div>
       <h1>HiveClaw</h1>
-      <p class="subtitle">Remote Connect</p>
+      <p>Remote Connect</p>
     </div>
-
-    <!-- Login Form -->
-    <div id="loginForm" class="form">
-      <div class="field">
-        <label for="serverUrl">Server URL</label>
-        <input type="url" id="serverUrl" placeholder="https://your-tunnel.trycloudflare.com" />
-        <p class="hint">Find this in HiveClaw → Settings → Remote Access</p>
+    <div class="card">
+      <div class="status checking" id="serverStatus">
+        <div class="spinner" id="statusSpinner"></div>
+        <span id="statusText">Discovering server...</span>
       </div>
-      <div class="field">
-        <label for="email">Email (optional)</label>
-        <input type="email" id="email" placeholder="your@email.com" />
+      <div id="errorBox" class="error"></div>
+      <div id="loginForm">
+        <div class="field">
+          <label>Email</label>
+          <input type="email" id="email" placeholder="your@email.com" autocomplete="email">
+        </div>
+        <div class="field">
+          <label>Instance Token</label>
+          <input type="text" id="token" placeholder="hc_live_..." autocomplete="off">
+          <div class="hint">Found in Settings → General → Instance Token</div>
+        </div>
+        <button class="btn btn-primary" id="connectBtn" disabled onclick="doConnect()">Connect</button>
+        <div class="manual-toggle">
+          <a onclick="toggleManual()">Enter server URL manually</a>
+        </div>
+        <div class="manual-field" id="manualField">
+          <div class="divider">Manual connection</div>
+          <div class="field">
+            <label>Server URL</label>
+            <input type="url" id="serverUrl" placeholder="https://your-tunnel.trycloudflare.com">
+          </div>
+          <button class="btn btn-secondary" onclick="manualDiscovery()">Use this server</button>
+        </div>
       </div>
-      <div class="field">
-        <label for="token">Instance Token</label>
-        <input type="password" id="token" placeholder="sc_xxxxxxxxxxxxxxxx" />
-        <p class="hint">Find this in HiveClaw → Settings → General → Instance Token</p>
-      </div>
-      <div id="errorMsg" class="error"></div>
-      <button class="btn" onclick="handleConnect()">Connect 🔗</button>
-      <div class="footer">
-        <p>Don't have a HiveClaw instance? <a href="https://github.com/danilocaffaro/superclaw-pure">Get started →</a></p>
+      <div id="successView" style="display:none">
+        <div class="success-view">
+          <div class="success-icon">✅</div>
+          <h2>Connected!</h2>
+          <p>Redirecting to HiveClaw...</p>
+        </div>
       </div>
     </div>
-
-    <!-- Spinner -->
-    <div id="spinner" class="spinner"></div>
-
-    <!-- Success -->
-    <div id="successView" class="success">
-      <div class="success-icon">✅</div>
-      <h2>Connected!</h2>
-      <p>Welcome, <strong id="userName"></strong></p>
-      <p class="server-info" id="serverInfoText"></p>
-      <button class="btn" onclick="handleOpenChat()" style="margin-top:20px">Open Chat 💬</button>
-      <button class="btn-disconnect" onclick="handleDisconnect()">Disconnect</button>
-    </div>
-
-    <a href="../" class="back-link">← Back to HiveClaw</a>
   </div>
-
   <script>
-    // Check saved session
-    (function() {
-      const saved = localStorage.getItem('hiveclaw_remote');
-      if (saved) {
-        try {
-          const data = JSON.parse(saved);
-          if (data.serverUrl && data.token) {
-            showConnected(data);
-          }
-        } catch(e) {}
-      }
-    })();
+    const GIST_ID = 'ae58eb68c99fe7797d4d0ed8e89732be';
+    const GIST_URL = 'https://gist.githubusercontent.com/danilocaffaro/' + GIST_ID + '/raw/hiveclaw-discovery.json';
+    let discoveredUrl = null;
+    let discoveredToken = null;
 
-    async function handleConnect() {
-      const serverUrl = document.getElementById('serverUrl').value.trim().replace(/\/+$/, '');
-      const email = document.getElementById('email').value.trim();
-      const token = document.getElementById('token').value.trim();
+    const saved = localStorage.getItem('hiveclaw_remote');
+    if (saved) { try { const s = JSON.parse(saved); if (s.email) document.getElementById('email').value = s.email; } catch(e) {} }
 
-      if (!serverUrl || !token) {
-        showError('Server URL and Token are required');
-        return;
-      }
-
-      showSpinner();
-
+    async function discover() {
+      const status = document.getElementById('serverStatus');
+      const statusText = document.getElementById('statusText');
+      const connectBtn = document.getElementById('connectBtn');
       try {
-        const res = await fetch(serverUrl + '/api/auth/verify', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': token,
-          },
-          body: JSON.stringify({ email: email || undefined, token: token }),
-        });
-
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.error?.message || 'Authentication failed (' + res.status + ')');
+        const r = await fetch(GIST_URL + '?t=' + Date.now());
+        if (!r.ok) throw new Error('Gist not found');
+        const data = await r.json();
+        if (data.status === 'online' && data.url) {
+          try {
+            const health = await fetch(data.url + '/api/health', { signal: AbortSignal.timeout(5000) });
+            if (health.ok) {
+              discoveredUrl = data.url;
+              discoveredToken = data.token;
+              status.className = 'status online';
+              status.innerHTML = '<div class="dot"></div><span>Server online</span>';
+              connectBtn.disabled = false;
+              return;
+            }
+          } catch(e) {}
         }
-
-        const { data } = await res.json();
-
-        const session = {
-          serverUrl: serverUrl,
-          token: token,
-          user: data.user,
-          server: data.server,
-          connectedAt: new Date().toISOString(),
-        };
-
-        localStorage.setItem('hiveclaw_remote', JSON.stringify(session));
-        localStorage.setItem('hiveclaw_server_url', serverUrl);
-        localStorage.setItem('hiveclaw_auth_token', token);
-
-        showConnected(session);
-      } catch(err) {
-        showError(err.message || 'Connection failed');
-        showLogin();
+        throw new Error('offline');
+      } catch(e) {
+        status.className = 'status offline';
+        status.innerHTML = '<div class="dot"></div><span>Server offline — enter URL manually</span>';
+        toggleManual();
       }
     }
 
-    function handleOpenChat() {
-      const saved = JSON.parse(localStorage.getItem('hiveclaw_remote') || '{}');
-      if (saved.serverUrl && saved.token) {
-        // Redirect to the actual HiveClaw instance with auth
-        window.location.href = saved.serverUrl + '?token=' + encodeURIComponent(saved.token);
-      }
-    }
+    function toggleManual() { document.getElementById('manualField').classList.toggle('show'); }
 
-    function handleDisconnect() {
-      localStorage.removeItem('hiveclaw_remote');
-      localStorage.removeItem('hiveclaw_server_url');
-      localStorage.removeItem('hiveclaw_auth_token');
-      showLogin();
-    }
-
-    function showConnected(data) {
-      document.getElementById('loginForm').style.display = 'none';
-      document.getElementById('spinner').style.display = 'none';
-      document.getElementById('successView').style.display = 'block';
-      document.getElementById('userName').textContent = data.user?.name || 'User';
-      const info = data.server;
-      document.getElementById('serverInfoText').textContent = info ? (info.name + ' v' + info.version) : data.serverUrl;
-    }
-
-    function showLogin() {
-      document.getElementById('loginForm').style.display = 'flex';
-      document.getElementById('spinner').style.display = 'none';
-      document.getElementById('successView').style.display = 'none';
-      document.getElementById('errorMsg').style.display = 'none';
-    }
-
-    function showSpinner() {
-      document.getElementById('loginForm').style.display = 'none';
-      document.getElementById('spinner').style.display = 'block';
-      document.getElementById('successView').style.display = 'none';
+    function manualDiscovery() {
+      const url = document.getElementById('serverUrl').value.replace(/\/+$/, '');
+      if (!url) return;
+      discoveredUrl = url;
+      const status = document.getElementById('serverStatus');
+      status.className = 'status online';
+      status.innerHTML = '<div class="dot"></div><span>Using: ' + url + '</span>';
+      document.getElementById('connectBtn').disabled = false;
+      document.getElementById('manualField').classList.remove('show');
     }
 
     function showError(msg) {
-      const el = document.getElementById('errorMsg');
-      el.textContent = '⚠️ ' + msg;
-      el.style.display = 'block';
+      const box = document.getElementById('errorBox');
+      box.textContent = msg; box.style.display = 'block';
+      setTimeout(function() { box.style.display = 'none'; }, 5000);
     }
+
+    async function doConnect() {
+      const email = document.getElementById('email').value.trim();
+      const token = document.getElementById('token').value.trim();
+      const btn = document.getElementById('connectBtn');
+      if (!email || !token) return showError('Email and token are required');
+      if (!discoveredUrl) return showError('Server not discovered yet');
+      btn.disabled = true; btn.textContent = 'Connecting...';
+      try {
+        const r = await fetch(discoveredUrl + '/api/auth/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email, instanceToken: token })
+        });
+        const data = await r.json();
+        if (r.ok && data.valid) {
+          localStorage.setItem('hiveclaw_remote', JSON.stringify({ email: email, serverUrl: discoveredUrl }));
+          document.getElementById('loginForm').style.display = 'none';
+          document.getElementById('successView').style.display = 'block';
+          const accessToken = discoveredToken || token;
+          setTimeout(function() { window.location.href = discoveredUrl + '?token=' + encodeURIComponent(accessToken); }, 1500);
+        } else {
+          showError(data.error || 'Invalid email or token');
+          btn.disabled = false; btn.textContent = 'Connect';
+        }
+      } catch(e) {
+        showError('Connection failed — server may be offline');
+        btn.disabled = false; btn.textContent = 'Connect';
+      }
+    }
+
+    document.addEventListener('keypress', function(e) { if (e.key === 'Enter') doConnect(); });
+    discover();
   </script>
 </body>
 </html>
