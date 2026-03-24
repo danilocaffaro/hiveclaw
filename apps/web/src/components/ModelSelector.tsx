@@ -134,6 +134,33 @@ export default function ModelSelector() {
     }
   }, [activeAgent?.modelPreference, activeAgent?.providerPreference, models, selectedModel, setSelectedModel]);
 
+  // External agents run on their own infrastructure — HiveClaw doesn't control their model
+  if (activeAgent?.isExternal) {
+    return (
+      <div style={{ position: 'relative', width: '100%' }}>
+        <button
+          disabled
+          style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '7px 10px',
+            borderRadius: 'var(--radius-md)',
+            background: 'var(--input-bg)',
+            border: '1px solid var(--border)',
+            color: 'var(--text-muted)',
+            fontSize: 13,
+            cursor: 'default',
+          }}
+        >
+          <span style={{ fontSize: 14, flexShrink: 0 }}>{activeAgent.emoji ?? '🌐'}</span>
+          <span style={{ flex: 1, fontSize: 12, opacity: 0.7 }}>External Agent</span>
+        </button>
+      </div>
+    );
+  }
+
   const currentModel = models.find((m) => m.id === selectedModel) ?? models[0];
 
   // Group by provider
