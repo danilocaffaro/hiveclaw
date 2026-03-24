@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, type ReactNode } from 'react';
+import React, { useState, useEffect, type ReactNode } from 'react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { LinkPreviews } from './LinkPreview';
 import { AudioPlayer, isVoiceMessage } from './AudioPlayer';
@@ -41,7 +41,25 @@ export function LoadingSkeleton() {
 
 
 export function ToolCallBlock({ msg }: { msg: Message }) {
-  const [expanded, setExpanded] = useState(false);
+  // Interactive/important tools start expanded; technical tools start collapsed
+  const interactiveTools = ['question', 'memory', 'plans', 'todo', 'task', 'visual_memory', 'canvas', 'data_analysis'];
+  const toolName = msg.tool_name || 'tool';
+  const isInteractive = interactiveTools.includes(toolName);
+  const [expanded, setExpanded] = useState(isInteractive);
+  const [hasUserToggled, setHasUserToggled] = useState(false);
+
+  // If tool_name changes after mount (streaming race condition), update expanded state
+  // But only if the user hasn't manually toggled it
+  useEffect(() => {
+    if (!hasUserToggled) {
+      setExpanded(interactiveTools.includes(msg.tool_name || 'tool'));
+    }
+  }, [msg.tool_name, hasUserToggled]);
+
+  const handleToggle = () => {
+    setHasUserToggled(true);
+    setExpanded(!expanded);
+  };
 
   return (
     <div style={{
@@ -50,7 +68,7 @@ export function ToolCallBlock({ msg }: { msg: Message }) {
       border: '1px solid rgba(210,153,34,0.3)',
       overflow: 'hidden'
     }}>
-      <button onClick={() => setExpanded(!expanded)} style={{
+      <button onClick={handleToggle} style={{
         display: 'flex', alignItems: 'center', gap: 8, width: '100%',
         padding: '8px 12px', background: 'var(--yellow-subtle)',
         cursor: 'pointer', fontSize: 13, border: 'none',
@@ -58,7 +76,7 @@ export function ToolCallBlock({ msg }: { msg: Message }) {
       }}>
         <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{expanded ? '▼' : '▶'}</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 500, color: 'var(--yellow)' }}>
-          {msg.tool_name || 'tool'}
+          {toolName}
         </span>
         <span style={{
           marginLeft: 'auto', padding: '1px 8px', borderRadius: 4,
@@ -73,7 +91,8 @@ export function ToolCallBlock({ msg }: { msg: Message }) {
           padding: '10px 12px', background: 'var(--code-bg)',
           fontFamily: 'var(--font-mono)', fontSize: 12,
           color: 'var(--text-secondary)', whiteSpace: 'pre-wrap',
-          maxHeight: 300, overflowY: 'auto', lineHeight: 1.5
+          maxHeight: 300, overflowY: 'auto', lineHeight: 1.5,
+          userSelect: 'text',
         }}>
           {msg.content}
         </div>
