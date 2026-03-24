@@ -6,7 +6,8 @@
  */
 
 import nacl from 'tweetnacl';
-import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
+import pkg from 'tweetnacl-util';
+const { encodeBase64, decodeBase64 } = pkg;
 
 export interface KeyPair {
   publicKey: string;  // base64
