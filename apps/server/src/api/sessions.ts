@@ -323,14 +323,37 @@ export function registerSessionRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: { code: 'NOT_FOUND', message: `Session not found: ${id}` } });
     }
 
-    // Resolve agent config
+    // Resolve agent config — check local agents first, then external agents
     let agentConfig: AgentConfig;
     const agentId = agent_id ?? sessionRow.agent_id;
     if (agentId) {
       const agentRow = agentRepo.getById(agentId);
-      agentConfig = agentRow
-        ? agentRowToConfig(agentRow)
-        : { id: agentId, name: 'HiveClaw', ...DEFAULT_AGENT_CONFIG, providerId: getDefaultProviderId(), modelId: getDefaultModelId(getDefaultProviderId()) };
+      if (agentRow) {
+        agentConfig = agentRowToConfig(agentRow);
+      } else {
+        // Fallback: check external_agents table (e.g., Alice 🐕 via webhook)
+        const extAgentRepo = new ExternalAgentRepository(db);
+        const extAgent = extAgentRepo.getById(agentId);
+        if (extAgent && extAgent.status === 'active') {
+          agentConfig = {
+            id: extAgent.id,
+            name: extAgent.name,
+            emoji: extAgent.emoji,
+            systemPrompt: '',
+            providerId: '__external__',
+            modelId: '__external__',
+            temperature: 0.7,
+            maxTokens: 4096,
+            role: extAgent.role,
+            isExternal: true,
+            webhookUrl: extAgent.webhookUrl,
+            outboundToken: extAgent.outboundToken,
+            tier: extAgent.tier,
+          } as AgentConfig & { isExternal: boolean; webhookUrl: string; outboundToken: string; tier: string };
+        } else {
+          agentConfig = { id: agentId, name: 'HiveClaw', ...DEFAULT_AGENT_CONFIG, providerId: getDefaultProviderId(), modelId: getDefaultModelId(getDefaultProviderId()) };
+        }
+      }
     } else {
       const defaultPid = getDefaultProviderId();
       agentConfig = { id: 'default', name: 'HiveClaw', ...DEFAULT_AGENT_CONFIG, providerId: defaultPid, modelId: getDefaultModelId(defaultPid) };
@@ -462,6 +485,46 @@ export function registerSessionRoutes(app: FastifyInstance) {
     };
 
     try {
+      // ── External agent routing (1:1 chat) ──────────────────────────────────
+      // When the resolved agent is external (webhook-based, e.g. Alice 🐕),
+      // route through the external-agent-bridge instead of the local LLM runner.
+      const extConfig = agentConfig as AgentConfig & { isExternal?: boolean; webhookUrl?: string; outboundToken?: string; tier?: string };
+      if (extConfig.isExternal && extConfig.webhookUrl) {
+        const { dispatchToExternalAgent } = await import('../engine/external-agent-bridge.js');
+        const extAgentRepo = new ExternalAgentRepository(db);
+        const extAgent = extAgentRepo.getById(agentConfig.id);
+        if (extAgent) {
+          // Persist user message
+          sm.addMessage(id, { role: 'user', content: content.trim(), agent_id: sender.id, agent_name: sender.name, agent_emoji: sender.emoji, sender_type: sender.type as 'human' | 'agent' | 'external_agent' });
+
+          emit({ event: 'message.start', data: { agentId: agentConfig.id, agentName: agentConfig.name, agentEmoji: agentConfig.emoji } });
+
+          const callbackBaseUrl = `http://localhost:${process.env.PORT ?? 4070}`;
+          const responseText = await dispatchToExternalAgent(extAgent, {
+            squadId: 'direct',
+            squadName: 'Direct Chat',
+            members: [{ name: extAgent.name, emoji: extAgent.emoji, role: extAgent.role, isExternal: true }],
+            userMessage: content.trim(),
+            senderName: sender.name || 'User',
+            previousResponses: [],
+            turnNumber: 1,
+            totalTurns: 1,
+            wasMentioned: true,
+          }, callbackBaseUrl);
+
+          // Persist assistant response
+          sm.addMessage(id, { role: 'assistant', content: responseText, agent_id: extAgent.id, agent_name: extAgent.name, agent_emoji: extAgent.emoji, sender_type: 'external_agent' });
+
+          // Stream response as SSE events
+          emit({ event: 'message.delta', data: { text: responseText } });
+          emit({ event: 'message.finish', data: { text: responseText, finishReason: 'stop' } });
+        } else {
+          emit({ event: 'error', data: { message: 'External agent not found', code: 'AGENT_NOT_FOUND' } });
+        }
+        reply.raw.end();
+        return;
+      }
+
       for await (const event of getEngineService().sessions.runAgent(id, content.trim(), agentConfig, { sender })) {
         emit(event);
       }
