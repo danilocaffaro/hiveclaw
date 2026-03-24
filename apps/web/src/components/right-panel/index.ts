@@ -1,9 +1,11 @@
 export { default as PanelTabs } from './PanelTabs';
 export { default as CodePanel } from './CodePanel';
-export { default as PreviewPanel } from './PreviewPanel';
-export { default as BrowserPanel } from './BrowserPanel';
 export { default as SprintPanel } from './SprintPanel';
-export { default as FlowsPanel } from './FlowsPanel';
-export { default as AutomationsPanel } from './AutomationsPanel';
-export { default as ConsolePanel } from './ConsolePanel';
 export { default as AgentActivityPanel } from './AgentActivityPanel';
+
+// Temporarily removed from UI (R1 simplification — files kept for rollback):
+// export { default as PreviewPanel } from './PreviewPanel';
+// export { default as BrowserPanel } from './BrowserPanel';
+// export { default as FlowsPanel } from './FlowsPanel';
+// export { default as AutomationsPanel } from './AutomationsPanel';
+// export { default as ConsolePanel } from './ConsolePanel';

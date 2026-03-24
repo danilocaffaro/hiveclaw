@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type RightPanelTab = 'code' | 'preview' | 'browser' | 'sprint' | 'flows' | 'console' | 'memory';
+export type RightPanelTab = 'code' | 'sprint' | 'console' | 'memory';
 export type SidebarTab = 'sessions' | 'agents' | 'squads';
 export type SettingsTab =
   | 'general'

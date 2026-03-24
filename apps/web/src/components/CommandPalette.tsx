@@ -113,30 +113,6 @@ export default function CommandPalette() {
       },
     },
     {
-      id: 'tab-preview',
-      label: 'Open Preview Panel',
-      description: 'Switch to the Preview tab',
-      icon: '🌐',
-      category: 'navigation',
-      action: () => {
-        setRightPanelTab('preview');
-        if (rightPanelCollapsed) toggleRightPanel();
-        setCommandPaletteOpen(false);
-      },
-    },
-    {
-      id: 'tab-browser',
-      label: 'Open Browser Panel',
-      description: 'Switch to the Browser tab',
-      icon: '🔭',
-      category: 'navigation',
-      action: () => {
-        setRightPanelTab('browser');
-        if (rightPanelCollapsed) toggleRightPanel();
-        setCommandPaletteOpen(false);
-      },
-    },
-    {
       id: 'tab-sprint',
       label: 'Open Sprint Panel',
       description: 'Switch to the Sprint tab',

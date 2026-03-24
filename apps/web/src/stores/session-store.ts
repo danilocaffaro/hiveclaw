@@ -517,12 +517,31 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                     if (s.activeSessionId !== sessionId) return s; // double-check inside setter
                     if (s.messages.length === 0) return s;
                     const msgs = [...s.messages];
-                    const last = { ...msgs[msgs.length - 1] };
-                    if (!last.agentId && parsed.agentId) last.agentId = parsed.agentId;
-                    if (!last.agentName && parsed.agentName) last.agentName = parsed.agentName;
-                    if (!last.agentEmoji && parsed.agentEmoji) last.agentEmoji = parsed.agentEmoji;
-                    last.content += parsed.text ?? parsed.content ?? '';
-                    msgs[msgs.length - 1] = last;
+                    // S5: Find last assistant message (don't blindly target last msg — could be tool)
+                    let targetIdx = msgs.length - 1;
+                    while (targetIdx >= 0 && msgs[targetIdx].role !== 'assistant') {
+                      targetIdx--;
+                    }
+                    if (targetIdx < 0) {
+                      // No assistant message exists — create one
+                      msgs.push({
+                        id: `temp-${Date.now()}`,
+                        session_id: sessionId,
+                        role: 'assistant',
+                        content: parsed.text ?? parsed.content ?? '',
+                        agentId: parsed.agentId,
+                        agentName: parsed.agentName,
+                        agentEmoji: parsed.agentEmoji,
+                        created_at: new Date().toISOString(),
+                      });
+                      return { messages: msgs };
+                    }
+                    const target = { ...msgs[targetIdx] };
+                    if (!target.agentId && parsed.agentId) target.agentId = parsed.agentId;
+                    if (!target.agentName && parsed.agentName) target.agentName = parsed.agentName;
+                    if (!target.agentEmoji && parsed.agentEmoji) target.agentEmoji = parsed.agentEmoji;
+                    target.content += parsed.text ?? parsed.content ?? '';
+                    msgs[targetIdx] = target;
                     return { messages: msgs };
                   });
                 } else {
@@ -584,7 +603,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                 });
                 break;
               case 'tool.finish':
-                // Mark tool as done
+                // Mark tool as done + auto-remove after 3s to avoid chip accumulation
                 set((s) => {
                   const tools = [...s.activeTools];
                   const running = tools.findIndex(t => t.status === 'running');
@@ -593,24 +612,25 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                   }
                   return { activeTools: tools };
                 });
-                // Update last tool message with result, then add new assistant message
+                // S4: Garbage-collect done tools after 3s
+                setTimeout(() => {
+                  set((s) => ({
+                    activeTools: s.activeTools.filter(t => t.status !== 'done' || (Date.now() - (t.finishedAt ?? 0)) < 2500),
+                  }));
+                }, 3000);
+                // Update last tool message with result.
+                // S5: Do NOT pre-create an empty assistant message here — it causes
+                // ghost bubbles when tools chain or when the agent finishes after a tool.
+                // The next message.delta will use appendToLastMessage which walks backwards
+                // to find the last assistant msg, or agent.start/message.delta will create one.
                 set((s) => {
                   const msgs = [...s.messages];
-                  // Find last tool message and update
                   for (let i = msgs.length - 1; i >= 0; i--) {
                     if (msgs[i].role === 'tool') {
                       msgs[i] = { ...msgs[i], content: parsed.output ?? parsed.result ?? '', tool_result: parsed.output ?? parsed.result ?? '' };
                       break;
                     }
                   }
-                  // Add new assistant message to continue streaming into
-                  msgs.push({
-                    id: generateId(),
-                    session_id: sessionId,
-                    role: 'assistant',
-                    content: '',
-                    created_at: new Date().toISOString(),
-                  });
                   return { messages: msgs };
                 });
                 break;

@@ -5,7 +5,7 @@ import { useFileStore } from '@/stores/file-store';
 import { useAgentStore } from '@/stores/agent-store';
 import { useRSPStore, selectActiveAgentId } from '@/stores/rsp-store';
 import { useSessionStore } from '@/stores/session-store';
-import { PanelTabs, CodePanel, PreviewPanel, BrowserPanel, SprintPanel, FlowsPanel, AutomationsPanel, ConsolePanel, AgentActivityPanel } from './right-panel';
+import { PanelTabs, CodePanel, SprintPanel, AgentActivityPanel } from './right-panel';
 import AgentTabBar from './right-panel/AgentTabBar';
 import MemoryPanel from './MemoryPanel';
 
@@ -111,10 +111,7 @@ export default function RightPanel({ mobileOverlay = false }: RightPanelProps) {
         ) : (
           <>
             {rightPanelTab === 'code'    && <CodePanel />}
-            {rightPanelTab === 'preview' && <PreviewPanel />}
-            {rightPanelTab === 'browser' && <BrowserPanel />}
             {rightPanelTab === 'sprint'  && <SprintPanel />}
-            {rightPanelTab === 'flows'   && <AutomationsPanel />}
             {rightPanelTab === 'console' && <AgentActivityPanel sessionId={activeSessionId ?? undefined} />}
             {rightPanelTab === 'memory'  && <MemoryPanel />}
           </>

@@ -4,13 +4,10 @@ import { useState } from 'react';
 import { useUIStore, type RightPanelTab } from '@/stores/ui-store';
 
 const TABS: { id: RightPanelTab; label: string; icon: string }[] = [
-  { id: 'code',    label: 'Code',        icon: '◻' },
-  { id: 'preview', label: 'Preview',     icon: '◉' },
-  { id: 'browser', label: 'Browser',     icon: '◈' },
-  { id: 'sprint',  label: 'Tasks',       icon: '◆' },
-  { id: 'flows',   label: 'Automations', icon: '◇' },
-  { id: 'console', label: 'Console',     icon: '⊞' },
-  { id: 'memory',  label: 'Memory',      icon: '◎' },
+  { id: 'code',    label: 'Code',     icon: '◻' },
+  { id: 'sprint',  label: 'Tasks',    icon: '◆' },
+  { id: 'console', label: 'Activity', icon: '⊞' },
+  { id: 'memory',  label: 'Memory',   icon: '◎' },
 ];
 
 function PanelTabs() {
