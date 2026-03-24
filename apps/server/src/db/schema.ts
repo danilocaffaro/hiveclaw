@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { mkdirSync } from 'fs';
+import { logger } from '../lib/logger.js';
 
 const DB_PATH = process.env.HIVECLAW_DB_PATH || process.env.SUPERCLAW_DB_PATH || join(homedir(), '.hiveclaw', 'hiveclaw.db');
 
@@ -15,7 +16,6 @@ export function initDatabase(): Database.Database {
   const db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
-  db.pragma('trusted_schema = ON');   // Required: FTS5 triggers use virtual table writes (DELETE → fts('delete', ...))
   db.pragma('wal_autocheckpoint = 1000'); // S1: Auto-checkpoint every 1000 pages (~4MB)
 
   db.exec(`
@@ -488,13 +488,11 @@ export function initDatabase(): Database.Database {
       END;
 
       CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
-        INSERT INTO messages_fts(messages_fts, rowid, content, session_id, agent_id, role, created_at)
-        VALUES ('delete', OLD.rowid, OLD.content, OLD.session_id, OLD.agent_id, OLD.role, OLD.created_at);
+        DELETE FROM messages_fts WHERE rowid = OLD.rowid;
       END;
 
       CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE ON messages BEGIN
-        INSERT INTO messages_fts(messages_fts, rowid, content, session_id, agent_id, role, created_at)
-        VALUES ('delete', OLD.rowid, OLD.content, OLD.session_id, OLD.agent_id, OLD.role, OLD.created_at);
+        DELETE FROM messages_fts WHERE rowid = OLD.rowid;
         INSERT INTO messages_fts(rowid, content, session_id, agent_id, role, created_at)
         VALUES (NEW.rowid, NEW.content, NEW.session_id, NEW.agent_id, NEW.role, NEW.created_at);
       END;
@@ -657,6 +655,34 @@ export function initDatabase(): Database.Database {
   } catch { /* non-fatal — may already be synced */ }
 
   // 8. Migrate: backfill/repair FTS5 index from messages
+  // ── FTS5 trigger migration — replace broken 'delete command' syntax with DELETE FROM ──
+  // better-sqlite3 doesn't support INSERT INTO fts(fts) VALUES('delete', ...) syntax
+  try {
+    const deleteTrigger = db.prepare(
+      "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='messages_fts_delete'"
+    ).get() as { sql: string } | undefined;
+    if (deleteTrigger?.sql?.includes("VALUES ('delete'")) {
+      logger.info('[DB] Migrating FTS5 triggers to compatible syntax...');
+      db.exec('DROP TRIGGER IF EXISTS messages_fts_delete');
+      db.exec('DROP TRIGGER IF EXISTS messages_fts_update');
+      db.exec(`
+        CREATE TRIGGER messages_fts_delete AFTER DELETE ON messages BEGIN
+          DELETE FROM messages_fts WHERE rowid = OLD.rowid;
+        END
+      `);
+      db.exec(`
+        CREATE TRIGGER messages_fts_update AFTER UPDATE ON messages BEGIN
+          DELETE FROM messages_fts WHERE rowid = OLD.rowid;
+          INSERT INTO messages_fts(rowid, content, session_id, agent_id, role, created_at)
+          VALUES (NEW.rowid, NEW.content, NEW.session_id, NEW.agent_id, NEW.role, NEW.created_at);
+        END
+      `);
+      logger.info('[DB] FTS5 triggers migrated successfully');
+    }
+  } catch {
+    // Non-fatal
+  }
+
   try {
     const ftsCount = (db.prepare("SELECT COUNT(*) as cnt FROM messages_fts").get() as { cnt: number }).cnt;
     const msgCount = (db.prepare("SELECT COUNT(*) as cnt FROM messages").get() as { cnt: number }).cnt;
@@ -680,14 +706,12 @@ export function initDatabase(): Database.Database {
       `);
       db.exec(`
         CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
-          INSERT INTO messages_fts(messages_fts, rowid, content, session_id, agent_id, role, created_at)
-          VALUES ('delete', OLD.rowid, OLD.content, OLD.session_id, OLD.agent_id, OLD.role, OLD.created_at);
+          DELETE FROM messages_fts WHERE rowid = OLD.rowid;
         END
       `);
       db.exec(`
         CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE ON messages BEGIN
-          INSERT INTO messages_fts(messages_fts, rowid, content, session_id, agent_id, role, created_at)
-          VALUES ('delete', OLD.rowid, OLD.content, OLD.session_id, OLD.agent_id, OLD.role, OLD.created_at);
+          DELETE FROM messages_fts WHERE rowid = OLD.rowid;
           INSERT INTO messages_fts(rowid, content, session_id, agent_id, role, created_at)
           VALUES (NEW.rowid, NEW.content, NEW.session_id, NEW.agent_id, NEW.role, NEW.created_at);
         END
