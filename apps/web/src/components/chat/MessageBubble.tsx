@@ -376,8 +376,9 @@ export function MessageBubble({ msg }: { msg: Message }) {
         <div style={{
           padding: effectiveIsUser ? '10px 14px' : '2px 0',
           borderRadius: effectiveIsUser ? '14px 14px 4px 14px' : undefined,
-          background: effectiveIsUser ? 'linear-gradient(135deg, var(--coral), var(--coral-hover))' : 'transparent',
-          fontSize: 14, lineHeight: 1.6, color: 'var(--text)',
+          background: effectiveIsUser ? 'linear-gradient(135deg, #2563eb, #1d4ed8)' : 'transparent',
+          color: effectiveIsUser ? '#fff' : 'var(--text)',
+          fontSize: 14, lineHeight: 1.6,
           wordBreak: 'break-word',
           // B2 fix: ensure user bubble text is selectable
           userSelect: 'text',
