@@ -11,7 +11,7 @@ import { formatToolResult } from './tools/types.js';
 import { getToolRegistry } from './tools/index.js';
 import { AgentMemoryRepository } from '../db/agent-memory.js';
 import { getDb } from '../db/index.js';
-import { logger } from '../lib/logger.js';
+import { logger, safeFire } from '../lib/logger.js';
 import { LoopDetector } from './loop-detector.js';
 import { ProgressChecker } from './progress-checker.js';
 import { touchSession } from './session-consolidator.js';
@@ -1067,7 +1067,7 @@ function backgroundMemoryExtract(
   toolOutputs: string = '',
 ): void {
   // Run async but don't await — fire-and-forget
-  void (async () => {
+  safeFire((async () => {
     try {
       const repo = new AgentMemoryRepository(getDb());
       const extractedCount = { preferences: 0, decisions: 0, entities: 0, corrections: 0, goals: 0 };
@@ -1188,7 +1188,7 @@ function backgroundMemoryExtract(
     } catch (err) {
       logger.warn('[MemoryExtract] Background extraction failed: %s', (err as Error).message);
     }
-  })();
+  })(), 'memoryExtract:v1');
 }
 
 // ─── Helper: Serialize SSE events to wire format ──────────────────────────────

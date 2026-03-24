@@ -7,6 +7,7 @@ import { v4 as uuid } from 'uuid';
 import type { AgentConfig, SSEEvent } from './agent-runner.js';
 import { runAgent } from './agent-runner.js';
 import { getMessageBus, type AgentMessage } from './message-bus.js';
+import { safeFire } from '../lib/logger.js';
 
 // ─── Agent State ──────────────────────────────────────────────────────────────
 
@@ -81,7 +82,7 @@ export class AgentWorker extends EventEmitter {
     const bus = getMessageBus();
     this.unsubscribe = bus.subscribe(`agent.${this.agentId}.inbox`, (msg: unknown) => {
       this.inbox.push(msg as AgentMessage);
-      void this.processQueue();
+      safeFire(this.processQueue(), 'agentWorker:processQueue');
     });
     this.setState('idle');
   }

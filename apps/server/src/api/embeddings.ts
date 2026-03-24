@@ -18,7 +18,7 @@ import {
   type EmbeddingConfig,
 } from '../engine/embeddings.js';
 import { getEngineService } from '../engine/engine-service.js';
-import { logger } from '../lib/logger.js';
+import { logger, safeFire } from '../lib/logger.js';
 
 let vecLoaded = false;
 
@@ -164,7 +164,7 @@ export function registerEmbeddingRoutes(app: FastifyInstance): void {
 
       // Embed in background (fire-and-forget)
       let embedded = 0;
-      void (async () => {
+      safeFire((async () => {
         for (const msg of unembedded) {
           try {
             const text = msg.content.slice(0, 8000);
@@ -176,7 +176,7 @@ export function registerEmbeddingRoutes(app: FastifyInstance): void {
           }
         }
         logger.info('[Embeddings] Backfill complete: %d/%d embedded', embedded, unembedded.length);
-      })();
+      })(), 'embeddings:backfill');
 
       return {
         data: {

@@ -18,7 +18,7 @@
 
 import { randomUUID } from 'crypto';
 import type Database from 'better-sqlite3';
-import { logger } from '../lib/logger.js';
+import { logger, safeFire } from '../lib/logger.js';
 import { runAgent, type AgentConfig } from './agent-runner.js';
 import { runAgentV2 } from './agent-runner-v2.js';
 import { getDb } from '../db/index.js';
@@ -261,10 +261,10 @@ export function startHeartbeatScheduler(): void {
   // First run after a short delay (30s), then at interval
   const firstRunDelay = 30_000;
   setTimeout(() => {
-    void executeHeartbeat(db);
+    safeFire(executeHeartbeat(db), 'heartbeat:firstRun');
 
     _timer = setInterval(() => {
-      void executeHeartbeat(db);
+      safeFire(executeHeartbeat(db), 'heartbeat:interval');
     }, intervalMs);
     _timer.unref();
   }, firstRunDelay);
@@ -289,6 +289,6 @@ export async function triggerHeartbeat(): Promise<{ runId: string; status: strin
   }
 
   // Fire-and-forget
-  void executeHeartbeat(db);
+  safeFire(executeHeartbeat(db), 'heartbeat:trigger');
   return { runId: 'triggered', status: 'running' };
 }

@@ -15,7 +15,7 @@
 import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import type Database from 'better-sqlite3';
-import { logger } from '../lib/logger.js';
+import { logger, safeFire } from '../lib/logger.js';
 import { runAgent, type AgentConfig } from '../engine/agent-runner.js';
 import { runAgentV2 } from '../engine/agent-runner-v2.js';
 
@@ -260,7 +260,7 @@ function scheduleCron(db: Database.Database, auto: Automation): void {
 
   // Schedule first run, then repeat
   const timeout = setTimeout(() => {
-    if (shouldRunToday()) void executeAutomation(db, auto);
+    if (shouldRunToday()) safeFire(executeAutomation(db, auto), 'automation:firstRun');
 
     const interval = setInterval(() => {
       // Re-check if still enabled
@@ -270,7 +270,7 @@ function scheduleCron(db: Database.Database, auto: Automation): void {
         cronTimers.delete(auto.id);
         return;
       }
-      if (shouldRunToday()) void executeAutomation(db, auto);
+      if (shouldRunToday()) safeFire(executeAutomation(db, auto), 'automation:cron');
     }, intervalMs);
 
     cronTimers.set(auto.id, interval);

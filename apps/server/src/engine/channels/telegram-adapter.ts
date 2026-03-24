@@ -19,7 +19,7 @@
 import { Bot, type Context, GrammyError, HttpError, InputFile } from 'grammy';
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { logger } from '../../lib/logger.js';
+import { logger, safeFire } from '../../lib/logger.js';
 import type {
   ChannelAdapter,
   ChannelCapabilities,
@@ -454,7 +454,7 @@ export class TelegramAdapter implements ChannelAdapter {
       }
     };
 
-    void sendAction();
+    safeFire(sendAction(), 'telegram:sendTyping');
     this.typingIntervals.set(key, setInterval(sendAction, TYPING_INTERVAL_MS));
   }
 

@@ -26,7 +26,7 @@ import { getToolRegistry } from './tools/index.js';
 import { AgentMemoryRepository } from '../db/agent-memory.js';
 import { ProviderRepository } from '../db/providers.js';
 import { getDb } from '../db/index.js';
-import { logger } from '../lib/logger.js';
+import { logger, safeFire } from '../lib/logger.js';
 import { LoopDetector } from './loop-detector.js';
 import { ProgressChecker } from './progress-checker.js';
 import { touchSession } from './session-consolidator.js';
@@ -313,7 +313,7 @@ Use these when web_search alone is insufficient. Always verify and cite sources.
 // ─── Background Memory Extraction (fire-and-forget, simplified from v1) ──────
 
 function backgroundMemoryExtract(agentId: string, sessionId: string, userMessage: string, _assistantResponse: string): void {
-  void (async () => {
+  safeFire((async () => {
     try {
       const repo = new AgentMemoryRepository(getDb());
       let total = 0;
@@ -341,7 +341,7 @@ function backgroundMemoryExtract(agentId: string, sessionId: string, userMessage
     } catch (err) {
       logger.warn('[MemoryExtract-v2] Failed: %s', (err as Error).message);
     }
-  })();
+  })(), 'memoryExtract:v2');
 }
 
 // ─── Core V2 Agentic Loop ────────────────────────────────────────────────────
@@ -405,7 +405,10 @@ export async function* runAgentV2(
   const messageBudgetTokens = Math.max(10_000, TARGET_TOTAL_TOKENS - fixedOverheadTokens);
   try {
     await sessionManager.smartCompact(sessionId, messageBudgetTokens, agentConfig.id);
-  } catch { /* continue with full history */ }
+  } catch (compactErr) {
+    logger.warn('[agent-runner-v2] smartCompact failed (session %s, budget %dK): %s',
+      sessionId.slice(0, 8), Math.round(messageBudgetTokens / 1000), (compactErr as Error).message);
+  }
 
   // ── 5. Build messages array ─────────────────────────────────────────────────
   const freshMessages = sessionManager.getMessages(sessionId);

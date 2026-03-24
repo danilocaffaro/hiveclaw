@@ -16,3 +16,15 @@ export const logger = pino({
 export function createChildLogger(context: Record<string, unknown>) {
   return logger.child(context);
 }
+
+/**
+ * Fire-and-forget helper that catches unhandled rejections.
+ * Use instead of bare `void asyncFn()` to prevent Node.js process crashes.
+ *
+ * @example safeFire(doSomethingAsync(), 'doSomething');
+ */
+export function safeFire(promise: Promise<unknown>, label?: string): void {
+  promise.catch((err) => {
+    logger.error({ err, label }, '[safeFire] Unhandled async error in %s', label ?? 'unknown');
+  });
+}

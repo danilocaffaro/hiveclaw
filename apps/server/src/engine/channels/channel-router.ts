@@ -12,7 +12,7 @@
  * Phase 1.5 of HiveClaw Platform Blueprint.
  */
 
-import { logger } from '../../lib/logger.js';
+import { logger, safeFire } from '../../lib/logger.js';
 import { getEngineService } from '../engine-service.js';
 import type {
   ChannelAdapter,
@@ -314,7 +314,7 @@ export class ChannelRouter {
 
     // Send typing indicator
     if (adapter.capabilities.typing) {
-      void adapter.sendTyping(msg.chatId, 'start');
+      safeFire(adapter.sendTyping(msg.chatId, 'start'), 'channel:typingStart');
     }
 
     // ─── Audio transcription: download + transcribe voice/audio ───
@@ -369,7 +369,7 @@ export class ChannelRouter {
 
       // Stop typing
       if (adapter.capabilities.typing) {
-        void adapter.sendTyping(msg.chatId, 'stop');
+        safeFire(adapter.sendTyping(msg.chatId, 'stop'), 'channel:typingStop');
       }
 
       // Send response back
@@ -406,7 +406,7 @@ export class ChannelRouter {
 
       // Stop typing on error
       if (adapter.capabilities.typing) {
-        void adapter.sendTyping(msg.chatId, 'stop');
+        safeFire(adapter.sendTyping(msg.chatId, 'stop'), 'channel:typingStop');
       }
     }
   }

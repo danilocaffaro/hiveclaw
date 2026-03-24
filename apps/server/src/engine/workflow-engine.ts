@@ -7,6 +7,7 @@ import { getProviderRouter } from './providers/index.js';
 import { getSessionManager } from './session-manager.js';
 import { type MessageBus } from './message-bus.js';
 import type { LLMMessage } from './providers/types.js';
+import { safeFire } from '../lib/logger.js';
 
 // ─── Engine ───────────────────────────────────────────────────────────────────
 
@@ -25,7 +26,7 @@ export class WorkflowEngine {
     // Execute steps in background (don't await)
     const controller = new AbortController();
     this.activeSessions.set(run.id, controller);
-    void this.executeRun(run.id, controller.signal);
+    safeFire(this.executeRun(run.id, controller.signal), 'workflow:executeRun');
 
     return this.repo.getRun(run.id)!;
   }

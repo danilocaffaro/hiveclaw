@@ -3,7 +3,7 @@
 // Autonomous: no external dependencies (no OpenClaw, no Alice)
 // ============================================================
 
-import { logger } from '../lib/logger.js';
+import { logger, safeFire } from '../lib/logger.js';
 
 export interface WatchdogConfig {
   /** Health check interval in ms (default: 60_000 = 1 min) */
@@ -57,8 +57,8 @@ export class SelfWatchdog {
 
     // First check after 30s (let server fully boot)
     setTimeout(() => {
-      void this.check();
-      this.timer = setInterval(() => void this.check(), this.intervalMs);
+      safeFire(this.check(), 'watchdog:firstCheck');
+      this.timer = setInterval(() => safeFire(this.check(), 'watchdog:interval'), this.intervalMs);
     }, 30_000);
   }
 

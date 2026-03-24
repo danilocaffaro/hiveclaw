@@ -13,7 +13,7 @@
  * - Only runs when there are ≥ MIN_MESSAGES_FOR_CONSOLIDATION messages
  */
 
-import { logger } from '../lib/logger.js';
+import { logger, safeFire } from '../lib/logger.js';
 import { getSessionManager } from './session-manager.js';
 import { llmCompact } from './llm-compactor.js';
 import { AgentMemoryRepository } from '../db/agent-memory.js';
@@ -52,7 +52,7 @@ export function touchSession(agentId: string, sessionId: string): void {
   // Set a new timer
   const timer = setTimeout(() => {
     activeTimers.delete(key);
-    void runConsolidation(agentId, sessionId, key);
+    safeFire(runConsolidation(agentId, sessionId, key), 'consolidator:run');
   }, INACTIVITY_THRESHOLD_MS);
 
   activeTimers.set(key, timer);

@@ -86,7 +86,7 @@ import { WorkflowRepository } from './db/workflow-repository.js';
 import { WorkflowEngine, seedBuiltinWorkflows } from './engine/workflow-engine.js';
 import { getMessageBus } from './engine/message-bus.js';
 import { getEngineService } from './engine/engine-service.js';
-import { logger } from './lib/logger.js';
+import { logger, safeFire } from './lib/logger.js';
 import { rotateAllLogs } from './lib/log-rotation.js';
 
 import { DEFAULT_PORT, DEFAULT_HOST, DEV_CORS_ORIGINS } from './config/defaults.js';
@@ -128,7 +128,7 @@ async function main() {
 
   // Sync Ollama models from live server (non-blocking)
   // Replaces DEFAULT_PROVIDERS placeholder models with actually installed models
-  void (async () => {
+  safeFire((async () => {
     try {
       const ollamaRow = providers.get('ollama');
       if (!ollamaRow) return;
@@ -146,7 +146,7 @@ async function main() {
       providers.upsert({ id: 'ollama', models: modelConfigs });
       logger.info(`[Ollama] Synced ${installed.length} installed model(s): ${installed.map(m => m.name).join(', ')}`);
     } catch { /* Ollama not running — ignore, keep defaults */ }
-  })();
+  })(), 'startup:ollamaSync');
   const marketplace = new MarketplaceRepository(db);
   marketplace.seed();
   const userRepo = new UserRepository(db);
