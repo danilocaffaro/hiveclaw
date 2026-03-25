@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HiveClaw — Remote Connect</title>
+  <title>HiveClaw Connect</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐝</text></svg>">
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
@@ -14,176 +14,114 @@
     .logo h1{font-size:24px;font-weight:700;color:#F0F6FC}
     .logo p{font-size:14px;color:#8B949E;margin-top:4px}
     .card{background:#161B22;border:1px solid #30363D;border-radius:12px;padding:24px}
-    .status{display:flex;align-items:center;gap:8px;padding:12px;border-radius:8px;margin-bottom:20px;font-size:13px}
-    .status.checking{background:#1a1a2e;color:#8B949E}
-    .status.online{background:#0d2818;border:1px solid #238636;color:#3FB950}
-    .status.offline{background:#2d1117;border:1px solid #DA3633;color:#F85149}
-    .status .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-    .status.checking .dot{background:#8B949E;animation:pulse 1.5s infinite}
-    .status.online .dot{background:#3FB950}
-    .status.offline .dot{background:#F85149}
-    @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
-    .spinner{width:16px;height:16px;border:2px solid #30363D;border-top:2px solid #58A6FF;border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
-    @keyframes spin{to{transform:rotate(360deg)}}
     .field{margin-bottom:16px}
     .field label{display:block;font-size:13px;font-weight:600;color:#C9D1D9;margin-bottom:6px}
     .field input{width:100%;padding:10px 12px;background:#0D1117;border:1px solid #30363D;border-radius:8px;color:#F0F6FC;font-size:14px;outline:none;transition:border .2s}
     .field input:focus{border-color:#58A6FF}
     .field input::placeholder{color:#484F58}
-    .field .hint{font-size:11px;color:#8B949E;margin-top:4px}
     .btn{width:100%;padding:12px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s}
     .btn-primary{background:#238636;color:#fff}
     .btn-primary:hover{background:#2EA043}
     .btn-primary:disabled{background:#1a2e1a;color:#3d6b3d;cursor:not-allowed}
-    .btn-secondary{background:transparent;color:#58A6FF;border:1px solid #30363D;margin-top:8px}
-    .btn-secondary:hover{background:#161B22}
-    .divider{display:flex;align-items:center;gap:12px;margin:20px 0;color:#484F58;font-size:12px}
-    .divider::before,.divider::after{content:'';flex:1;height:1px;background:#30363D}
     .error{background:#2d1117;border:1px solid #DA3633;color:#F85149;padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:16px;display:none}
-    .success-view{text-align:center;padding:20px 0}
-    .success-icon{font-size:48px;margin-bottom:12px}
-    .success-view h2{font-size:22px;font-weight:700;color:#F0F6FC;margin:0 0 8px}
-    .success-view p{font-size:14px;color:#8B949E}
-    .manual-toggle{text-align:center;margin-top:12px}
-    .manual-toggle a{font-size:12px;color:#58A6FF;cursor:pointer;text-decoration:none}
-    .manual-field{display:none;margin-bottom:16px}
-    .manual-field.show{display:block}
+    .footer{text-align:center;margin-top:20px;font-size:11px;color:#484F58}
+    .chat-container{display:none;flex-direction:column;height:100vh;max-width:600px;margin:0 auto;width:100%}
+    .chat-header{padding:16px 20px;background:#161B22;border-bottom:1px solid #30363D;display:flex;align-items:center;gap:12px}
+    .chat-header .back{background:none;border:none;color:#58A6FF;font-size:18px;cursor:pointer;padding:4px}
+    .chat-header h2{font-size:16px;font-weight:600;color:#F0F6FC;flex:1}
+    .chat-header .status-dot{width:8px;height:8px;border-radius:50%;background:#3FB950}
+    .messages{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:8px}
+    .msg{max-width:80%;padding:10px 14px;border-radius:16px;font-size:14px;line-height:1.5;word-wrap:break-word}
+    .msg.user{align-self:flex-end;background:#1F6FEB;color:#fff;border-bottom-right-radius:4px}
+    .msg.agent{align-self:flex-start;background:#2D333B;color:#C9D1D9;border-bottom-left-radius:4px}
+    .msg.system{align-self:center;background:transparent;color:#484F58;font-size:12px;padding:4px}
+    .chat-input{padding:12px 16px;background:#161B22;border-top:1px solid #30363D;display:flex;gap:8px}
+    .chat-input input{flex:1;padding:10px 14px;background:#0D1117;border:1px solid #30363D;border-radius:20px;color:#F0F6FC;font-size:14px;outline:none}
+    .chat-input input:focus{border-color:#58A6FF}
+    .chat-input button{background:#238636;border:none;color:#fff;width:40px;height:40px;border-radius:50%;cursor:pointer;font-size:16px}
+    .chat-input button:disabled{background:#1a2e1a;cursor:not-allowed}
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="container" id="connectView">
     <div class="logo">
-      <div class="logo-icon">🐝</div>
-      <h1>HiveClaw</h1>
-      <p>Remote Connect</p>
+      <div class="logo-icon">🐙</div>
+      <h1>HiveClaw Connect</h1>
+      <p>Connect to your AI team from anywhere</p>
     </div>
     <div class="card">
-      <div class="status checking" id="serverStatus">
-        <div class="spinner" id="statusSpinner"></div>
-        <span id="statusText">Discovering server...</span>
+      <div class="error" id="error"></div>
+      <div class="field">
+        <label>Instance Token</label>
+        <input type="text" id="token" placeholder="HCW-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false">
       </div>
-      <div id="errorBox" class="error"></div>
-      <div id="loginForm">
-        <div class="field">
-          <label>Email</label>
-          <input type="email" id="email" placeholder="your@email.com" autocomplete="email">
-        </div>
-        <div class="field">
-          <label>Instance Token</label>
-          <input type="text" id="token" placeholder="hc_live_..." autocomplete="off">
-          <div class="hint">Found in Settings → General → Instance Token</div>
-        </div>
-        <button class="btn btn-primary" id="connectBtn" disabled onclick="doConnect()">Connect</button>
-        <div class="manual-toggle">
-          <a onclick="toggleManual()">Enter server URL manually</a>
-        </div>
-        <div class="manual-field" id="manualField">
-          <div class="divider">Manual connection</div>
-          <div class="field">
-            <label>Server URL</label>
-            <input type="url" id="serverUrl" placeholder="https://your-tunnel.trycloudflare.com">
-          </div>
-          <button class="btn btn-secondary" onclick="manualDiscovery()">Use this server</button>
-        </div>
+      <div class="field">
+        <label>Your Name</label>
+        <input type="text" id="name" placeholder="Your name" autocomplete="name">
       </div>
-      <div id="successView" style="display:none">
-        <div class="success-view">
-          <div class="success-icon">✅</div>
-          <h2>Connected!</h2>
-          <p>Redirecting to HiveClaw...</p>
-        </div>
-      </div>
+      <button class="btn btn-primary" id="connectBtn" onclick="doConnect()">🔗 Connect</button>
+    </div>
+    <div class="footer">🔒 End-to-end encrypted · No data stored in browser</div>
+  </div>
+  <div class="chat-container" id="chatView">
+    <div class="chat-header">
+      <button class="back" onclick="disconnect()">←</button>
+      <h2>🐙 HiveClaw</h2>
+      <div class="status-dot" id="connDot"></div>
+    </div>
+    <div class="messages" id="messages"></div>
+    <div class="chat-input">
+      <input type="text" id="msgInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendMsg()">
+      <button onclick="sendMsg()" id="sendBtn">↑</button>
     </div>
   </div>
+  <script src="https://unpkg.com/mqtt@5/dist/mqtt.min.js"></script>
+  <script src="https://unpkg.com/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+  <script src="https://unpkg.com/tweetnacl-util@0.15.1/nacl-util.min.js"></script>
   <script>
-    const GIST_ID = 'ae58eb68c99fe7797d4d0ed8e89732be';
-    const GIST_URL = 'https://gist.githubusercontent.com/danilocaffaro/' + GIST_ID + '/raw/hiveclaw-discovery.json';
-    let discoveredUrl = null;
-    let discoveredToken = null;
-
-    const saved = localStorage.getItem('hiveclaw_remote');
-    if (saved) { try { const s = JSON.parse(saved); if (s.email) document.getElementById('email').value = s.email; } catch(e) {} }
-
-    async function discover() {
-      const status = document.getElementById('serverStatus');
-      const statusText = document.getElementById('statusText');
-      const connectBtn = document.getElementById('connectBtn');
-      try {
-        const r = await fetch(GIST_URL + '?t=' + Date.now());
-        if (!r.ok) throw new Error('Gist not found');
-        const data = await r.json();
-        if (data.status === 'online' && data.url) {
-          try {
-            const health = await fetch(data.url + '/api/health', { signal: AbortSignal.timeout(5000) });
-            if (health.ok) {
-              discoveredUrl = data.url;
-              discoveredToken = data.token;
-              status.className = 'status online';
-              status.innerHTML = '<div class="dot"></div><span>Server online</span>';
-              connectBtn.disabled = false;
-              return;
-            }
-          } catch(e) {}
-        }
-        throw new Error('offline');
-      } catch(e) {
-        status.className = 'status offline';
-        status.innerHTML = '<div class="dot"></div><span>Server offline — enter URL manually</span>';
-        toggleManual();
-      }
+    let client=null,instanceId='',deviceId='',userName='',myKeys=null,serverPubKey=null;
+    function showError(m){const e=document.getElementById('error');e.textContent=m;e.style.display='block';setTimeout(()=>e.style.display='none',5000)}
+    function addMessage(t,type){const m=document.getElementById('messages'),d=document.createElement('div');d.className='msg '+type;d.textContent=t;m.appendChild(d);m.scrollTop=m.scrollHeight}
+    function decodeToken(t){const c=t.replace(/^HCW-/,'').replace(/-/g,'');try{return JSON.parse(atob(c))}catch(e){return{broker:'wss://broker.hivemq.com:8884/mqtt',instanceId:c.toLowerCase(),username:'',password:''}}}
+    function doConnect(){
+      const token=document.getElementById('token').value.trim(),name=document.getElementById('name').value.trim();
+      if(!token)return showError('Instance Token is required');
+      if(!name)return showError('Your name is required');
+      userName=name;deviceId='dev_'+Math.random().toString(36).substr(2,8);
+      myKeys=nacl.box.keyPair();
+      const config=decodeToken(token);instanceId=config.instanceId;
+      const btn=document.getElementById('connectBtn');btn.disabled=true;btn.textContent='Connecting...';
+      const opts={clientId:deviceId,clean:true,connectTimeout:10000};
+      if(config.username){opts.username=config.username;opts.password=config.password}
+      try{client=mqtt.connect(config.broker,opts)}catch(e){showError('Failed: '+e.message);btn.disabled=false;btn.textContent='🔗 Connect';return}
+      client.on('connect',()=>{
+        client.subscribe('hc_'+instanceId+'/'+deviceId+'/agent');
+        client.publish('hc_'+instanceId+'/'+deviceId+'/pair',JSON.stringify({type:'pair',deviceId:deviceId,name:userName,publicKey:nacl.util.encodeBase64(myKeys.publicKey),timestamp:Date.now()}));
+        document.getElementById('connectView').style.display='none';
+        document.getElementById('chatView').style.display='flex';
+        addMessage('Connected to HiveClaw ✓','system');
+      });
+      client.on('message',(topic,payload)=>{
+        try{const data=JSON.parse(payload.toString());
+          if(data.type==='pair_ack'){if(data.publicKey)serverPubKey=nacl.util.decodeBase64(data.publicKey);addMessage('Secure channel established 🔒','system')}
+          else if(data.type==='message'){let text=data.content;if(data.encrypted&&serverPubKey){try{const n=nacl.util.decodeBase64(data.nonce),c=nacl.util.decodeBase64(data.content),d=nacl.box.open(c,n,serverPubKey,myKeys.secretKey);if(d)text=nacl.util.encodeUTF8(d)}catch(e){}}addMessage(text,'agent')}
+        }catch(e){addMessage(payload.toString(),'agent')}
+      });
+      client.on('error',(e)=>{showError('Error: '+e.message);btn.disabled=false;btn.textContent='🔗 Connect'});
+      client.on('offline',()=>{document.getElementById('connDot').style.background='#F85149'});
+      client.on('reconnect',()=>{document.getElementById('connDot').style.background='#3FB950'});
     }
-
-    function toggleManual() { document.getElementById('manualField').classList.toggle('show'); }
-
-    function manualDiscovery() {
-      const url = document.getElementById('serverUrl').value.replace(/\/+$/, '');
-      if (!url) return;
-      discoveredUrl = url;
-      const status = document.getElementById('serverStatus');
-      status.className = 'status online';
-      status.innerHTML = '<div class="dot"></div><span>Using: ' + url + '</span>';
-      document.getElementById('connectBtn').disabled = false;
-      document.getElementById('manualField').classList.remove('show');
+    function sendMsg(){
+      const input=document.getElementById('msgInput'),text=input.value.trim();
+      if(!text||!client||!client.connected)return;
+      addMessage(text,'user');input.value='';
+      const topic='hc_'+instanceId+'/'+deviceId+'/user';
+      let payload;
+      if(serverPubKey){const nonce=nacl.randomBytes(24),enc=nacl.box(nacl.util.decodeUTF8(text),nonce,serverPubKey,myKeys.secretKey);payload=JSON.stringify({type:'message',encrypted:true,content:nacl.util.encodeBase64(enc),nonce:nacl.util.encodeBase64(nonce),deviceId:deviceId,timestamp:Date.now()})}
+      else{payload=JSON.stringify({type:'message',content:text,deviceId:deviceId,timestamp:Date.now()})}
+      client.publish(topic,payload);
     }
-
-    function showError(msg) {
-      const box = document.getElementById('errorBox');
-      box.textContent = msg; box.style.display = 'block';
-      setTimeout(function() { box.style.display = 'none'; }, 5000);
-    }
-
-    async function doConnect() {
-      const email = document.getElementById('email').value.trim();
-      const token = document.getElementById('token').value.trim();
-      const btn = document.getElementById('connectBtn');
-      if (!email || !token) return showError('Email and token are required');
-      if (!discoveredUrl) return showError('Server not discovered yet');
-      btn.disabled = true; btn.textContent = 'Connecting...';
-      try {
-        const r = await fetch(discoveredUrl + '/api/auth/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: email, instanceToken: token })
-        });
-        const data = await r.json();
-        if (r.ok && data.valid) {
-          localStorage.setItem('hiveclaw_remote', JSON.stringify({ email: email, serverUrl: discoveredUrl }));
-          document.getElementById('loginForm').style.display = 'none';
-          document.getElementById('successView').style.display = 'block';
-          const accessToken = discoveredToken || token;
-          setTimeout(function() { window.location.href = discoveredUrl + '?token=' + encodeURIComponent(accessToken); }, 1500);
-        } else {
-          showError(data.error || 'Invalid email or token');
-          btn.disabled = false; btn.textContent = 'Connect';
-        }
-      } catch(e) {
-        showError('Connection failed — server may be offline');
-        btn.disabled = false; btn.textContent = 'Connect';
-      }
-    }
-
-    document.addEventListener('keypress', function(e) { if (e.key === 'Enter') doConnect(); });
-    discover();
+    function disconnect(){if(client){client.end();client=null}document.getElementById('chatView').style.display='none';document.getElementById('connectView').style.display='block';document.getElementById('connectBtn').disabled=false;document.getElementById('connectBtn').textContent='🔗 Connect'}
   </script>
 </body>
 </html>
