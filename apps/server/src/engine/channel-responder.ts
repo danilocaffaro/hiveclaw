@@ -167,6 +167,8 @@ export interface ChannelInbound {
   groupTitle?: string;
   channelType?: string;  // e.g. 'telegram', 'whatsapp', 'discord', 'slack'
   channelName?: string;  // e.g. 'Clark Telegram'
+  /** Base64-encoded images attached to this message (downloaded from platform) */
+  imageAttachments?: Array<{ base64: string; mimeType: string }>;
   /** Optional callback for progressive message delivery (step-by-step UX). */
   onProgress?: (text: string) => Promise<void>;
 }
@@ -232,10 +234,10 @@ async function _handleChannelInboundInner(inbound: ChannelInbound): Promise<stri
   let channelContext = '';
   if (inbound.channelType) {
     const caps: Record<string, string> = {
-      telegram: 'You can send text, audio (voice messages), images, documents, and use inline keyboards.',
-      whatsapp: 'You can send text, audio, images, and documents.',
-      discord: 'You can send text, embeds, and files.',
-      slack: 'You can send text, blocks, and files.',
+      telegram: 'You can send text, images, audio, voice messages, video, documents, reactions, and inline keyboards. Use the `message` tool with action=send_media to send files/images. Use the `screenshot` tool + `message` tool to capture and send screenshots.',
+      whatsapp: 'You can send text, images, audio, and documents. Use the `message` tool with action=send_media to send files.',
+      discord: 'You can send text, embeds, and files. Use the `message` tool with action=send_media to send files.',
+      slack: 'You can send text, blocks, and files. Use the `message` tool with action=send_media to send files.',
     };
     const capStr = caps[inbound.channelType] ?? 'You can send text messages.';
     channelContext = `[📡 Channel: ${inbound.channelType}${inbound.channelName ? ` (${inbound.channelName})` : ''}. ${capStr}]\n`;

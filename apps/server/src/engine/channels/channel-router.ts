@@ -340,9 +340,44 @@ export class ChannelRouter {
       }
     }
 
-    const messageText = audioTranscription
-      ? `${audioTranscription}${msg.text ? '\n' + msg.text : ''}`
-      : msg.text;
+    // ─── Image handling: download photos and save locally ───
+    let imageContext = '';
+    const imageAttachments: Array<{ base64: string; mimeType: string }> = [];
+    const imageMedia = msg.media?.filter(m => m.type === 'image');
+    if (imageMedia?.length && adapter instanceof TelegramAdapter) {
+      for (const media of imageMedia) {
+        try {
+          const localPath = await adapter.downloadFile(media.fileId!, '.jpg');
+          const { readFileSync } = await import('fs');
+          const buf = readFileSync(localPath);
+          imageAttachments.push({ base64: buf.toString('base64'), mimeType: 'image/jpeg' });
+          imageContext += `[📷 Image received — saved at ${localPath}. Use the screenshot tool with source="screen" or read the file to analyze it.]\n`;
+        } catch (err) {
+          logger.error('[Router] Failed to download image: %s', (err as Error).message);
+          imageContext += '[📷 Image received — download failed]\n';
+        }
+      }
+    }
+
+    // ─── Video handling: notify agent (download is expensive) ───
+    const videoMedia = msg.media?.filter(m => m.type === 'video');
+    if (videoMedia?.length) {
+      for (const media of videoMedia) {
+        const sizeStr = media.sizeBytes ? ` (${(media.sizeBytes / 1024 / 1024).toFixed(1)}MB)` : '';
+        imageContext += `[🎥 Video received${sizeStr}${media.filename ? `: ${media.filename}` : ''}. Video content not auto-processed.]\n`;
+      }
+    }
+
+    // ─── Document handling: notify agent ───
+    const docMedia = msg.media?.filter(m => m.type === 'document');
+    if (docMedia?.length) {
+      for (const media of docMedia) {
+        imageContext += `[📎 Document received: ${media.filename ?? 'unnamed'}${media.mimeType ? ` (${media.mimeType})` : ''}]\n`;
+      }
+    }
+
+    const messageText = `${audioTranscription}${imageContext}${msg.text ? (audioTranscription || imageContext ? '\n' : '') + msg.text : ''}`
+      || msg.text;
 
     try {
       // Route to engine — get agent response
@@ -357,6 +392,7 @@ export class ChannelRouter {
         groupTitle: msg.groupTitle,
         channelType: entry.type,
         channelName: entry.name,
+        imageAttachments: imageAttachments.length ? imageAttachments : undefined,
         onProgress: async (text: string) => {
           // Send intermediate step as a separate message (OpenClaw-style progressive delivery)
           try {
