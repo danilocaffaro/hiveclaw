@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HiveClaw Connect</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐝</text></svg>">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0D1117;color:#C9D1D9;min-height:100vh;display:flex;align-items:center;justify-content:center}
+    .container{width:100%;max-width:420px;padding:24px}
+    .logo{text-align:center;margin-bottom:32px}
+    .logo-icon{font-size:48px;margin-bottom:8px}
+    .logo h1{font-size:24px;font-weight:700;color:#F0F6FC}
+    .logo p{font-size:14px;color:#8B949E;margin-top:4px}
+    .card{background:#161B22;border:1px solid #30363D;border-radius:12px;padding:24px}
+    .field{margin-bottom:16px}
+    .field label{display:block;font-size:13px;font-weight:600;color:#C9D1D9;margin-bottom:6px}
+    .field input{width:100%;padding:10px 12px;background:#0D1117;border:1px solid #30363D;border-radius:8px;color:#F0F6FC;font-size:14px;outline:none;transition:border .2s}
+    .field input:focus{border-color:#58A6FF}
+    .field input::placeholder{color:#484F58}
+    .btn{width:100%;padding:12px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s}
+    .btn-primary{background:#238636;color:#fff}
+    .btn-primary:hover{background:#2EA043}
+    .btn-primary:disabled{background:#1a2e1a;color:#3d6b3d;cursor:not-allowed}
+    .error{background:#2d1117;border:1px solid #DA3633;color:#F85149;padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:16px;display:none}
+    .footer{text-align:center;margin-top:20px;font-size:11px;color:#484F58}
+    .chat-container{display:none;flex-direction:column;height:100vh;max-width:600px;margin:0 auto;width:100%}
+    .chat-header{padding:16px 20px;background:#161B22;border-bottom:1px solid #30363D;display:flex;align-items:center;gap:12px}
+    .chat-header .back{background:none;border:none;color:#58A6FF;font-size:18px;cursor:pointer;padding:4px}
+    .chat-header h2{font-size:16px;font-weight:600;color:#F0F6FC;flex:1}
+    .chat-header .status-dot{width:8px;height:8px;border-radius:50%;background:#3FB950}
+    .messages{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:8px}
+    .msg{max-width:80%;padding:10px 14px;border-radius:16px;font-size:14px;line-height:1.5;word-wrap:break-word}
+    .msg.user{align-self:flex-end;background:#1F6FEB;color:#fff;border-bottom-right-radius:4px}
+    .msg.agent{align-self:flex-start;background:#2D333B;color:#C9D1D9;border-bottom-left-radius:4px}
+    .msg.system{align-self:center;background:transparent;color:#484F58;font-size:12px;padding:4px}
+    .chat-input{padding:12px 16px;background:#161B22;border-top:1px solid #30363D;display:flex;gap:8px}
+    .chat-input input{flex:1;padding:10px 14px;background:#0D1117;border:1px solid #30363D;border-radius:20px;color:#F0F6FC;font-size:14px;outline:none}
+    .chat-input input:focus{border-color:#58A6FF}
+    .chat-input button{background:#238636;border:none;color:#fff;width:40px;height:40px;border-radius:50%;cursor:pointer;font-size:16px}
+    .chat-input button:disabled{background:#1a2e1a;cursor:not-allowed}
+  </style>
+</head>
+<body>
+  <div class="container" id="connectView">
+    <div class="logo">
+      <div class="logo-icon">🐙</div>
+      <h1>HiveClaw Connect</h1>
+      <p>Connect to your AI team from anywhere</p>
+    </div>
+    <div class="card">
+      <div class="error" id="error"></div>
+      <div class="field">
+        <label>Instance Token</label>
+        <input type="text" id="token" placeholder="HCW-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="field">
+        <label>Your Name</label>
+        <input type="text" id="name" placeholder="Your name" autocomplete="name">
+      </div>
+      <button class="btn btn-primary" id="connectBtn" onclick="doConnect()">🔗 Connect</button>
+    </div>
+    <div class="footer">🔒 End-to-end encrypted · No data stored in browser</div>
+  </div>
+  <div class="chat-container" id="chatView">
+    <div class="chat-header">
+      <button class="back" onclick="disconnect()">←</button>
+      <h2>🐙 HiveClaw</h2>
+      <div class="status-dot" id="connDot"></div>
+    </div>
+    <div class="messages" id="messages"></div>
+    <div class="chat-input">
+      <input type="text" id="msgInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendMsg()">
+      <button onclick="sendMsg()" id="sendBtn">↑</button>
+    </div>
+  </div>
+  <script src="https://unpkg.com/mqtt@5/dist/mqtt.min.js"></script>
+  <script src="https://unpkg.com/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+  <script src="https://unpkg.com/tweetnacl-util@0.15.1/nacl-util.min.js"></script>
+  <script>
+    let client=null,instanceId='',deviceId='',userName='',myKeys=null,serverPubKey=null;
+    function showError(m){const e=document.getElementById('error');e.textContent=m;e.style.display='block';setTimeout(()=>e.style.display='none',5000)}
+    function addMessage(t,type){const m=document.getElementById('messages'),d=document.createElement('div');d.className='msg '+type;d.textContent=t;m.appendChild(d);m.scrollTop=m.scrollHeight}
+    function decodeToken(t){const c=t.replace(/^HCW-/,'').replace(/-/g,'');try{return JSON.parse(atob(c))}catch(e){return{broker:'wss://broker.hivemq.com:8884/mqtt',instanceId:c.toLowerCase(),username:'',password:''}}}
+    function doConnect(){
+      const token=document.getElementById('token').value.trim(),name=document.getElementById('name').value.trim();
+      if(!token)return showError('Instance Token is required');
+      if(!name)return showError('Your name is required');
+      userName=name;deviceId='dev_'+Math.random().toString(36).substr(2,8);
+      myKeys=nacl.box.keyPair();
+      const config=decodeToken(token);instanceId=config.instanceId;
+      const btn=document.getElementById('connectBtn');btn.disabled=true;btn.textContent='Connecting...';
+      const opts={clientId:deviceId,clean:true,connectTimeout:10000};
+      if(config.username){opts.username=config.username;opts.password=config.password}
+      try{client=mqtt.connect(config.broker,opts)}catch(e){showError('Failed: '+e.message);btn.disabled=false;btn.textContent='🔗 Connect';return}
+      client.on('connect',()=>{
+        client.subscribe('hc_'+instanceId+'/'+deviceId+'/agent');
+        client.publish('hc_'+instanceId+'/'+deviceId+'/pair',JSON.stringify({type:'pair',deviceId:deviceId,name:userName,publicKey:nacl.util.encodeBase64(myKeys.publicKey),timestamp:Date.now()}));
+        document.getElementById('connectView').style.display='none';
+        document.getElementById('chatView').style.display='flex';
+        addMessage('Connected to HiveClaw ✓','system');
+      });
+      client.on('message',(topic,payload)=>{
+        try{const data=JSON.parse(payload.toString());
+          if(data.type==='pair_ack'){if(data.publicKey)serverPubKey=nacl.util.decodeBase64(data.publicKey);addMessage('Secure channel established 🔒','system')}
+          else if(data.type==='message'){let text=data.content;if(data.encrypted&&serverPubKey){try{const n=nacl.util.decodeBase64(data.nonce),c=nacl.util.decodeBase64(data.content),d=nacl.box.open(c,n,serverPubKey,myKeys.secretKey);if(d)text=nacl.util.encodeUTF8(d)}catch(e){}}addMessage(text,'agent')}
+        }catch(e){addMessage(payload.toString(),'agent')}
+      });
+      client.on('error',(e)=>{showError('Error: '+e.message);btn.disabled=false;btn.textContent='🔗 Connect'});
+      client.on('offline',()=>{document.getElementById('connDot').style.background='#F85149'});
+      client.on('reconnect',()=>{document.getElementById('connDot').style.background='#3FB950'});
+    }
+    function sendMsg(){
+      const input=document.getElementById('msgInput'),text=input.value.trim();
+      if(!text||!client||!client.connected)return;
+      addMessage(text,'user');input.value='';
+      const topic='hc_'+instanceId+'/'+deviceId+'/user';
+      let payload;
+      if(serverPubKey){const nonce=nacl.randomBytes(24),enc=nacl.box(nacl.util.decodeUTF8(text),nonce,serverPubKey,myKeys.secretKey);payload=JSON.stringify({type:'message',encrypted:true,content:nacl.util.encodeBase64(enc),nonce:nacl.util.encodeBase64(nonce),deviceId:deviceId,timestamp:Date.now()})}
+      else{payload=JSON.stringify({type:'message',content:text,deviceId:deviceId,timestamp:Date.now()})}
+      client.publish(topic,payload);
+    }
+    function disconnect(){if(client){client.end();client=null}document.getElementById('chatView').style.display='none';document.getElementById('connectView').style.display='block';document.getElementById('connectBtn').disabled=false;document.getElementById('connectBtn').textContent='🔗 Connect'}
+  </script>
+</body>
+</html>
