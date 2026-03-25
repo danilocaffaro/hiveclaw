@@ -23,6 +23,7 @@ import { ScreenshotTool } from './screenshot.js';
 import { WebSearchTool } from './web-search.js';
 import { MacControlTool } from './mac-control.js';
 import { CanvasTool } from './canvas.js';
+import { MessageTool } from './message.js';
 import { NodeControlTool } from '../nodes/node-tool.js';
 
 export { BashTool } from './bash.js';
@@ -45,6 +46,7 @@ export { ScreenshotTool } from './screenshot.js';
 export { WebSearchTool } from './web-search.js';
 export { MacControlTool } from './mac-control.js';
 export { CanvasTool } from './canvas.js';
+export { MessageTool } from './message.js';
 export { NodeControlTool } from '../nodes/node-tool.js';
 
 export type { Tool, ToolInput, ToolOutput, ToolDefinition, ToolContext } from './types.js';
@@ -75,6 +77,7 @@ export function getToolRegistry(): Map<string, Tool> {
     new WebSearchTool(),
     new MacControlTool(),
     new CanvasTool(),
+    new MessageTool(),
     new NodeControlTool(),
   ];
 
