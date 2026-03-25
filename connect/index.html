@@ -82,7 +82,7 @@
     let client=null,instanceId='',deviceId='',userName='',myKeys=null,serverPubKey=null;
     function showError(m){const e=document.getElementById('error');e.textContent=m;e.style.display='block';setTimeout(()=>e.style.display='none',5000)}
     function addMessage(t,type){const m=document.getElementById('messages'),d=document.createElement('div');d.className='msg '+type;d.textContent=t;m.appendChild(d);m.scrollTop=m.scrollHeight}
-    function decodeToken(t){const c=t.replace(/^HCW-/,'').replace(/-/g,'');try{return JSON.parse(atob(c))}catch(e){return{broker:'wss://broker.hivemq.com:8884/mqtt',instanceId:c.toLowerCase(),username:'',password:''}}}
+    function decodeToken(t){const c=t.replace(/^HCW-/,'').replace(/-/g,'');try{const d=JSON.parse(atob(c));return{instanceId:d.i,broker:d.b,username:d.u||'',password:d.p||'',uid:d.uid||'',role:d.r||'member',v:d.v||1}}catch(e){return{broker:'wss://broker.hivemq.com:8884/mqtt',instanceId:c.toLowerCase(),username:'',password:''}}}
     function doConnect(){
       const token=document.getElementById('token').value.trim(),name=document.getElementById('name').value.trim();
       if(!token)return showError('Instance Token is required');
@@ -95,16 +95,16 @@
       if(config.username){opts.username=config.username;opts.password=config.password}
       try{client=mqtt.connect(config.broker,opts)}catch(e){showError('Failed: '+e.message);btn.disabled=false;btn.textContent='🔗 Connect';return}
       client.on('connect',()=>{
-        client.subscribe('hc_'+instanceId+'/'+deviceId+'/agent');
-        client.publish('hc_'+instanceId+'/'+deviceId+'/pair',JSON.stringify({type:'pair',deviceId:deviceId,name:userName,publicKey:nacl.util.encodeBase64(myKeys.publicKey),timestamp:Date.now()}));
+        client.subscribe(instanceId+'/'+deviceId+'/agent');
+        client.publish(instanceId+'/auth',JSON.stringify({token:token,deviceName:userName,publicKey:nacl.util.encodeBase64(myKeys.publicKey),userAgent:navigator.userAgent}));
         document.getElementById('connectView').style.display='none';
         document.getElementById('chatView').style.display='flex';
         addMessage('Connected to HiveClaw ✓','system');
       });
       client.on('message',(topic,payload)=>{
         try{const data=JSON.parse(payload.toString());
-          if(data.type==='pair_ack'){if(data.publicKey)serverPubKey=nacl.util.decodeBase64(data.publicKey);addMessage('Secure channel established 🔒','system')}
-          else if(data.type==='message'){let text=data.content;if(data.encrypted&&serverPubKey){try{const n=nacl.util.decodeBase64(data.nonce),c=nacl.util.decodeBase64(data.content),d=nacl.box.open(c,n,serverPubKey,myKeys.secretKey);if(d)text=nacl.util.encodeUTF8(d)}catch(e){}}addMessage(text,'agent')}
+          if(data.type==='auth_response'){if(data.payload&&data.payload.serverPublicKey)serverPubKey=nacl.util.decodeBase64(data.payload.serverPublicKey);if(data.payload&&data.payload.deviceId)deviceId=data.payload.deviceId;addMessage('Secure channel established 🔒','system')}
+          else if(data.type==='chat'){let text=(data.payload&&data.payload.content)||data.content||'';if(data.encrypted&&serverPubKey){try{const n=nacl.util.decodeBase64(data.nonce),c=nacl.util.decodeBase64(data.content),d=nacl.box.open(c,n,serverPubKey,myKeys.secretKey);if(d)text=nacl.util.encodeUTF8(d)}catch(e){}}if(text)addMessage(text,'agent')}
         }catch(e){addMessage(payload.toString(),'agent')}
       });
       client.on('error',(e)=>{showError('Error: '+e.message);btn.disabled=false;btn.textContent='🔗 Connect'});
@@ -115,10 +115,10 @@
       const input=document.getElementById('msgInput'),text=input.value.trim();
       if(!text||!client||!client.connected)return;
       addMessage(text,'user');input.value='';
-      const topic='hc_'+instanceId+'/'+deviceId+'/user';
+      const topic=instanceId+'/'+deviceId+'/user';
       let payload;
-      if(serverPubKey){const nonce=nacl.randomBytes(24),enc=nacl.box(nacl.util.decodeUTF8(text),nonce,serverPubKey,myKeys.secretKey);payload=JSON.stringify({type:'message',encrypted:true,content:nacl.util.encodeBase64(enc),nonce:nacl.util.encodeBase64(nonce),deviceId:deviceId,timestamp:Date.now()})}
-      else{payload=JSON.stringify({type:'message',content:text,deviceId:deviceId,timestamp:Date.now()})}
+      if(serverPubKey){const nonce=nacl.randomBytes(24),enc=nacl.box(nacl.util.decodeUTF8(text),nonce,serverPubKey,myKeys.secretKey);payload=JSON.stringify({type:'chat',encrypted:true,content:nacl.util.encodeBase64(enc),nonce:nacl.util.encodeBase64(nonce),deviceId:deviceId,ts:Date.now()})}
+      else{payload=JSON.stringify({type:'chat',payload:{content:text},deviceId:deviceId,ts:Date.now()})}
       client.publish(topic,payload);
     }
     function disconnect(){if(client){client.end();client=null}document.getElementById('chatView').style.display='none';document.getElementById('connectView').style.display='block';document.getElementById('connectBtn').disabled=false;document.getElementById('connectBtn').textContent='🔗 Connect'}
