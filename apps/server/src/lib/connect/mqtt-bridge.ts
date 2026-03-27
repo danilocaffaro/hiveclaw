@@ -10,7 +10,7 @@ import mqtt from 'mqtt';
 import { getDb } from '../../db/index.js';
 import { encrypt, decrypt, generateKeyPair, type KeyPair } from './crypto.js';
 import { validateSession, pairDevice, type Device } from './device-manager.js';
-import { generateInstanceId, generateMqttCredentials, generateToken, type TokenPayload } from './token.js';
+import { generateInstanceId, generateMqttCredentials, generateToken, decodeToken, type TokenPayload } from './token.js';
 import { logger } from '../logger.js';
 
 const log = logger.child({ module: 'connect:mqtt' });
@@ -98,6 +98,18 @@ export class MqttBridge {
 
   /** Connect to MQTT broker */
   async connect(): Promise<void> {
+    // Guard: don't reconnect if already connected
+    if (this._connected && this.client) {
+      log.info('MQTT already connected, skipping reconnect');
+      return;
+    }
+
+    // Cleanup stale client before reconnecting
+    if (this.client) {
+      try { this.client.end(true); } catch { /* ignore */ }
+      this.client = null;
+    }
+
     if (!this.config) await this.loadOrCreateConfig();
     const cfg = this.config!;
 
@@ -170,17 +182,18 @@ export class MqttBridge {
       return;
     }
 
-    const devicePubKey = this.deviceKeys.get(deviceId);
-    if (!devicePubKey) {
-      log.warn(`No public key for device ${deviceId}`);
-      return;
-    }
-
-    const plaintext = JSON.stringify(message);
-    const encrypted = encrypt(plaintext, devicePubKey, this.config.serverKeyPair.secretKey);
     const topic = `${this.config.instanceId}/${deviceId}/agent`;
 
-    this.client.publish(topic, JSON.stringify(encrypted), { qos: 1 });
+    const devicePubKey = this.deviceKeys.get(deviceId);
+    if (devicePubKey) {
+      // Encrypted (E2E)
+      const plaintext = JSON.stringify(message);
+      const encrypted = encrypt(plaintext, devicePubKey, this.config.serverKeyPair.secretKey);
+      this.client.publish(topic, JSON.stringify(encrypted), { qos: 1 });
+    } else {
+      // Plain text fallback (MVP — no E2E key exchanged yet)
+      this.client.publish(topic, JSON.stringify(message), { qos: 1 });
+    }
   }
 
   /** Broadcast to all active devices of a user */
@@ -247,7 +260,7 @@ export class MqttBridge {
       };
 
       // Validate the token
-      const tokenPayload = require('./token.js').decodeToken(data.token) as TokenPayload | null;
+      const tokenPayload = decodeToken(data.token) as TokenPayload | null;
       if (!tokenPayload || tokenPayload.instance !== this.config!.instanceId) {
         log.warn('Invalid pairing token');
         return;
@@ -294,47 +307,65 @@ export class MqttBridge {
     }
   }
 
-  /** Handle encrypted user message */
+  /** Handle user message — supports both encrypted (E2E) and plain text (MVP) */
   private async handleUserMessage(deviceId: string, payload: Buffer): Promise<void> {
     try {
-      const encrypted = JSON.parse(payload.toString());
+      const parsed = JSON.parse(payload.toString());
 
-      // Get device public key
-      const devicePubKey = this.deviceKeys.get(deviceId);
-      if (!devicePubKey) {
-        // Try to load from DB
-        const db = getDb();
-        const row = db.prepare('SELECT public_key FROM connect_devices WHERE id = ? AND revoked = 0').get(deviceId) as { public_key: string } | undefined;
-        if (!row) {
-          log.warn(`Unknown device: ${deviceId}`);
-          return;
+      let message: ConnectMessage;
+
+      // Check if this is an encrypted message (has nonce field) or plain text
+      if (parsed.nonce && parsed.ciphertext) {
+        // Encrypted message — decrypt with E2E
+        const devicePubKey = this.deviceKeys.get(deviceId);
+        if (!devicePubKey) {
+          const db = getDb();
+          const row = db.prepare('SELECT public_key FROM connect_devices WHERE id = ? AND revoked = 0').get(deviceId) as { public_key: string } | undefined;
+          if (!row) { log.warn(`Unknown device: ${deviceId}`); return; }
+          this.deviceKeys.set(deviceId, row.public_key);
         }
-        this.deviceKeys.set(deviceId, row.public_key);
+        const pubKey = this.deviceKeys.get(deviceId)!;
+        const plaintext = decrypt(parsed, pubKey, this.config!.serverKeyPair.secretKey);
+        if (!plaintext) { log.warn(`Failed to decrypt from device ${deviceId}`); return; }
+        message = JSON.parse(plaintext) as ConnectMessage;
+      } else {
+        // Plain text message (MVP mode — no E2E yet)
+        message = parsed as ConnectMessage;
+        log.info(`Plain text message from device ${deviceId} (type: ${message.type})`);
       }
 
-      const pubKey = this.deviceKeys.get(deviceId)!;
-      const plaintext = decrypt(encrypted, pubKey, this.config!.serverKeyPair.secretKey);
-      if (!plaintext) {
-        log.warn(`Failed to decrypt message from device ${deviceId}`);
-        return;
-      }
-
-      const message = JSON.parse(plaintext) as ConnectMessage;
-
-      // Validate session
-      const sessionToken = (message.payload as Record<string, string>).sessionToken;
+      // Resolve device — try session token first, then lookup by deviceId
+      let device: Device | null = null;
+      const sessionToken = (message.payload as Record<string, string>)?.sessionToken;
       if (sessionToken) {
-        const device = validateSession(sessionToken);
-        if (!device) {
-          log.warn(`Invalid session for device ${deviceId}`);
-          return;
+        device = validateSession(sessionToken);
+      }
+      if (!device) {
+        // Fallback: lookup device by ID in DB
+        const db = getDb();
+        const row = db.prepare('SELECT * FROM connect_devices WHERE id = ? AND revoked = 0').get(deviceId) as Record<string, unknown> | undefined;
+        if (row) {
+          device = {
+            id: row.id as string,
+            userId: row.user_id as string,
+            name: row.name as string,
+            publicKey: (row.public_key as string) || '',
+            sessionToken: row.session_token as string,
+            pairedAt: row.paired_at as string,
+            lastSeenAt: row.last_seen_at as string,
+            revoked: false,
+          };
         }
+      }
 
-        // Call registered handler
-        const handler = this.handlers.get(message.type);
-        if (handler) {
-          await handler(deviceId, device, message);
-        }
+      if (!device) { log.warn(`No valid device for ${deviceId}`); return; }
+
+      // Call registered handler
+      const handler = this.handlers.get(message.type);
+      if (handler) {
+        await handler(deviceId, device, message);
+      } else {
+        log.warn(`No handler for message type: ${message.type}`);
       }
     } catch (err) {
       log.error({ err }, 'Error handling user message');

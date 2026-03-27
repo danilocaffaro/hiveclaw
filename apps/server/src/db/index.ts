@@ -27,3 +27,5 @@ export { WorkflowRepository } from './workflow-repository.js';
 export type { WorkflowTemplate, WorkflowStep, WorkflowRun, WorkflowRunStep } from './workflow-repository.js';
 export { FederationRepository } from './federation.js';
 export type { FederationLink, FederationPairing, LinkDirection, LinkStatus, CreatePairingResult } from './federation.js';
+export { ProdutoRepository } from './produtos.js';
+export type { Produto, ProdutoCreateInput, ProdutoFilters } from './produtos.js';

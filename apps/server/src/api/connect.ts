@@ -20,24 +20,102 @@ import { logger } from '../lib/logger.js';
 const log = logger.child({ module: 'api:connect' });
 
 export function registerConnectRoutes(app: FastifyInstance) {
-  // Ensure devices table exists
+  // Ensure tables exist
+  const db = getDb();
+  db.exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
   initDevicesTable();
 
   const bridge = getMqttBridge();
+  let chatHandlerRegistered = false;
+
+  /** Register the chat handler once (idempotent) */
+  function ensureChatHandler() {
+    if (chatHandlerRegistered) return;
+    chatHandlerRegistered = true;
+
+    bridge.onMessage('chat', async (deviceId, device, message) => {
+      const content = (message.payload as Record<string, string>)?.content;
+      if (!content) { log.warn(`Empty chat message from device ${deviceId}`); return; }
+      log.info(`Chat from device ${deviceId}: ${content.slice(0, 80)}`);
+
+      try {
+        // Find or create a session for this device
+        const d = getDb();
+        let sessionId: string | undefined;
+        const existing = d.prepare(
+          `SELECT id FROM sessions WHERE metadata LIKE ? ORDER BY updated_at DESC LIMIT 1`
+        ).get(`%"connectDeviceId":"${deviceId}"%`) as { id: string } | undefined;
+
+        if (existing) {
+          sessionId = existing.id;
+        } else {
+          // Create a new session — pick the first available agent
+          const agent = d.prepare(`SELECT id, name FROM agents LIMIT 1`).get() as { id: string; name: string } | undefined;
+          if (!agent) { log.error('No agents available'); return; }
+
+          const { randomUUID } = await import('crypto');
+          sessionId = randomUUID();
+          d.prepare(
+            `INSERT INTO sessions (id, agent_id, title, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`
+          ).run(sessionId, agent.id, `Connect: ${device.name}`, JSON.stringify({ connectDeviceId: deviceId, userId: device.userId }));
+        }
+
+        // Use Fastify inject to reuse the full /sessions/:id/message pipeline
+        const res = await app.inject({
+          method: 'POST',
+          url: `/sessions/${sessionId}/message`,
+          payload: { content },
+          headers: { 'content-type': 'application/json' },
+        });
+
+        // Parse SSE response to extract the final assistant message
+        const sseText = res.body;
+        let fullResponse = '';
+        for (const line of sseText.split('\n')) {
+          if (line.startsWith('data: ')) {
+            try {
+              const evt = JSON.parse(line.slice(6));
+              if (evt.type === 'message.delta' && evt.delta) {
+                fullResponse += evt.delta;
+              }
+            } catch { /* skip non-JSON lines */ }
+          }
+        }
+
+        if (fullResponse) {
+          bridge.sendToDevice(deviceId, {
+            type: 'chat',
+            payload: { content: fullResponse, sessionId, role: 'assistant' },
+            ts: Date.now(),
+          });
+          log.info(`Sent response to device ${deviceId} (${fullResponse.length} chars)`);
+        } else {
+          log.warn(`No response generated for device ${deviceId}, SSE body length: ${sseText.length}`);
+        }
+      } catch (err) {
+        log.error({ err }, `Chat handler error for device ${deviceId}`);
+        bridge.sendToDevice(deviceId, {
+          type: 'chat',
+          payload: { content: '⚠️ Error processing message. Please try again.', role: 'system' },
+          ts: Date.now(),
+        });
+      }
+    });
+  }
 
   // Helper: get/set settings
   const getSetting = (key: string): string | null => {
-    const db = getDb();
-    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
+    const d = getDb();
+    const row = d.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
     return row?.value ?? null;
   };
   const setSetting = (key: string, value: string): void => {
-    const db = getDb();
-    db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value);
+    const d = getDb();
+    d.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value);
   };
 
   /**
-   * POST /api/connect/enable — Enable remote access and connect to MQTT
+   * POST /connect/enable — Enable remote access and connect to MQTT
    */
   app.post('/api/connect/enable', async () => {
     try {
@@ -46,11 +124,8 @@ export function registerConnectRoutes(app: FastifyInstance) {
 
       setSetting('connect_enabled', 'true');
 
-      // Register chat message handler
-      bridge.onMessage('chat', async (deviceId, device, message) => {
-        log.info(`Chat message from device ${deviceId} (user: ${device.userId})`);
-        // This will be wired to agent-runner in the integration step
-      });
+      // Register chat handler (idempotent — only registers once)
+      ensureChatHandler();
 
       return {
         data: {
@@ -67,7 +142,7 @@ export function registerConnectRoutes(app: FastifyInstance) {
   });
 
   /**
-   * POST /api/connect/disable — Disable remote access
+   * POST /connect/disable — Disable remote access
    */
   app.post('/api/connect/disable', async () => {
     await bridge.disconnect();
@@ -76,7 +151,7 @@ export function registerConnectRoutes(app: FastifyInstance) {
   });
 
   /**
-   * GET /api/connect/status — Get connection status
+   * GET /connect/status — Get connection status
    */
   app.get('/api/connect/status', async () => {
     const enabled = getSetting('connect_enabled') === 'true';

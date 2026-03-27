@@ -5,7 +5,7 @@
  * Contains: instance_id, broker URL, MQTT credentials (all base64url encoded)
  */
 
-import { randomBytes } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
 
 export interface TokenPayload {
   /** Unique instance identifier */
@@ -64,7 +64,6 @@ export function generateToken(payload: TokenPayload): string {
   }
 
   // Add checksum (first 4 chars of hash)
-  const { createHash } = require('crypto') as typeof import('crypto');
   const checksum = createHash('sha256').update(encoded).digest('base64url').slice(0, 4);
 
   return `${TOKEN_PREFIX}-${chunks.join('-')}-${checksum}`;
@@ -81,7 +80,6 @@ export function decodeToken(token: string): TokenPayload | null {
     const encoded = parts.slice(1, -1).join('');
 
     // Verify checksum
-    const { createHash } = require('crypto') as typeof import('crypto');
     const expectedChecksum = createHash('sha256').update(encoded).digest('base64url').slice(0, 4);
     if (checksum !== expectedChecksum) return null;
 

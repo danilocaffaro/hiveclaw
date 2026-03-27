@@ -18,6 +18,7 @@ import {
   SquadMemberRepository,
   ProviderRepository,
   TaskRepository,
+  ProdutoRepository,
   ArtifactRepository,
   DatasetRepository,
   FinetuneJobRepository,
@@ -38,6 +39,7 @@ import { skillRoutes } from './api/skills.js';
 import { heartbeatRoutes } from './api/heartbeat.js';
 import { questionRoutes } from './api/questions.js';
 import { registerTaskRoutes } from './api/tasks.js';
+import { registerProdutoRoutes } from './api/produtos.js';
 import { registerFileRoutes } from './api/files.js';
 import { registerBrowserRoutes } from './api/browser.js';
 import { registerArtifactRoutes } from './api/artifacts.js';
@@ -48,6 +50,8 @@ import { registerTunnelRoutes } from './api/tunnel.js';
 import { registerConnectRoutes } from './api/connect.js';
 import { registerMarketplaceRoutes } from './api/marketplace.js';
 import { registerAuthRoutes } from './api/auth.js';
+import { registerAuthJwtRoutes } from './api/auth-jwt.js';
+import { migrateAuthSchema } from './db/auth-schema.js';
 import { registerInviteRoutes } from './api/invites.js';
 import { registerAutomationRoutes, startCronScheduler } from './api/automations.js';
 import { registerFinetuneRoutes } from './api/finetune.js';
@@ -102,6 +106,10 @@ const VERSION = getVersion();
 async function main() {
   // ─── Initialize SQLite ──────────────────────────────────────────────────
   const db = initDatabase();
+
+  // ─── Auth schema migration (adds password_hash, totp_secret, refresh_tokens) ──
+  migrateAuthSchema(db);
+
   const agents = new AgentRepository(db);
   const squads = new SquadRepository(db);
   const squadMembers = new SquadMemberRepository(db);
@@ -206,6 +214,8 @@ async function main() {
     '/api/agents/status/stream',
     '/api/tunnel/',
     '/api/tunnel',
+    '/api/connect/',
+    '/api/connect',
     // NOTE: /api/engine/ is intentionally NOT here — rewriteUrl strips /api prefix
     // so /api/engine/events/:id becomes /engine/events/:id, matching the registered route
   ];
@@ -487,6 +497,7 @@ async function main() {
   registerConnectRoutes(app);
   registerMarketplaceRoutes(app, db);
   registerAuthRoutes(app, db);
+  registerAuthJwtRoutes(app, db);
   registerInviteRoutes(app, db);
   registerAutomationRoutes(app, db);
   registerFinetuneRoutes(app, finetuneDatasets, finetuneJobs);
