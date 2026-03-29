@@ -36,10 +36,13 @@ export default function ChatArea({ hideHeader = false }: { hideHeader?: boolean 
   // switching to Alice/Bolt would still show "thinking".
   const isStreaming = useSessionStore((s) => s.streamingSessions.has(s.activeSessionId ?? ''));
   // B3: Read messages from message-store (keyed by sessionId) instead of session-store flat array
-  const getMessages = useMessageStore((s) => s.getMessages);
+  // B12: Subscribe to the messages Map directly so zustand detects changes from ALL sources
+  //      (user-sent, SSE/external, API). The old `getMessages` selector returned a function
+  //      whose reference never changed, so external message arrivals didn't trigger re-renders.
+  const messagesMap = useMessageStore((s) => s.messages);
   const addMessageToStore = useMessageStore((s) => s.addMessage);
   const appendToStore = useMessageStore((s) => s.appendToLastMessage);
-  const messages = activeSessionId ? getMessages(activeSessionId) : [];
+  const messages = activeSessionId ? (messagesMap.get(activeSessionId) ?? []) : [];
   const squads = useSquadStore((s) => s.squads);
   const interfaceMode = useUIStore(s => s.interfaceMode);
   const isMobile = useIsMobile();
