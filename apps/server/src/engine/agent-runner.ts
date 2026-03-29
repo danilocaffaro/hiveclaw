@@ -245,6 +245,7 @@ export async function* runAgent(
   // into the system prompt so the agent knows how to operate.
   try {
     const agentSkills: string[] = agentConfig.skills ?? [];
+    logger.info({ agentName: agentConfig.name, skillCount: agentSkills.length, skills: agentSkills }, '[agent-runner] Skills check');
     if (agentSkills.length > 0) {
       const { existsSync: fsExists, readFileSync: fsRead } = await import('fs');
       const { join: pathJoin } = await import('path');
@@ -254,21 +255,27 @@ export async function* runAgent(
 
       for (const slug of agentSkills) {
         const skillMdPath = pathJoin(skillsDir, slug, 'SKILL.md');
-        if (fsExists(skillMdPath)) {
+        const exists = fsExists(skillMdPath);
+        if (exists) {
           const content = fsRead(skillMdPath, 'utf-8');
           if (content.length > 0 && content.length < 8000) { // Cap per-skill to avoid context explosion
             skillBlocks.push(`### Skill: ${slug}\n${content}`);
           }
         }
+        logger.info({ slug, exists, skillsDir }, '[agent-runner] Skill file check');
       }
 
       if (skillBlocks.length > 0) {
         systemPrompt += `\n\n## Active Skills\n${skillBlocks.join('\n\n---\n\n')}`;
-        logger.debug(`[agent-runner] Injected ${skillBlocks.length} skill(s) into system prompt`);
+        logger.info(`[agent-runner] Injected ${skillBlocks.length} skill(s) into system prompt for ${agentConfig.name}`);
+      } else {
+        logger.info(`[agent-runner] Agent ${agentConfig.name} has ${agentSkills.length} skill slugs but 0 loaded from disk`);
       }
+    } else {
+      logger.info(`[agent-runner] Agent ${agentConfig.name} has no skills assigned`);
     }
   } catch (e) {
-    logger.debug({ err: e }, '[agent-runner] Skill injection failed, continuing without skills');
+    logger.info({ err: e }, '[agent-runner] Skill injection failed, continuing without skills');
   }
 
   // ── 2.7 Prepare tools (needed for runtime context) ──────────────────────────

@@ -37,6 +37,9 @@ import { estimateTokenCost } from '../config/pricing.js';
 import { TOOL_LIMITS, ENABLE_MESSAGE_BUS, DEFAULT_PORT } from '../config/defaults.js';
 import { messageBus } from './message-bus.js';
 import type { SSEEvent, AgentConfig } from './agent-runner.js';
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
 
 // ─── Squad Context: Substantive Preview Extraction ──────────────────────────
 
@@ -218,6 +221,27 @@ function buildSystemPrompt(agentConfig: AgentConfig, sessionId: string, toolName
     const memoryContext = memoryRepo.getContextStringBudgeted(agentConfig.id, sessionId);
     if (memoryContext) systemPrompt = `${agentConfig.systemPrompt}${memoryContext}`;
   } catch { /* continue without memory */ }
+
+  // Skill injection — read SKILL.md content for each assigned skill
+  try {
+    const agentSkills: string[] = agentConfig.skills ?? [];
+    if (agentSkills.length > 0) {
+      const skillsDir = join(homedir(), '.hiveclaw', 'workspace', 'skills');
+      const skillBlocks: string[] = [];
+      for (const slug of agentSkills) {
+        const skillMdPath = join(skillsDir, slug, 'SKILL.md');
+        if (existsSync(skillMdPath)) {
+          const content = readFileSync(skillMdPath, 'utf-8');
+          if (content.length > 0 && content.length < 8000) {
+            skillBlocks.push(`### Skill: ${slug}\n${content}`);
+          }
+        }
+      }
+      if (skillBlocks.length > 0) {
+        systemPrompt += `\n\n## Active Skills\n${skillBlocks.join('\n\n---\n\n')}`;
+      }
+    }
+  } catch { /* continue without skills */ }
 
   // Runtime + tool integrity + operational awareness (same as v1)
   const serverPort = process.env.PORT ?? DEFAULT_PORT;
