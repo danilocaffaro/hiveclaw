@@ -93,6 +93,7 @@ export interface AgentConfig {
   maxTokens?: number;
   maxToolIterations?: number; // per-agent override (default: TOOL_LIMITS.MAX_TOOL_ITERATIONS)
   tools?: string[]; // tool names to enable (undefined = all tools)
+  skills?: string[]; // skill slugs to inject into system prompt
   fallbackProviders?: string[]; // ordered fallback provider IDs
   engineVersion?: 1 | 2; // default 1 for existing agents; 2 = native tool loop (agent-runner-v2)
   // Federation fields (shadow agents)
@@ -237,6 +238,37 @@ export async function* runAgent(
     }
   } catch (e) {
     logger.debug({ err: e }, '[agent-runner] Memory injection failed, continuing without memory');
+  }
+
+  // ── 2.6b Inject agent skills content ────────────────────────────────────────
+  // If the agent has skills assigned, read their SKILL.md content and inject
+  // into the system prompt so the agent knows how to operate.
+  try {
+    const agentSkills: string[] = agentConfig.skills ?? [];
+    if (agentSkills.length > 0) {
+      const { existsSync: fsExists, readFileSync: fsRead } = await import('fs');
+      const { join: pathJoin } = await import('path');
+      const { homedir: osHome } = await import('os');
+      const skillsDir = pathJoin(osHome(), '.hiveclaw', 'workspace', 'skills');
+      const skillBlocks: string[] = [];
+
+      for (const slug of agentSkills) {
+        const skillMdPath = pathJoin(skillsDir, slug, 'SKILL.md');
+        if (fsExists(skillMdPath)) {
+          const content = fsRead(skillMdPath, 'utf-8');
+          if (content.length > 0 && content.length < 8000) { // Cap per-skill to avoid context explosion
+            skillBlocks.push(`### Skill: ${slug}\n${content}`);
+          }
+        }
+      }
+
+      if (skillBlocks.length > 0) {
+        systemPrompt += `\n\n## Active Skills\n${skillBlocks.join('\n\n---\n\n')}`;
+        logger.debug(`[agent-runner] Injected ${skillBlocks.length} skill(s) into system prompt`);
+      }
+    }
+  } catch (e) {
+    logger.debug({ err: e }, '[agent-runner] Skill injection failed, continuing without skills');
   }
 
   // ── 2.7 Prepare tools (needed for runtime context) ──────────────────────────

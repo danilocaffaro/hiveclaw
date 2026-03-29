@@ -69,6 +69,7 @@ function agentRowToConfig(agent: Agent): AgentConfig {
     temperature: (agent.temperature as number) ?? DEFAULT_AGENT_CONFIG.temperature,
     maxTokens: DEFAULT_AGENT_CONFIG.maxTokens,
     maxToolIterations: (agent as unknown as Record<string, unknown>).max_tool_iterations as number | undefined,
+    skills: agent.skills ?? [],
     fallbackProviders: agent.fallbackProviders ?? [],
     engineVersion: agent.engineVersion ?? 1,
     isShadow,

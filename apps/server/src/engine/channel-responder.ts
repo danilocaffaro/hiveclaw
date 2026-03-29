@@ -57,6 +57,7 @@ function agentRowToConfig(agent: Agent): AgentConfig {
     modelId: (agent.modelPreference as string) || getDefaultModelId(resolvedProvider),
     temperature: (agent.temperature as number) ?? 0.7,
     maxTokens: 4096,
+    skills: agent.skills ?? [],
     engineVersion: agent.engineVersion ?? 1,
     isShadow,
     federationLinkId: isShadow ? (agent as unknown as Record<string, unknown>).federation_link_id as string : undefined,
