@@ -1,12 +1,13 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useRSPStore, selectActiveSquadId, selectSelectedMemberId } from '@/stores/rsp-store';
 import { useSquadStore } from '@/stores/squad-store';
 import { useAgentStore } from '@/stores/agent-store';
 
 /**
  * L-2: Agent tab bar for squad context.
- * Shows emoji+name tabs for each squad member above PanelTabs.
+ * Shows emoji+name+NEXUS role tabs for each squad member above PanelTabs.
  * Only renders when activeSquadId is set (squad mode).
  */
 export default function AgentTabBar() {
@@ -17,6 +18,21 @@ export default function AgentTabBar() {
 
   const squads = useSquadStore((s) => s.squads);
   const agents = useAgentStore((s) => s.agents);
+  const [nexusRoles, setNexusRoles] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!squadId) return;
+    fetch(`/api/squads/${squadId}/members`)
+      .then(r => r.ok ? r.json() : { data: [] })
+      .then(d => {
+        const roles: Record<string, string> = {};
+        for (const m of d.data ?? []) {
+          if (m.nexusRole && m.nexusRole !== 'member') roles[m.agentId ?? m.agent_id] = m.nexusRole;
+        }
+        setNexusRoles(roles);
+      })
+      .catch(() => {});
+  }, [squadId]);
 
   if (!squadId) return null;
 
@@ -77,6 +93,20 @@ export default function AgentTabBar() {
           >
             <span style={{ fontSize: 13 }}>{m.emoji}</span>
             <span>{m.name}</span>
+            {nexusRoles[m.id] && (
+              <span style={{
+                fontSize: 9,
+                fontWeight: 600,
+                color: active ? 'var(--coral)' : 'var(--text-muted)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.3px',
+              }}>
+                {nexusRoles[m.id] === 'po' ? 'PO' :
+                 nexusRoles[m.id] === 'tech-lead' ? 'TL' :
+                 nexusRoles[m.id] === 'qa-lead' ? 'QA' :
+                 nexusRoles[m.id] === 'sre' ? 'SRE' : ''}
+              </span>
+            )}
           </button>
         );
       })}
