@@ -76,12 +76,22 @@ export function registerSquadRoutes(app: FastifyInstance, squads: SquadRepositor
     return { data: squad };
   });
 
-  app.post<{ Body: SquadCreateInput }>('/squads', async (req, reply) => {
-    const { name, agentIds } = req.body;
+  app.post<{ Body: SquadCreateInput & { members?: Array<{ agentId: string; nexusRole?: 'po' | 'tech-lead' | 'qa-lead' | 'sre' | 'member' }> } }>('/squads', async (req, reply) => {
+    const { name, agentIds, members: membersInput } = req.body;
     if (!name || !agentIds?.length) {
       return reply.status(400).send({ error: { code: 'VALIDATION', message: 'name and agentIds are required' } });
     }
     const squad = squads.create(req.body);
+    
+    // If members with nexusRole are provided, write them to squad_members
+    if (members && membersInput && membersInput.length > 0) {
+      for (let i = 0; i < membersInput.length; i++) {
+        const m = membersInput[i];
+        const role = i === 0 ? 'owner' : 'member';
+        members.add(squad.id, m.agentId, role, 'system', m.nexusRole ?? 'member');
+      }
+    }
+    
     return reply.status(201).send({ data: squad });
   });
 
@@ -115,14 +125,14 @@ export function registerSquadRoutes(app: FastifyInstance, squads: SquadRepositor
     // POST /squads/:id/members — add agent(s) to squad
     app.post<{
       Params: { id: string };
-      Body: { agentId: string; role?: 'owner' | 'admin' | 'member'; addedBy?: string };
+      Body: { agentId: string; role?: 'owner' | 'admin' | 'member'; nexusRole?: 'po' | 'tech-lead' | 'qa-lead' | 'sre' | 'member'; addedBy?: string };
     }>('/squads/:id/members', async (req, reply) => {
       const squad = squads.getById(req.params.id);
       if (!squad) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Squad not found' } });
-      const { agentId, role = 'member', addedBy = 'owner' } = req.body;
+      const { agentId, role = 'member', nexusRole = 'member', addedBy = 'owner' } = req.body;
       if (!agentId) return reply.status(400).send({ error: { code: 'VALIDATION', message: 'agentId is required' } });
 
-      const member = members.add(req.params.id, agentId, role, addedBy);
+      const member = members.add(req.params.id, agentId, role, addedBy, nexusRole);
 
       // Keep squads.agent_ids in sync
       const currentIds: string[] = squad.agentIds ?? [];
@@ -153,15 +163,24 @@ export function registerSquadRoutes(app: FastifyInstance, squads: SquadRepositor
       return { data: { removed: true } };
     });
 
-    // PATCH /squads/:id/members/:agentId — change role
+    // PATCH /squads/:id/members/:agentId — change role or NEXUS role
     app.patch<{
       Params: { id: string; agentId: string };
-      Body: { role: 'owner' | 'admin' | 'member'; actor?: string };
+      Body: { role?: 'owner' | 'admin' | 'member'; nexusRole?: 'po' | 'tech-lead' | 'qa-lead' | 'sre' | 'member'; actor?: string };
     }>('/squads/:id/members/:agentId', async (req, reply) => {
-      const { role, actor = 'owner' } = req.body;
-      if (!role) return reply.status(400).send({ error: { code: 'VALIDATION', message: 'role is required' } });
-      const member = members.updateRole(req.params.id, req.params.agentId, role, actor);
+      const { role, nexusRole, actor = 'owner' } = req.body;
+      if (!role && !nexusRole) return reply.status(400).send({ error: { code: 'VALIDATION', message: 'role or nexusRole is required' } });
+      
+      let member = members.get(req.params.id, req.params.agentId);
       if (!member) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Member not found' } });
+
+      if (role) {
+        member = members.updateRole(req.params.id, req.params.agentId, role, actor);
+      }
+      if (nexusRole) {
+        member = members.updateNexusRole(req.params.id, req.params.agentId, nexusRole, actor);
+      }
+      
       return { data: member };
     });
 

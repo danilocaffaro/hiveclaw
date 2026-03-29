@@ -636,6 +636,11 @@ export function initDatabase(): Database.Database {
     db.exec("ALTER TABLE squad_members ADD COLUMN position INTEGER DEFAULT 0");
   }
 
+  // ── v7 Migration: NEXUS roles for squad members ──
+  if (!smCols.includes('nexus_role')) {
+    db.exec("ALTER TABLE squad_members ADD COLUMN nexus_role TEXT DEFAULT 'member' CHECK(nexus_role IN ('po','tech-lead','qa-lead','sre','member'))");
+  }
+
   // ── S3b: Sync squad_members from squads.agent_ids JSON (one-time migration) ──
   try {
     const squads = db.prepare("SELECT id, agent_ids FROM squads").all() as Array<{ id: string; agent_ids: string }>;
@@ -775,7 +780,7 @@ export function initDatabase(): Database.Database {
     )
   `);
   // Current schema version: bump when adding migrations
-  const CURRENT_SCHEMA = 6;
+  const CURRENT_SCHEMA = 7;
   const sv = db.prepare("SELECT version FROM schema_version WHERE id=1").get() as { version: number } | undefined;
   if (!sv) {
     db.prepare("INSERT INTO schema_version (id, version, applied_at) VALUES (1, ?, datetime('now'))").run(CURRENT_SCHEMA);

@@ -9,6 +9,7 @@ export interface SquadMember {
   squadId: string;
   agentId: string;
   role: 'owner' | 'admin' | 'member';
+  nexusRole: 'po' | 'tech-lead' | 'qa-lead' | 'sre' | 'member';
   position: number;
   addedBy: string;
   addedAt: string;
@@ -25,7 +26,7 @@ export interface SquadEvent {
 }
 
 interface MemberRow {
-  squad_id: string; agent_id: string; role: string; added_by: string; added_at: string; position: number;
+  squad_id: string; agent_id: string; role: string; nexus_role: string; added_by: string; added_at: string; position: number;
 }
 
 interface EventRow {
@@ -53,14 +54,14 @@ export class SquadMemberRepository {
   }
 
   /** Add a member to a squad */
-  add(squadId: string, agentId: string, role: 'owner' | 'admin' | 'member' = 'member', addedBy: string = 'system'): SquadMember {
+  add(squadId: string, agentId: string, role: 'owner' | 'admin' | 'member' = 'member', addedBy: string = 'system', nexusRole: 'po' | 'tech-lead' | 'qa-lead' | 'sre' | 'member' = 'member'): SquadMember {
     this.db.prepare(`
-      INSERT OR REPLACE INTO squad_members (squad_id, agent_id, role, added_by, added_at)
-      VALUES (?, ?, ?, ?, datetime('now'))
-    `).run(squadId, agentId, role, addedBy);
+      INSERT OR REPLACE INTO squad_members (squad_id, agent_id, role, nexus_role, added_by, added_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now'))
+    `).run(squadId, agentId, role, nexusRole, addedBy);
 
     // Record event
-    this.recordEvent(squadId, 'member_added', agentId, addedBy, `${agentId} added as ${role}`);
+    this.recordEvent(squadId, 'member_added', agentId, addedBy, `${agentId} added as ${role} (NEXUS: ${nexusRole})`);
 
     return this.get(squadId, agentId)!;
   }
@@ -103,6 +104,20 @@ export class SquadMemberRepository {
     ).run(newRole, squadId, agentId);
 
     this.recordEvent(squadId, 'role_changed', agentId, actor, `${agentId} → ${newRole}`);
+
+    return this.get(squadId, agentId);
+  }
+
+  /** Update NEXUS role */
+  updateNexusRole(squadId: string, agentId: string, nexusRole: 'po' | 'tech-lead' | 'qa-lead' | 'sre' | 'member', actor: string = 'system'): SquadMember | null {
+    const existing = this.get(squadId, agentId);
+    if (!existing) return null;
+
+    this.db.prepare(
+      'UPDATE squad_members SET nexus_role = ? WHERE squad_id = ? AND agent_id = ?'
+    ).run(nexusRole, squadId, agentId);
+
+    this.recordEvent(squadId, 'nexus_role_changed', agentId, actor, `${agentId} NEXUS role → ${nexusRole}`);
 
     return this.get(squadId, agentId);
   }
@@ -165,6 +180,7 @@ export class SquadMemberRepository {
       squadId: row.squad_id,
       agentId: row.agent_id,
       role: row.role as SquadMember['role'],
+      nexusRole: (row.nexus_role as SquadMember['nexusRole']) ?? 'member',
       position: row.position ?? 0,
       addedBy: row.added_by,
       addedAt: row.added_at,

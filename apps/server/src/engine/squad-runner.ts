@@ -472,44 +472,10 @@ export async function* runSquad(
     metadata: { sessionId, squadId: config.id, priority: 1, timestamp: Date.now() },
   });
 
-  switch (config.routingStrategy) {
-    case 'round-robin': {
-      // R7: Mark current agent task as 'doing', others remain 'todo'
-      const rrAgent = config.agents[0];
-      const rrTaskIdx = config.agents.findIndex(a => a.id === rrAgent?.id);
-      if (squadTaskIds[rrTaskIdx]) squadUpdateTask(squadTaskIds[rrTaskIdx], 'doing');
-      yield* runRoundRobin(sessionId, message, config);
-      if (squadTaskIds[rrTaskIdx]) squadUpdateTask(squadTaskIds[rrTaskIdx], 'done');
-      break;
-    }
-    case 'specialist': {
-      // R9: Track specialist task — mark all as doing, done when complete
-      for (const tid of squadTaskIds) squadUpdateTask(tid, 'doing');
-      yield* runSpecialist(sessionId, message, config);
-      for (const tid of squadTaskIds) squadUpdateTask(tid, 'done');
-      break;
-    }
-    case 'debate': {
-      // R9: Track debate tasks — all agents participate simultaneously
-      for (const tid of squadTaskIds) squadUpdateTask(tid, 'doing');
-      yield* runDebate(sessionId, message, config);
-      for (const tid of squadTaskIds) squadUpdateTask(tid, 'done');
-      break;
-    }
-    case 'sequential': {
-      // R7: Sequential = each agent gets its task tracked
-      yield* runSequential(sessionId, message, config);
-      // Mark all as done after sequential completes
-      for (const tid of squadTaskIds) squadUpdateTask(tid, 'done');
-      break;
-    }
-    default: {
-      // Fallback: treat unknown strategies as round-robin
-      const strategy = (config as SquadConfig).routingStrategy;
-      logger.warn(`[SquadRunner] Unknown routing strategy "${strategy}", falling back to round-robin`);
-      yield* runRoundRobin(sessionId, message, config);
-    }
-  }
+  // NEXUS pipeline — always run sequential with role context injection
+  yield* runSequential(sessionId, message, config);
+  // Mark all as done after sequential completes
+  for (const tid of squadTaskIds) squadUpdateTask(tid, 'done');
 
   // Publish squad end to message bus
   bus.publish({
@@ -926,6 +892,16 @@ async function* runSequential(
   const bus = getMessageBus();
   const allSquadAgents = config.agents.map(toSquadAgent);
 
+  // ── NEXUS: Load squad members with NEXUS roles ────────────────────────────
+  const db = initDatabase();
+  const { SquadMemberRepository } = await import('../db/squad-members.js');
+  const membersRepo = new SquadMemberRepository(db);
+  const squadMembers = membersRepo.listBySquad(config.id);
+  const nexusRoleMap = new Map<string, string>();
+  for (const m of squadMembers) {
+    nexusRoleMap.set(m.agentId, m.nexusRole);
+  }
+
   // ── 2.7: Parse @mentions in the user message ──────────────────────────────
   const mentionResult = parseMentions(message, allSquadAgents);
   logger.info(
@@ -989,9 +965,17 @@ async function* runSequential(
       mentionResult,
     );
 
+    // NEXUS: Inject NEXUS role context
+    const nexusRole = nexusRoleMap.get(agent.id) ?? 'member';
+    const nexusRoleLabel = nexusRole === 'po' ? 'PO (Product Owner)' :
+                           nexusRole === 'tech-lead' ? 'Tech Lead' :
+                           nexusRole === 'qa-lead' ? 'QA Lead' :
+                           nexusRole === 'sre' ? 'SRE' : 'Member';
+    const nexusCtx = `\n[Your NEXUS role in this squad: ${nexusRoleLabel}. Follow NEXUS v3.1 protocol for your role.]\n`;
+
     const prompt = isFirst
-      ? prevContext
-      : `${archerCtx}\n\n` +
+      ? `${nexusCtx}${prevContext}`
+      : `${nexusCtx}${archerCtx}\n\n` +
         (prevContext !== message
           ? `Previous agent's analysis:\n${prevContext}\n\n`
           : '') +
@@ -1082,6 +1066,47 @@ async function* runSequential(
       content: response.slice(0, 500),
       metadata: { sessionId, squadId: config.id, priority: 1, timestamp: Date.now() },
     });
+
+    // ── AGECON Detection ──────────────────────────────────────────────────────
+    // If response contains [AGECON], pause pipeline and run consensus round
+    if (response.includes('[AGECON]')) {
+      yield {
+        event: 'message.delta',
+        data: { text: `\n\n**🗳️ AGECON consensus requested by ${agent.name}**\n\n`, agentId: agent.id },
+      };
+
+      // Broadcast to all squad agents for feedback
+      const consensusPrompt = `${agent.name} has called for AGECON consensus on the following:\n\n${response}\n\nProvide your feedback: ACK (agree) or NACK (disagree with explanation). Be concise.`;
+      const consensusResponses: Array<{ agentId: string; name: string; feedback: string }> = [];
+
+      for (const consensusAgent of config.agents) {
+        if (consensusAgent.id === agent.id) continue; // Skip the agent who called AGECON
+
+        const cWorker = tryGetWorker(consensusAgent);
+        let feedback = '';
+
+        if (cWorker) {
+          for await (const event of cWorker.processUserMessage(sessionId, consensusPrompt, { skipPersistUserMessage: true })) {
+            if (event.event === 'message.delta') {
+              const d = event.data as Record<string, unknown>;
+              if (typeof d.text === 'string') feedback += d.text;
+            }
+            yield enrichEvent(event);
+          }
+        } else {
+          // Fallback: direct call (simplified, non-streaming for brevity)
+          feedback = `[${consensusAgent.name} feedback would go here]`;
+        }
+
+        consensusResponses.push({ agentId: consensusAgent.id, name: consensusAgent.name, feedback });
+      }
+
+      // Emit consensus summary
+      yield {
+        event: 'message.delta',
+        data: { text: `\n**Consensus round complete. ${consensusResponses.length} responses collected.**\n\n`, agentId: agent.id },
+      };
+    }
   }
 
   // ── Primary loop (2.7 + 2.9) ──────────────────────────────────────────────

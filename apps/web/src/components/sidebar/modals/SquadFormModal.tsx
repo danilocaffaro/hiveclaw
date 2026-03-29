@@ -17,14 +17,31 @@ export function SquadFormModal({ onClose, onSaved }: SquadFormModalProps) {
   const [name, setName] = useState('');
   const [emoji, setEmoji] = useState('👥');
   const [description, setDescription] = useState('');
-  const [routingStrategy, setRoutingStrategy] = useState<'sequential' | 'debate' | 'specialist' | 'round-robin'>('sequential');
-  const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([]);
+  const [selectedAgents, setSelectedAgents] = useState<Array<{ agentId: string; nexusRole: 'po' | 'tech-lead' | 'qa-lead' | 'sre' | 'member' }>>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   const toggleAgent = (id: string) => {
-    setSelectedAgentIds((prev) =>
-      prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]
+    setSelectedAgents((prev) => {
+      const exists = prev.find((a) => a.agentId === id);
+      if (exists) {
+        return prev.filter((a) => a.agentId !== id);
+      } else {
+        // Auto-assign NEXUS roles: first = PO, second = Tech Lead, third = QA Lead, fourth = SRE, rest = member
+        const nextIdx = prev.length;
+        const nexusRole: 'po' | 'tech-lead' | 'qa-lead' | 'sre' | 'member' =
+          nextIdx === 0 ? 'po' :
+          nextIdx === 1 ? 'tech-lead' :
+          nextIdx === 2 ? 'qa-lead' :
+          nextIdx === 3 ? 'sre' : 'member';
+        return [...prev, { agentId: id, nexusRole }];
+      }
+    });
+  };
+
+  const updateNexusRole = (agentId: string, nexusRole: 'po' | 'tech-lead' | 'qa-lead' | 'sre' | 'member') => {
+    setSelectedAgents((prev) =>
+      prev.map((a) => (a.agentId === agentId ? { ...a, nexusRole } : a))
     );
   };
 
@@ -37,9 +54,10 @@ export function SquadFormModal({ onClose, onSaved }: SquadFormModalProps) {
         name: name.trim(),
         emoji,
         description,
-        agentIds: selectedAgentIds,
-        routingStrategy,
-      });
+        agentIds: selectedAgents.map((a) => a.agentId),
+        routingStrategy: 'sequential', // Always sequential — NEXUS pipeline
+        members: selectedAgents,
+      } as any);
       onSaved?.(saved);
       onClose();
     } catch (e) {
@@ -139,20 +157,6 @@ export function SquadFormModal({ onClose, onSaved }: SquadFormModalProps) {
           />
         </div>
 
-        <div style={{ marginBottom: 14 }}>
-          <label style={labelStyle}>Routing Strategy</label>
-          <select
-            value={routingStrategy}
-            onChange={(e) => setRoutingStrategy(e.target.value as 'sequential' | 'debate' | 'specialist' | 'round-robin')}
-            style={{ ...inputStyle, cursor: 'pointer' }}
-          >
-            <option value="sequential">Sequential — agents respond in order, @mentions work</option>
-            <option value="debate">Debate — all agents argue, highest confidence wins</option>
-            <option value="specialist">Specialist — coordinator picks the best agent per question</option>
-            <option value="round-robin">Round Robin — rotate agents one at a time</option>
-          </select>
-        </div>
-
         <div style={{ marginBottom: 18 }}>
           <label style={labelStyle}>Agents</label>
           {agents.length === 0 ? (
@@ -167,41 +171,65 @@ export function SquadFormModal({ onClose, onSaved }: SquadFormModalProps) {
                 overflowY: 'auto',
               }}
             >
-              {agents.map((agent, idx) => (
-                <label
-                  key={agent.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    padding: '7px 10px',
-                    cursor: 'pointer',
-                    background: selectedAgentIds.includes(agent.id)
-                      ? 'var(--surface-hover)'
-                      : idx % 2 === 0
-                      ? 'var(--bg)'
-                      : 'transparent',
-                    borderBottom: idx < agents.length - 1 ? '1px solid var(--border)' : 'none',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedAgentIds.includes(agent.id)}
-                    onChange={() => toggleAgent(agent.id)}
-                    style={{ accentColor: 'var(--coral)', cursor: 'pointer' }}
-                  />
-                  <span style={{ fontSize: 15 }}>{agent.emoji || '🤖'}</span>
-                  <div>
-                    <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>{agent.name}</div>
-                    {agent.role && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{agent.role}</div>}
+              {agents.map((agent, idx) => {
+                const selected = selectedAgents.find((a) => a.agentId === agent.id);
+                return (
+                  <div
+                    key={agent.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '7px 10px',
+                      background: selected
+                        ? 'var(--surface-hover)'
+                        : idx % 2 === 0
+                        ? 'var(--bg)'
+                        : 'transparent',
+                      borderBottom: idx < agents.length - 1 ? '1px solid var(--border)' : 'none',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!selected}
+                      onChange={() => toggleAgent(agent.id)}
+                      style={{ accentColor: 'var(--coral)', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: 15 }}>{agent.emoji || '🤖'}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>{agent.name}</div>
+                      {agent.role && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{agent.role}</div>}
+                    </div>
+                    {selected && (
+                      <select
+                        value={selected.nexusRole}
+                        onChange={(e) => updateNexusRole(agent.id, e.target.value as any)}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          padding: '4px 8px',
+                          fontSize: 11,
+                          borderRadius: 4,
+                          border: '1px solid var(--border)',
+                          background: 'var(--bg)',
+                          color: 'var(--text)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <option value="po">PO</option>
+                        <option value="tech-lead">Tech Lead</option>
+                        <option value="qa-lead">QA Lead</option>
+                        <option value="sre">SRE</option>
+                        <option value="member">Member</option>
+                      </select>
+                    )}
                   </div>
-                </label>
-              ))}
+                );
+              })}
             </div>
           )}
-          {selectedAgentIds.length > 0 && (
+          {selectedAgents.length > 0 && (
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-              {selectedAgentIds.length} agent{selectedAgentIds.length !== 1 ? 's' : ''} selected
+              {selectedAgents.length} agent{selectedAgents.length !== 1 ? 's' : ''} selected
             </div>
           )}
         </div>
