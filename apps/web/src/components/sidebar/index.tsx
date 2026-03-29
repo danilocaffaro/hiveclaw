@@ -453,7 +453,7 @@ export default function Sidebar() {
       )}
       {squadModalOpen && (
         <SquadFormModal
-          onClose={() => { console.log('[DEBUG] squadModal onClose called'); setSquadModalOpen(false); }}
+          onClose={() => setSquadModalOpen(false)}
         />
       )}
       <InviteExternalModal open={inviteModalOpen} onClose={() => setInviteModalOpen(false)} />
