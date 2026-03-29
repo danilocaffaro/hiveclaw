@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSquadStore } from '@/stores/squad-store';
 import { useAgentStore } from '@/stores/agent-store';
 import type { Squad } from '@/stores/squad-store';
@@ -20,6 +20,9 @@ export function SquadFormModal({ onClose, onSaved }: SquadFormModalProps) {
   const [selectedAgents, setSelectedAgents] = useState<Array<{ agentId: string; nexusRole: 'po' | 'tech-lead' | 'qa-lead' | 'sre' | 'member' }>>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // Prevent the opening click from immediately closing the modal via overlay
+  const [ready, setReady] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setReady(true), 150); return () => clearTimeout(t); }, []);
 
   const toggleAgent = (id: string) => {
     setSelectedAgents((prev) => {
@@ -92,7 +95,7 @@ export function SquadFormModal({ onClose, onSaved }: SquadFormModalProps) {
   return (
     <>
       <div
-        onClick={onClose}
+        onMouseDown={() => { if (ready) onClose(); }}
         style={{
           position: 'fixed',
           inset: 0,

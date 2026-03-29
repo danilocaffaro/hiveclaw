@@ -21,6 +21,7 @@ export interface SquadCreateInput {
   agentIds: string[];
   routingStrategy?: 'sequential' | 'debate' | 'specialist' | 'round-robin';
   debateEnabled?: boolean;
+  members?: Array<{ agentId: string; nexusRole: string }>;
 }
 
 interface SquadStore {

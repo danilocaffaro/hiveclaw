@@ -68,7 +68,7 @@ export function SquadChatHeader({ squad, agents, onSquadInfoClick }: { squad: Sq
               padding: '1px 8px', borderRadius: 'var(--radius-sm)',
               background: 'var(--blue-subtle)', color: 'var(--blue)',
               fontSize: 11, fontWeight: 500
-            }}>{squad.routingStrategy || 'auto'}</span>
+            }}>NEXUS Pipeline</span>
             {isStreaming && (
               <span style={{
                 padding: '1px 8px', borderRadius: 'var(--radius-sm)',

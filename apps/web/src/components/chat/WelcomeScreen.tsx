@@ -85,13 +85,11 @@ export function WelcomeScreen({ onSend }: { onSend: (text: string) => void }) {
 // ─── Squad Welcome Screen ───────────────────────────────────────────────────────
 
 export function SquadWelcomeScreen({ squad, onSend }: { squad: Squad; onSend: (text: string) => void }) {
-  const strategyLabel = squad.routingStrategy ?? 'auto';
-
   const prompts = [
-    { icon: '🗣️', text: 'Start a debate on architecture' },
-    { icon: '🔄', text: 'Sequential code review' },
-    { icon: '🎯', text: 'Route to specialist' },
-    { icon: '📋', text: 'Sprint planning session' },
+    { icon: '📋', text: '@all Identify your NEXUS role and what phase you own' },
+    { icon: '🎯', text: 'Analyze this requirement and propose an implementation plan' },
+    { icon: '🔍', text: '@all Review the current codebase and identify improvements' },
+    { icon: '🚀', text: 'Start a sprint — break down the next feature into tasks' },
   ];
 
   return (
@@ -114,13 +112,13 @@ export function SquadWelcomeScreen({ squad, onSend }: { squad: Squad; onSend: (t
         Squad ready. What should we tackle?
       </h2>
       <p style={{ color: 'var(--text-secondary)', textAlign: 'center', maxWidth: 420, fontSize: 14 }}>
-        Multiple agents will collaborate on your request using{' '}
+        Agents collaborate using{' '}
         <span style={{
           padding: '1px 8px', borderRadius: 'var(--radius-sm)',
           background: 'var(--blue-subtle)', color: 'var(--blue)',
           fontSize: 12, fontWeight: 500
-        }}>{strategyLabel}</span>{' '}
-        strategy.
+        }}>NEXUS Pipeline</span>{' '}
+        — each agent has a defined role and phase.
       </p>
 
       {/* Agent avatars row */}
