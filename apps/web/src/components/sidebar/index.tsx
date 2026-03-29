@@ -261,7 +261,7 @@ export default function Sidebar() {
                 }}>
                   {[
                     { icon: '🤖', label: 'Create Agent', desc: 'Add a new AI agent', action: () => { setCreateMenuOpen(false); openCreateAgent(); } },
-                    { icon: '👥', label: 'Create Squad', desc: 'Group agents into a team', action: () => { setCreateMenuOpen(false); setSquadModalOpen(true); } },
+                    { icon: '👥', label: 'Create Squad', desc: 'Group agents into a team', action: () => { setCreateMenuOpen(false); requestAnimationFrame(() => setSquadModalOpen(true)); } },
                     { icon: '🔗', label: 'Invite User', desc: 'External agent or human', action: () => { setCreateMenuOpen(false); setInviteModalOpen(true); } },
                   ].map((item) => (
                     <button
@@ -453,7 +453,7 @@ export default function Sidebar() {
       )}
       {squadModalOpen && (
         <SquadFormModal
-          onClose={() => setSquadModalOpen(false)}
+          onClose={() => { console.log('[DEBUG] squadModal onClose called'); setSquadModalOpen(false); }}
         />
       )}
       <InviteExternalModal open={inviteModalOpen} onClose={() => setInviteModalOpen(false)} />
