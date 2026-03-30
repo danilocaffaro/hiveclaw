@@ -10,6 +10,7 @@
 // ============================================================
 
 import { FastifyInstance } from 'fastify';
+import { resolveApiKey } from '../config/resolve-api-key.js';
 
 interface N8nConfig {
   url: string;
@@ -17,9 +18,11 @@ interface N8nConfig {
 }
 
 // In-memory config (persisted to env or future DB)
+// Note: resolveApiKey at module-load may not have credential store yet —
+// falls back to process.env, which is the original behavior.
 let n8nConfig: N8nConfig = {
   url: process.env.N8N_URL ?? 'http://localhost:5678',
-  apiKey: process.env.N8N_API_KEY ?? '',
+  apiKey: resolveApiKey('N8N_API_KEY') ?? '',
 };
 
 async function n8nFetch(path: string, opts?: RequestInit) {

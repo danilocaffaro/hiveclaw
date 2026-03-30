@@ -29,6 +29,7 @@ import { homedir } from 'os';
 import { execSync } from 'child_process';
 import { logger } from '../lib/logger.js';
 import { getProviderRouter } from './providers/index.js';
+import { resolveApiKey } from '../config/resolve-api-key.js';
 import type Database from 'better-sqlite3';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -303,7 +304,7 @@ export async function runSkillScout(db: Database.Database): Promise<{
     why: string; category: string; tags: string[]; sources: string[]
   }> = [];
 
-  const geminiKey = process.env.GEMINI_API_KEY;
+  const geminiKey = resolveApiKey('GEMINI_API_KEY');
 
   if (geminiKey) {
     // Best path: Gemini with Google Search Grounding

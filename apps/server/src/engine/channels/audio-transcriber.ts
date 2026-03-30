@@ -16,6 +16,7 @@ import { execSync } from 'node:child_process';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { logger } from '../../lib/logger.js';
+import { resolveApiKey } from '../../config/resolve-api-key.js';
 
 const WHISPER_URL = 'https://api.openai.com/v1/audio/transcriptions';
 const WHISPER_MODEL = 'whisper-1';
@@ -127,7 +128,7 @@ async function transcribeLocal(filePath: string): Promise<string | null> {
  * Transcribe using OpenAI Whisper API (cloud fallback).
  */
 async function transcribeOpenAI(filePath: string): Promise<string | null> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = resolveApiKey('OPENAI_API_KEY');
   if (!apiKey) {
     return null;
   }

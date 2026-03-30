@@ -98,6 +98,7 @@ import { logger, safeFire } from './lib/logger.js';
 import { rotateAllLogs } from './lib/log-rotation.js';
 
 import { DEFAULT_PORT, DEFAULT_HOST, DEV_CORS_ORIGINS } from './config/defaults.js';
+import { setCredentialStore, logKeyResolution } from './config/resolve-api-key.js';
 import { SECURITY_HEADERS, isPublicRoute, SSE_MAX_CONNECTIONS_PER_IP, SSE_MAX_TOTAL_CONNECTIONS } from './config/security.js';
 import { getAuthUser } from './api/auth.js';
 
@@ -126,6 +127,10 @@ async function main() {
   const credentialRepo = new CredentialRepository(db);
   const credentialStoreRepo = new CredentialStoreRepository(db);
   const agentMemoryRepo = new AgentMemoryRepository(db);
+
+  // B26: Wire credential store as primary API key source
+  setCredentialStore(credentialStoreRepo);
+  logKeyResolution(credentialStoreRepo);
 
   // Workflow subsystem
   const workflowRepo = new WorkflowRepository(db);

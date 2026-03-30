@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { readFileSync, statSync } from 'fs';
 import type { DatasetRepository, FinetuneDataset, FinetuneJob, FinetuneJobRepository } from '../db/finetune.js';
+import { resolveApiKey } from '../config/resolve-api-key.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -348,7 +349,7 @@ export function registerFinetuneRoutes(
     // Attempt to launch via OpenAI if provider === 'openai' and key is available
     if (provider === 'openai') {
       const openaiKey =
-        process.env.OPENAI_API_KEY ?? undefined;
+        resolveApiKey('OPENAI_API_KEY');
 
       if (!openaiKey) {
         // No key — leave as pending with a note
