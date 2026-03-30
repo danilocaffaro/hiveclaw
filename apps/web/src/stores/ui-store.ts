@@ -17,6 +17,7 @@ export type SettingsTab =
   | 'data-storage'
   | 'integrations'
   | 'vault'
+  | 'credentials'
   | 'advanced'
   | 'deploys';
 export type InterfaceMode = 'lite' | 'pro';

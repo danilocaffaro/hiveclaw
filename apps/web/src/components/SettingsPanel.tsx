@@ -17,6 +17,7 @@ const SecurityTab = lazy(() => import('./settings/SecurityTab'));
 const DataStorageTab = lazy(() => import('./settings/DataStorageTab'));
 const IntegrationsTab = lazy(() => import('./settings/IntegrationsTab'));
 const VaultTab = lazy(() => import('./settings/VaultTab'));
+const CredentialsTab = lazy(() => import('./settings/CredentialsTab'));
 const AdvancedTab = lazy(() => import('./settings/AdvancedTab'));
 const DeploysTab = lazy(() => import('./settings/DeploysTab'));
 const UsersTab = lazy(() => import('./settings/UsersTab'));
@@ -37,6 +38,7 @@ const NAV_ITEMS: { key: SettingsTab; icon: string; label: string }[] = [
   { key: 'data-storage', icon: '💾', label: 'Data & Storage' },
   { key: 'integrations', icon: '🔗', label: 'Integrations' },
   { key: 'vault', icon: '🔐', label: 'Vault' },
+  { key: 'credentials', icon: '🔑', label: 'Credentials' },
   { key: 'advanced', icon: '🛠️', label: 'Advanced' },
   { key: 'deploys', icon: '📊', label: 'System' },
 ];
@@ -93,6 +95,8 @@ export default function SettingsPanel() {
         return <IntegrationsTab />;
       case 'vault':
         return <VaultTab />;
+      case 'credentials':
+        return <CredentialsTab />;
       case 'advanced':
         return <AdvancedTab />;
       case 'deploys':
