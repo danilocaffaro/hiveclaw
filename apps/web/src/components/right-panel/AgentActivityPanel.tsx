@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getApiBase, getAuthToken } from '../../lib/api-base';
 import ExecutionProgressBar, { type ExecutionStep } from './ExecutionProgressBar';
+import BudgetGuard, { type TokenUsage } from './BudgetGuard';
 import { useElapsedSeconds } from '@/hooks/useElapsedTime';
 
 /* ══════════════════════════════════════════════════════════
@@ -140,6 +141,14 @@ export default function AgentActivityPanel({ sessionId }: { sessionId?: string }
   const [executionStartedAt, setExecutionStartedAt] = useState<number | null>(null);
   const [isRunning, setIsRunning] = useState(false);
 
+  /* ── BudgetGuard state — accumulates across all messages ── */
+  const [tokenUsage, setTokenUsage] = useState<TokenUsage>({
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    costUsd: 0,
+  });
+
   /* ── Callbacks ──────────────────────────────────────── */
 
   const addActivity = useCallback((act: Omit<Activity, 'id' | 'timestamp'>) => {
@@ -244,6 +253,23 @@ export default function AgentActivityPanel({ sessionId }: { sessionId?: string }
       try {
         const d = JSON.parse(e.data);
         addActivity({ type: 'message.finish', agentName: d.agentName, agentEmoji: d.agentEmoji, status: 'done' });
+
+        // Accumulate token usage for BudgetGuard
+        const tokIn = d.tokens_in ?? d.tokensIn ?? 0;
+        const tokOut = d.tokens_out ?? d.tokensOut ?? 0;
+        const cost = d.cost ?? 0;
+        if (tokIn > 0 || tokOut > 0 || cost > 0) {
+          setTokenUsage(prev => {
+            const inputTokens = prev.inputTokens + tokIn;
+            const outputTokens = prev.outputTokens + tokOut;
+            return {
+              inputTokens,
+              outputTokens,
+              totalTokens: inputTokens + outputTokens,
+              costUsd: prev.costUsd + cost,
+            };
+          });
+        }
       } catch { /* ignore */ }
     });
 
@@ -252,11 +278,29 @@ export default function AgentActivityPanel({ sessionId }: { sessionId?: string }
       setExecutionStartedAt(Date.now());
       setIsRunning(true);
       setExecutionSteps([]);
+      // Reset token usage for new execution
+      setTokenUsage({ inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0 });
     });
 
     es.addEventListener('squad.end', () => {
       addActivity({ type: 'squad.end', status: 'done' });
       setIsRunning(false);
+    });
+
+    // Real-time token update events (future: server may emit token.update during streaming)
+    es.addEventListener('token.update', (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        const inputTokens = d.inputTokens ?? 0;
+        const outputTokens = d.outputTokens ?? 0;
+        const costUsd = d.costUsd ?? 0;
+        setTokenUsage({
+          inputTokens,
+          outputTokens,
+          totalTokens: inputTokens + outputTokens,
+          costUsd,
+        });
+      } catch { /* ignore */ }
     });
 
     return () => {
@@ -428,6 +472,9 @@ export default function AgentActivityPanel({ sessionId }: { sessionId?: string }
           ))
         )}
       </div>
+
+      {/* ── BudgetGuard Footer ───────────────────────── */}
+      <BudgetGuard usage={tokenUsage} />
     </div>
   );
 }
