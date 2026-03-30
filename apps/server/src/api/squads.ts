@@ -73,7 +73,18 @@ export function registerSquadRoutes(app: FastifyInstance, squads: SquadRepositor
   app.get<{ Params: { id: string } }>('/squads/:id', async (req, reply) => {
     const squad = squads.getById(req.params.id);
     if (!squad) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Squad not found' } });
-    return { data: squad };
+
+    // B17 fix: Resolve agent names for frontend display
+    const agentIds: string[] = squad.agentIds ?? [];
+    const resolvedAgents = agentIds.map((id) => {
+      const localAgent = agentRepo?.getById(id);
+      if (localAgent) return { id, name: localAgent.name, emoji: localAgent.emoji, role: localAgent.role };
+      const extAgent = extAgentRepo?.getById(id);
+      if (extAgent) return { id, name: extAgent.name, emoji: extAgent.emoji || '🤖', role: extAgent.role || 'external' };
+      return { id, name: id.slice(0, 6), emoji: '🤖', role: 'unknown' };
+    });
+
+    return { data: { ...squad, agents: resolvedAgents } };
   });
 
   app.post<{ Body: SquadCreateInput & { members?: Array<{ agentId: string; nexusRole?: 'po' | 'tech-lead' | 'qa-lead' | 'sre' | 'member' }> } }>('/squads', async (req, reply) => {
