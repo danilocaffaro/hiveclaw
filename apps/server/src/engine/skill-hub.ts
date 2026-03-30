@@ -37,7 +37,9 @@ export type SkillCategory =
   | 'utilities'
   | 'system'
   | 'qa'
-  | 'ai-ops';
+  | 'ai-ops'
+  | 'security'
+  | 'agent-protocols';
 
 export type SkillBadge = 'verified' | 'community' | 'experimental';
 
@@ -1024,6 +1026,348 @@ Solves the agent impersonation gap in squad communications.
 - Timestamp replay protection (±5min window)
 - UUID validation on all IDs
 - Secret via env var only (HIVECLAW_AGENT_SECRET)
+`,
+  },
+
+  // ── SECURITY (B22 Audit) ──────────────────────────────────────────────────────
+
+  {
+    slug: 'agent-audit-trail',
+    name: 'Agent Audit Trail',
+    description: 'Tamper-evident audit logging with hash-chain for all agent actions. Provides forensics, compliance, and debugging traceability across multi-agent squads.',
+    category: 'security',
+    badge: 'verified',
+    version: '1.0.0',
+    author: 'HiveClaw',
+    securityScore: 9.8,
+    usageCount: 0,
+    tags: ['audit', 'logging', 'security', 'hash-chain', 'forensics', 'compliance', 'tamper-evident'],
+    examples: ['Show the audit trail', 'What actions did Adler take?', 'Verify audit chain integrity', 'Export audit log'],
+    content: `---
+name: agent-audit-trail
+description: "Tamper-evident audit logging with hash-chain for all agent actions."
+---
+
+# Agent Audit Trail
+
+Immutable, verifiable record of every action taken by agents in a HiveClaw squad.
+
+## How It Works
+
+Every agent action produces an **audit entry** with:
+- \`timestamp\` — ISO 8601 with timezone
+- \`agentId\` — Who performed the action
+- \`action\` — What was done (tool call, message, file write, API call, etc.)
+- \`target\` — What was affected (file path, URL, agent ID, etc.)
+- \`inputHash\` — SHA-256 of the action input/parameters
+- \`outputHash\` — SHA-256 of the action result
+- \`prevHash\` — Hash of the previous audit entry (hash-chain link)
+- \`entryHash\` — SHA-256 of the full entry including prevHash (tamper seal)
+
+## Hash-Chain Integrity
+
+Entries form a linked chain:
+\`\`\`
+Entry N:
+  entryHash = SHA-256(timestamp + agentId + action + target + inputHash + outputHash + prevHash)
+
+Entry N+1:
+  prevHash = Entry N's entryHash
+\`\`\`
+
+If any entry is modified or deleted, the chain breaks and verification fails.
+
+## Protocol
+
+### Logging (automatic)
+The agent MUST log an audit entry for every:
+1. **Tool invocation** — exec, read, write, edit, browser, web_search, etc.
+2. **External communication** — messages sent to channels, APIs called
+3. **State mutation** — file created/modified/deleted, DB writes
+4. **Decision point** — when the agent chooses between alternatives (log the reasoning)
+5. **Error/failure** — failed operations with error details
+
+### Entry Format (append to audit log file)
+\`\`\`jsonl
+{"ts":"2026-03-30T11:00:00-03:00","agent":"alice","action":"exec","target":"git status","inHash":"a1b2...","outHash":"c3d4...","prev":"0000...","hash":"e5f6..."}
+{"ts":"2026-03-30T11:00:05-03:00","agent":"alice","action":"write","target":"src/app.ts","inHash":"g7h8...","outHash":"i9j0...","prev":"e5f6...","hash":"k1l2..."}
+\`\`\`
+
+### Storage
+- Primary: \`~/.hiveclaw/audit/YYYY-MM-DD.jsonl\` (one file per day)
+- Rotation: daily, compress after 7 days
+- Retention: configurable (default 90 days)
+
+### Verification
+To verify chain integrity:
+1. Read all entries in order
+2. For each entry N (after the first): recompute \`entryHash\` and confirm \`prevHash\` matches entry N-1's hash
+3. Report: total entries, chain status (intact/broken), break point if any
+
+### Querying
+Filter audit entries by:
+- Agent ID: "What did agent X do?"
+- Time range: "What happened between 10am and 11am?"
+- Action type: "Show all file writes"
+- Target pattern: "All operations on src/**"
+
+## Use Cases
+- **Post-incident forensics** — Trace exactly what happened and in what order
+- **Compliance** — Prove agent actions for audit/regulatory requirements
+- **Debugging squads** — Find where a multi-agent workflow went wrong
+- **Trust verification** — Confirm agents only did what they were supposed to
+
+## Limitations
+- This is a protocol skill (SKILL.md only) — no executable scripts
+- Hash computation is the agent's responsibility
+- Does not encrypt entries (add encryption layer if needed for sensitive data)
+- Clock drift between agents can affect ordering (use NTP)
+`,
+  },
+
+  // ── AGENT PROTOCOLS (B22 Audit) ───────────────────────────────────────────────
+
+  {
+    slug: 'agent-team-orchestration',
+    name: 'Agent Team Orchestration',
+    description: 'Multi-agent team orchestration with defined roles, task lifecycles, handoff protocols, and review workflows. Coordinates squads from formation to delivery.',
+    category: 'agent-protocols',
+    badge: 'verified',
+    version: '1.0.0',
+    author: 'HiveClaw',
+    securityScore: 8.5,
+    usageCount: 0,
+    tags: ['orchestration', 'multi-agent', 'squad', 'roles', 'handoff', 'lifecycle', 'coordination', 'a2a'],
+    examples: ['Create a squad for this project', 'Assign this task to the right agent', 'Show squad status', 'Handoff this task to QA'],
+    content: `---
+name: agent-team-orchestration
+description: "Multi-agent team orchestration with roles, handoffs, lifecycles, and review workflows."
+---
+
+# Agent Team Orchestration
+
+Structured protocol for coordinating multi-agent squads from formation through delivery.
+
+## Squad Formation
+
+### Roles
+Define each agent's role and boundaries:
+
+| Role | Responsibilities | Boundary |
+|------|-----------------|----------|
+| **Lead** | Coordination, prioritization, final decisions | Can assign/reassign tasks, cannot override safety |
+| **Builder** | Implementation, coding, execution | Works within assigned scope only |
+| **Reviewer** | QA, testing, code review, validation | Can block delivery, cannot modify implementation |
+| **Ops** | Deployment, monitoring, infrastructure | Production access, follows change management |
+| **Researcher** | Information gathering, analysis, reports | Read-only external access, no mutations |
+
+### Squad Creation
+\`\`\`
+SQUAD: [name]
+MISSION: [one-sentence objective]
+MEMBERS:
+  - [agent-id] as [Role] — [scope description]
+  - [agent-id] as [Role] — [scope description]
+DURATION: [timebound or "until mission complete"]
+ESCALATION: [who to escalate to if blocked]
+\`\`\`
+
+## Task Lifecycle
+
+Every task flows through these states:
+
+\`\`\`
+BACKLOG → CLAIMED → IN_PROGRESS → IN_REVIEW → DONE
+                 ↘ BLOCKED (with reason)
+                          ↘ REJECTED (back to IN_PROGRESS)
+\`\`\`
+
+### State Transitions
+- **BACKLOG → CLAIMED**: Agent posts \`[CLAIM] task-id\` — first claim wins, no duplicates
+- **CLAIMED → IN_PROGRESS**: Agent starts work, posts \`[START] task-id\`
+- **IN_PROGRESS → IN_REVIEW**: Agent posts \`[REVIEW] task-id\` with deliverable link
+- **IN_REVIEW → DONE**: Reviewer approves with \`[APPROVE] task-id\`
+- **IN_REVIEW → REJECTED**: Reviewer rejects with \`[REJECT] task-id — reason\`
+- **Any → BLOCKED**: Agent posts \`[BLOCKED] task-id — dependency/reason\`
+
+### Rules
+1. One agent per task (no overlapping work)
+2. Tasks must be claimed before work starts
+3. Self-review is not allowed — a different agent must review
+4. Blocked tasks must specify what unblocks them
+5. Rejected tasks include actionable feedback
+
+## Handoff Protocol
+
+When one agent passes work to another:
+
+\`\`\`
+[HANDOFF]
+FROM: [agent-id]
+TO: [agent-id]
+TASK: [task-id]
+CONTEXT: [what was done, current state]
+DELIVERABLES: [files, PRs, artifacts produced]
+OPEN_ISSUES: [known problems, edge cases not handled]
+NEXT_STEPS: [what the receiving agent should do]
+\`\`\`
+
+### Handoff Rules
+1. **Context must be complete** — receiving agent should NOT need to ask clarifying questions
+2. **Deliverables must be concrete** — file paths, PR URLs, not vague descriptions
+3. **Open issues must be honest** — don't hide known problems
+4. **Receiving agent ACKs** — must confirm receipt with \`[ACK-HANDOFF] task-id\`
+
+## Review Workflow
+
+### Code Review
+1. Builder posts PR/diff with \`[REVIEW] task-id\`
+2. Reviewer checks: correctness, security, performance, tests, style
+3. Reviewer posts: \`[APPROVE]\` or \`[REJECT] — specific issues\`
+4. Max 2 review rounds — if still failing, escalate to Lead
+
+### Acceptance Review
+1. Builder demonstrates deliverable meets acceptance criteria
+2. Lead verifies against original requirements
+3. Lead posts: \`[ACCEPT] task-id\` or \`[REVISE] task-id — gaps\`
+
+## Squad Communication
+
+### Message Types
+- \`[STATUS]\` — Progress update (daily or on-demand)
+- \`[QUESTION]\` — Needs input from specific agent (tag them)
+- \`[DECISION]\` — Records a decision made (who, what, why)
+- \`[ALERT]\` — Urgent issue requiring immediate attention
+- \`[COMPLETE]\` — Squad mission accomplished
+
+### Rules
+1. Status updates include: what was done, what's next, blockers
+2. Questions tag the specific agent who can answer
+3. Decisions are logged with reasoning for future reference
+4. Alerts must include severity and recommended action
+
+## Boundaries & Safety
+
+1. Agents operate ONLY within their assigned role scope
+2. No agent can modify another agent's configuration or credentials
+3. Production mutations require Ops role + Lead approval
+4. Escalation path must always lead to a human decision-maker
+5. Squad can be dissolved by Lead or by the human who created it
+`,
+  },
+
+  // ── SEARCH (B22 Audit) ────────────────────────────────────────────────────────
+
+  {
+    slug: 'openclaw-free-web-search',
+    name: 'Free Web Search',
+    description: 'Free, private web search using SearXNG or DuckDuckGo — zero API keys required. Multi-source results with confidence scoring.',
+    category: 'search',
+    badge: 'verified',
+    version: '1.0.0',
+    author: 'HiveClaw',
+    securityScore: 9.0,
+    usageCount: 0,
+    tags: ['search', 'web', 'free', 'searxng', 'duckduckgo', 'private', 'no-api-key', 'research'],
+    examples: ['Search the web for free', 'Find information without API keys', 'Private web search', 'Search via DuckDuckGo'],
+    content: `---
+name: openclaw-free-web-search
+description: "Free web search via SearXNG/DuckDuckGo — zero API keys, private, multi-source."
+---
+
+# Free Web Search
+
+Search the web without API keys or paid services. Uses public SearXNG instances and DuckDuckGo as fallback.
+
+## Search Methods (Priority Order)
+
+### 1. SearXNG (Primary)
+Meta-search engine that aggregates results from 70+ search engines without tracking.
+
+\`\`\`bash
+# Search using a public SearXNG instance
+curl -s "https://searx.be/search?q=YOUR_QUERY&format=json&categories=general" | jq '.results[:10]'
+\`\`\`
+
+**Public instances** (rotate to avoid rate limits):
+- \`https://searx.be\`
+- \`https://search.sapti.me\`
+- \`https://searx.tiekoetter.com\`
+- \`https://search.bus-hit.me\`
+
+Find more: \`https://searx.space\` — check uptime and response time before using.
+
+**Parameters:**
+- \`q\` — search query (URL-encoded)
+- \`format\` — \`json\` for structured results
+- \`categories\` — \`general\`, \`news\`, \`science\`, \`it\`, \`files\`, \`images\`, \`videos\`
+- \`time_range\` — \`day\`, \`week\`, \`month\`, \`year\`
+- \`language\` — \`en\`, \`pt-BR\`, \`es\`, etc.
+- \`engines\` — comma-separated: \`google,bing,duckduckgo,wikipedia\`
+
+### 2. DuckDuckGo HTML (Fallback)
+When SearXNG instances are down or rate-limited.
+
+\`\`\`bash
+# Fetch DuckDuckGo results via HTML scraping
+curl -s "https://html.duckduckgo.com/html/?q=YOUR_QUERY" \\
+  -H "User-Agent: Mozilla/5.0" | \\
+  grep -oP 'class="result__a"[^>]*href="[^"]*"[^>]*>[^<]*' | head -10
+\`\`\`
+
+### 3. DuckDuckGo Instant Answer API (Supplemental)
+Zero-click answers for factual queries — free, no key.
+
+\`\`\`bash
+curl -s "https://api.duckduckgo.com/?q=YOUR_QUERY&format=json&no_html=1" | jq '{abstract: .Abstract, source: .AbstractSource, url: .AbstractURL, related: [.RelatedTopics[:5][] | .Text]}'
+\`\`\`
+
+## Search Protocol
+
+1. **Formulate query** — Extract key terms, remove noise words
+2. **Try SearXNG** — Use JSON API with category and language filters
+3. **Parse results** — Extract: title, URL, snippet, engine source
+4. **Score confidence**:
+   - Result from 3+ engines → ⭐⭐⭐ High confidence
+   - Result from 2 engines → ⭐⭐ Medium confidence
+   - Result from 1 engine → ⭐ Low confidence (verify independently)
+5. **Fallback to DDG** — If SearXNG fails (timeout, 429, down)
+6. **Cross-validate** — For critical queries, compare results across methods
+
+## Self-Hosted SearXNG (Recommended for Production)
+
+For reliable, unlimited search, deploy your own instance:
+
+\`\`\`bash
+# Docker one-liner
+docker run -d --name searxng \\
+  -p 8888:8080 \\
+  -e SEARXNG_SECRET=\$(openssl rand -hex 32) \\
+  searxng/searxng:latest
+
+# Then use: http://localhost:8888/search?q=test&format=json
+\`\`\`
+
+Benefits of self-hosted:
+- No rate limits
+- No third-party tracking
+- Custom engine selection
+- Persistent configuration
+
+## Rate Limit Handling
+
+- Rotate between SearXNG instances (max 10 req/min per instance)
+- Add 1-2 second delay between sequential searches
+- If 429 received, switch to next instance or fallback to DDG
+- Cache results for repeated queries (TTL: 1 hour for news, 24h for general)
+
+## Limitations
+
+- SearXNG public instances may be slow or down — monitor \`searx.space\` for status
+- DuckDuckGo HTML scraping may break if layout changes
+- No image/video search via API (use SearXNG categories for that)
+- Results may vary between instances (different engine configurations)
+- Anti-bot protection on some instances — use proper User-Agent header
 `,
   },
 

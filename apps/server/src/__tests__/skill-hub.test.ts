@@ -8,8 +8,8 @@ import {
 } from '../engine/skill-hub.js';
 
 describe('Curated Skill Hub', () => {
-  it('should have 24 curated skills', () => {
-    expect(CURATED_SKILLS).toHaveLength(24);
+  it('should have 27 curated skills', () => {
+    expect(CURATED_SKILLS).toHaveLength(27);
   });
 
   it('should have all required fields on every skill', () => {
@@ -33,9 +33,9 @@ describe('Curated Skill Hub', () => {
     expect(new Set(slugs).size).toBe(slugs.length);
   });
 
-  it('should cover 11 categories', () => {
+  it('should cover 13 categories', () => {
     const categories = new Set(CURATED_SKILLS.map(s => s.category));
-    expect(categories.size).toBe(11);
+    expect(categories.size).toBe(13);
     expect(categories).toContain('productivity');
     expect(categories).toContain('coding');
     expect(categories).toContain('search');
@@ -47,6 +47,8 @@ describe('Curated Skill Hub', () => {
     expect(categories).toContain('system');
     expect(categories).toContain('ai-ops');
     expect(categories).toContain('qa');
+    expect(categories).toContain('security');
+    expect(categories).toContain('agent-protocols');
   });
 
   describe('getSkillBySlug', () => {
@@ -99,7 +101,7 @@ describe('Curated Skill Hub', () => {
       const stats = getCategoryStats();
       expect(stats.productivity).toBe(3);
       expect(stats.coding).toBe(3);
-      expect(stats.search).toBe(2);
+      expect(stats.search).toBe(3);
       expect(stats.communication).toBe(4);
       expect(stats.data).toBe(2);
       expect(stats.automation).toBe(2);
