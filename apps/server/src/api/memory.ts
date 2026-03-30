@@ -477,6 +477,7 @@ export async function memoryRoutes(app: FastifyInstance) {
       const memRepo = new AgentMemoryRepository(db);
 
       // Try to get embedding config from providers if model specified
+      // The fallback chain in agent-memory.ts will auto-add Ollama as backup
       let embeddingConfig: { baseUrl: string; apiKey: string; model: string } | undefined;
       if (embeddingModel) {
         try {
@@ -491,8 +492,15 @@ export async function memoryRoutes(app: FastifyInstance) {
               apiKey: openaiProvider.apiKey ?? '',
               model: embeddingModel,
             };
+          } else {
+            // No OpenAI provider — still pass a config so the fallback chain activates Ollama
+            embeddingConfig = {
+              baseUrl: '',
+              apiKey: '',
+              model: embeddingModel,
+            };
           }
-        } catch { /* no embedding provider available */ }
+        } catch { /* no embedding provider available — chain will still try Ollama */ }
       }
 
       const results = await memRepo.hybridArchivalSearch(query, {

@@ -847,15 +847,16 @@ export class AgentMemoryRepository {
     // Try hybrid if embedding config provided
     if (opts?.embeddingConfig) {
       try {
-        const { generateEmbedding, hybridSearch } = await import('../engine/embeddings.js');
-        const fullConfig = {
+        const { generateEmbeddingWithFallback, resolveEmbeddingChain, hybridSearch } = await import('../engine/embeddings.js');
+        const userConfig = {
           providerId: opts.embeddingConfig.providerId ?? 'openai',
           baseUrl: opts.embeddingConfig.baseUrl,
           apiKey: opts.embeddingConfig.apiKey,
           model: opts.embeddingConfig.model,
           dimensions: opts.embeddingConfig.dimensions ?? 1536,
         };
-        const result = await generateEmbedding(query, fullConfig);
+        const chain = resolveEmbeddingChain(userConfig);
+        const result = await generateEmbeddingWithFallback(query, chain);
         return hybridSearch(this.db, query, result.embedding, limit, opts.sessionId);
       } catch {
         // Fall through to FTS5 fallback

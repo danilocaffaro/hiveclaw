@@ -53,11 +53,119 @@ export function getEmbeddingDimensions(model: string): number {
   return 1536; // safe default
 }
 
+// ─── Fallback Chain ─────────────────────────────────────────────────────────────
+
+/**
+ * Resolve an ordered embedding provider chain.
+ * Priority:
+ *   1. User's explicitly configured provider (if it has an apiKey or is keyless)
+ *   2. Ollama on localhost (always appended as free fallback)
+ *
+ * Callers should pass the result to generateEmbeddingWithFallback().
+ */
+export function resolveEmbeddingChain(userConfig?: Partial<EmbeddingConfig>): EmbeddingConfig[] {
+  const chain: EmbeddingConfig[] = [];
+
+  // 1. User's configured provider
+  if (userConfig && (userConfig.apiKey || userConfig.providerId === 'ollama')) {
+    chain.push({
+      providerId: userConfig.providerId ?? 'openai',
+      baseUrl: userConfig.baseUrl ?? resolveProviderBaseUrl(userConfig.providerId ?? 'openai'),
+      apiKey: userConfig.apiKey ?? '',
+      model: userConfig.model ?? 'text-embedding-3-small',
+      dimensions: userConfig.dimensions ?? getEmbeddingDimensions(userConfig.model ?? 'text-embedding-3-small'),
+    });
+  }
+
+  // 2. Ollama fallback (always try localhost — it's free)
+  // Skip if the user's explicit config already IS Ollama
+  const alreadyHasOllama = chain.some(c => c.providerId === 'ollama');
+  if (!alreadyHasOllama) {
+    chain.push({
+      providerId: 'ollama',
+      baseUrl: process.env.OLLAMA_HOST || 'http://localhost:11434',
+      apiKey: '',
+      model: 'nomic-embed-text',
+      dimensions: 768,
+    });
+  }
+
+  return chain;
+}
+
+/**
+ * Generate embedding with automatic fallback across providers.
+ * Tries each config in order; logs warnings on failure and moves to next.
+ * Throws only when ALL providers have been exhausted.
+ */
+export async function generateEmbeddingWithFallback(
+  text: string,
+  configs: EmbeddingConfig[],
+): Promise<EmbeddingResult> {
+  let lastError: Error | undefined;
+  for (const config of configs) {
+    try {
+      return await generateEmbedding(text, config);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      logger.warn(
+        '[Embeddings] Provider %s (%s) failed, trying next: %s',
+        config.providerId,
+        config.model,
+        lastError.message,
+      );
+    }
+  }
+  throw new Error(
+    `All embedding providers failed (${configs.length} tried). Last error: ${lastError?.message ?? 'unknown'}`,
+  );
+}
+
+/**
+ * Health check: test whether a single embedding provider is reachable.
+ * Returns true if a trivial embedding succeeds, false otherwise.
+ */
+export async function checkEmbeddingHealth(config: EmbeddingConfig): Promise<boolean> {
+  try {
+    await generateEmbedding('health check', config);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Startup diagnostic: test every provider in the chain and log availability.
+ * Returns the list of healthy configs (may be empty).
+ */
+export async function checkEmbeddingChainHealth(
+  chain: EmbeddingConfig[],
+): Promise<EmbeddingConfig[]> {
+  const healthy: EmbeddingConfig[] = [];
+  for (const config of chain) {
+    const ok = await checkEmbeddingHealth(config);
+    if (ok) {
+      logger.info('[Embeddings] ✅ %s (%s) — available', config.providerId, config.model);
+      healthy.push(config);
+    } else {
+      logger.warn('[Embeddings] ❌ %s (%s) — unavailable', config.providerId, config.model);
+    }
+  }
+  if (healthy.length === 0) {
+    logger.warn('[Embeddings] ⚠️  No embedding providers available — vector search will be disabled');
+  } else {
+    logger.info('[Embeddings] %d/%d provider(s) healthy', healthy.length, chain.length);
+  }
+  return healthy;
+}
+
 // ─── Embedding Generation ───────────────────────────────────────────────────────
 
 /**
  * Generate embedding for text using OpenAI-compatible API.
  * Works with OpenAI, Ollama (/api/embeddings), and any compat endpoint.
+ *
+ * Prefer generateEmbeddingWithFallback() for production use.
  */
 export async function generateEmbedding(
   text: string,

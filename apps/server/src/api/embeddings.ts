@@ -11,6 +11,8 @@ import {
   loadVecExtension,
   initEmbeddingTables,
   generateEmbedding,
+  generateEmbeddingWithFallback,
+  resolveEmbeddingChain,
   storeEmbedding,
   hybridSearch,
   vectorSearch,
@@ -66,16 +68,17 @@ export function registerEmbeddingRoutes(app: FastifyInstance): void {
         return { data: ftsRows };
       }
 
-      // Generate query embedding
-      const config: EmbeddingConfig = {
+      // Generate query embedding with fallback chain
+      const userConfig: Partial<EmbeddingConfig> = {
         providerId: req.body.provider_id,
         baseUrl: req.body.base_url ?? 'https://api.openai.com',
         apiKey: req.body.api_key ?? '',
         model,
         dimensions,
       };
+      const chain = resolveEmbeddingChain(userConfig);
 
-      const { embedding: queryEmb } = await generateEmbedding(query, config);
+      const { embedding: queryEmb } = await generateEmbeddingWithFallback(query, chain);
 
       if (mode === 'vector') {
         const results = vectorSearch(db, queryEmb, limit, session_id);
@@ -145,6 +148,7 @@ export function registerEmbeddingRoutes(app: FastifyInstance): void {
         model,
         dimensions,
       };
+      const chain = resolveEmbeddingChain(config);
 
       // Find unembedded messages
       const unembedded = db.prepare(`
@@ -162,14 +166,14 @@ export function registerEmbeddingRoutes(app: FastifyInstance): void {
         return { data: { embedded: 0, message: 'All messages already embedded' } };
       }
 
-      // Embed in background (fire-and-forget)
+      // Embed in background (fire-and-forget) with fallback chain
       let embedded = 0;
       safeFire((async () => {
         for (const msg of unembedded) {
           try {
             const text = msg.content.slice(0, 8000);
-            const result = await generateEmbedding(text, config);
-            storeEmbedding(db, msg.id, result.embedding, model, dimensions);
+            const result = await generateEmbeddingWithFallback(text, chain);
+            storeEmbedding(db, msg.id, result.embedding, result.model, getEmbeddingDimensions(result.model));
             embedded++;
           } catch (err) {
             logger.warn('[Embeddings] Failed to embed %s: %s', msg.id, (err as Error).message);

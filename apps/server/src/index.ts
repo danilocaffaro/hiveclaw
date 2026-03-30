@@ -72,6 +72,7 @@ import { registerBacklogRoutes } from './api/backlog.js';
 import { registerRoutingRoutes } from './api/routing.js';
 import { registerAnalyticsRoutes } from './api/analytics.js';
 import { registerEmbeddingRoutes } from './api/embeddings.js';
+import { resolveEmbeddingChain, checkEmbeddingChainHealth } from './engine/embeddings.js';
 import { registerChannelRoutes } from './api/channels.js';
 import { registerChannelV2Routes } from './api/channels-v2.js';
 import { registerNodeRoutes } from './api/nodes.js';
@@ -606,6 +607,27 @@ async function main() {
 
     // Check for updates (non-blocking, fires after startup)
     import('./lib/update-checker.js').then(m => m.checkForUpdate()).catch(() => {});
+
+    // ─── Embedding provider health check (B25) ──────────────────────────
+    // Non-blocking: test which embedding providers are available at startup.
+    safeFire((async () => {
+      try {
+        // Auto-detect: check if any provider has an OpenAI-compatible key
+        const { ProviderRepository } = await import('./db/providers.js');
+        const provRepo = new ProviderRepository(db);
+        const allProviders = provRepo.list();
+        const openaiProv = allProviders.find(p => p.type === 'openai' && p.apiKey);
+
+        const userConfig = openaiProv
+          ? { providerId: 'openai', baseUrl: openaiProv.baseUrl ?? 'https://api.openai.com', apiKey: openaiProv.apiKey ?? '', model: 'text-embedding-3-small' }
+          : undefined;
+
+        const chain = resolveEmbeddingChain(userConfig);
+        await checkEmbeddingChainHealth(chain);
+      } catch (err) {
+        logger.warn('[Embeddings] Startup health check failed: %s', (err as Error).message);
+      }
+    })(), 'startup:embeddingHealth');
   } catch (err) {
     app.log.error(err);
     process.exit(1);
