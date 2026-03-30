@@ -174,6 +174,83 @@ export function registerSessionRoutes(app: FastifyInstance) {
     }
   });
 
+  // ── GET /sessions/:id/context-usage ──────────────────────────────────────────
+  // B27: Context usage meter — returns tokens used, context window, cost, etc.
+  app.get<{ Params: { id: string } }>('/sessions/:id/context-usage', async (req, reply) => {
+    try {
+      const session = sm.getSession(req.params.id);
+      if (!session) {
+        return reply.status(404).send({
+          error: { code: 'NOT_FOUND', message: `Session not found: ${req.params.id}` },
+        });
+      }
+
+      // 1. Get usage summary (tokens + cost)
+      const summary = usageRepo.getBySession(req.params.id);
+
+      // 2. Get message count
+      const messages = sm.getMessages(req.params.id, { limit: 100_000 });
+      const messageCount = messages.length;
+
+      // 3. Resolve model context window
+      const providerRepo = new ProviderRepository(db);
+      const providerId = session.provider_id || 'anthropic';
+      const modelId = session.model_id || '';
+      let contextWindow = 200_000; // sensible default
+      let resolvedModel = modelId;
+
+      // Try to find the model in the provider's model catalog
+      const provider = providerRepo.get(providerId);
+      if (provider) {
+        const model = provider.models.find((m) => m.id === modelId);
+        if (model) {
+          contextWindow = model.contextWindow;
+          resolvedModel = model.name || model.id;
+        } else if (provider.models.length > 0) {
+          // If model_id not found directly, search across all providers
+          const allModels = providerRepo.allModels();
+          const found = allModels.find((m) => m.id === modelId);
+          if (found) {
+            contextWindow = found.contextWindow;
+            resolvedModel = found.name || found.id;
+          }
+        }
+      } else {
+        // Search across all providers
+        const allModels = providerRepo.allModels();
+        const found = allModels.find((m) => m.id === modelId);
+        if (found) {
+          contextWindow = found.contextWindow;
+          resolvedModel = found.name || found.id;
+        }
+      }
+
+      // 4. Calculate totals — tokensUsed is input tokens (what fills the context window)
+      const tokensUsed = summary.totalTokensIn;
+      const percentUsed = contextWindow > 0
+        ? Math.round((tokensUsed / contextWindow) * 1000) / 10
+        : 0;
+
+      // 5. Can compact? Session must have enough messages
+      const canCompact = messageCount >= 20;
+
+      return reply.send({
+        data: {
+          tokensUsed,
+          contextWindow,
+          percentUsed,
+          messageCount,
+          costUsd: summary.totalCost,
+          model: resolvedModel,
+          canCompact,
+        },
+      });
+    } catch (err) {
+      const msg = (err as Error).message;
+      return reply.status(500).send({ error: { code: 'DB_ERROR', message: msg } });
+    }
+  });
+
   // ── PATCH /sessions/:id ────────────────────────────────────────────────────
   app.patch<{
     Params: { id: string };

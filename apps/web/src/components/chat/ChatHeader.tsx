@@ -8,11 +8,12 @@ import { useSquadStore } from '@/stores/squad-store';
 import type { Agent } from '@/stores/agent-store';
 import { useAgentStore } from '@/stores/agent-store';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { ContextMeter } from './ContextMeter';
 
 // ─── Squad Chat Header ──────────────────────────────────────────────────────────
 
 export function SquadChatHeader({ squad, agents, onSquadInfoClick }: { squad: Squad; agents: Agent[]; onSquadInfoClick?: () => void }) {
-  const { messages } = useSessionStore();
+  const { messages, activeSessionId } = useSessionStore();
   const isStreaming = useSessionStore((s) => s.streamingSessions.has(s.activeSessionId ?? ''));
   const { toggleRightPanel, toggleSettings, setMobileSidebarOpen, setMobileRightPanelOpen, interfaceMode } = useUIStore();
   const isMobile = useIsMobile();
@@ -128,6 +129,9 @@ export function SquadChatHeader({ squad, agents, onSquadInfoClick }: { squad: Sq
             </span>
           );
         })()}
+        {activeSessionId && (
+          <ContextMeter sessionId={activeSessionId} isStreaming={isStreaming} />
+        )}
         <button onClick={toggleSettings} title="Settings (⌘,)" aria-label="Settings (⌘,)" style={{
           width: 32, height: 32, borderRadius: 'var(--radius-md)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -279,6 +283,9 @@ export function ChatHeader({ onAgentInfoClick }: { onAgentInfoClick?: () => void
             <span>🪙</span>
             <span>{tokenUsage.total >= 1_000_000 ? `${(tokenUsage.total/1_000_000).toFixed(1)}M` : tokenUsage.total >= 1_000 ? `${(tokenUsage.total/1_000).toFixed(1)}K` : String(tokenUsage.total)}</span>
           </div>
+        )}
+        {activeSessionId && (
+          <ContextMeter sessionId={activeSessionId} isStreaming={isStreaming} />
         )}
         <button onClick={toggleSettings} title="Settings (⌘,)" aria-label="Settings (⌘,)" style={{
           width: 32, height: 32, borderRadius: 'var(--radius-md)',
