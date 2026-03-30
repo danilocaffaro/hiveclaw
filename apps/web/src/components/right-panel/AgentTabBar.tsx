@@ -42,11 +42,13 @@ export default function AgentTabBar() {
   const memberIds: string[] = squad.agentIds ?? [];
 
   const members = memberIds.map((id) => {
+    // B18 fix: Try agent store first, then fall back to resolved agents from squad API response
     const agent = agents.find((a) => a.id === id);
+    const resolvedFromSquad = squad.agents?.find((a) => a.id === id);
     return {
       id,
-      name: agent?.name ?? id.slice(0, 6),
-      emoji: agent?.emoji ?? '🤖',
+      name: agent?.name ?? resolvedFromSquad?.name ?? id.slice(0, 6),
+      emoji: agent?.emoji ?? resolvedFromSquad?.emoji ?? '🤖',
     };
   });
 

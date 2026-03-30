@@ -7,6 +7,8 @@ export interface Squad {
   emoji: string;
   description: string;
   agentIds: string[];
+  /** B18: Resolved agent objects from GET /squads (includes name, emoji, role) */
+  agents?: Array<{ id: string; name: string; emoji: string; role: string; type?: string }>;
   sprintConfig: Record<string, unknown>;
   routingStrategy: 'sequential' | 'debate' | 'specialist' | 'round-robin';
   debateEnabled: boolean;
