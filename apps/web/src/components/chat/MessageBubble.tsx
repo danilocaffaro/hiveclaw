@@ -5,6 +5,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { LinkPreviews } from './LinkPreview';
 import { AudioPlayer, isVoiceMessage } from './AudioPlayer';
 import { QuotedReply } from './MessageActions';
+import { ThinkingBlock, splitThinkingBlocks } from './ThinkingBlock';
 import type { Message } from '@/stores/session-store';
 import { useSessionStore } from '@/stores/session-store';
 import { DebateCard, WorkflowCard, SprintProgressCard } from '../SpecialCards';
@@ -12,6 +13,27 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { useUIStore } from '@/stores/ui-store';
 import { useAgentStore } from '@/stores/agent-store';
 import { cleanAgentName } from '@/lib/agent-utils';
+
+// ─── Assistant Content Renderer (with thinking block extraction) ─────────────
+
+function AssistantContent({ content }: { content: string }) {
+  const segments = splitThinkingBlocks(content);
+  // If no thinking blocks detected, render plain markdown
+  if (segments.length === 1 && segments[0].type === 'text') {
+    return <MarkdownRenderer content={segments[0].content} />;
+  }
+  return (
+    <>
+      {segments.map((seg, i) =>
+        seg.type === 'thinking' ? (
+          <ThinkingBlock key={i} content={seg.content} />
+        ) : (
+          <MarkdownRenderer key={i} content={seg.content} />
+        )
+      )}
+    </>
+  );
+}
 
 // ─── Loading Skeleton ───────────────────────────────────────────────────────────
 
@@ -41,25 +63,45 @@ export function LoadingSkeleton() {
 
 
 export function ToolCallBlock({ msg }: { msg: Message }) {
+  // B18: Tool output collapse — long outputs collapsed by default with preview
+  const TOOL_OUTPUT_LINE_THRESHOLD = 5;
+  const TOOL_OUTPUT_CHAR_THRESHOLD = 500;
+
   // Interactive/important tools start expanded; technical tools start collapsed
   const interactiveTools = ['question', 'memory', 'plans', 'todo', 'task', 'visual_memory', 'canvas', 'data_analysis'];
   const toolName = msg.tool_name || 'tool';
+  const content = msg.content || '';
+  const contentLines = content.split('\n');
+  const isLongOutput = contentLines.length > TOOL_OUTPUT_LINE_THRESHOLD || content.length > TOOL_OUTPUT_CHAR_THRESHOLD;
   const isInteractive = interactiveTools.includes(toolName);
-  const [expanded, setExpanded] = useState(isInteractive);
+
+  // Long outputs collapse by default (even for interactive tools)
+  // Short outputs follow the interactive/technical heuristic
+  const defaultExpanded = isLongOutput ? false : isInteractive;
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [hasUserToggled, setHasUserToggled] = useState(false);
 
   // If tool_name changes after mount (streaming race condition), update expanded state
   // But only if the user hasn't manually toggled it
   useEffect(() => {
     if (!hasUserToggled) {
-      setExpanded(interactiveTools.includes(msg.tool_name || 'tool'));
+      const isInt = interactiveTools.includes(msg.tool_name || 'tool');
+      const newContent = msg.content || '';
+      const newLines = newContent.split('\n');
+      const isLong = newLines.length > TOOL_OUTPUT_LINE_THRESHOLD || newContent.length > TOOL_OUTPUT_CHAR_THRESHOLD;
+      setExpanded(isLong ? false : isInt);
     }
-  }, [msg.tool_name, hasUserToggled]);
+  }, [msg.tool_name, msg.content, hasUserToggled]);
 
   const handleToggle = () => {
     setHasUserToggled(true);
     setExpanded(!expanded);
   };
+
+  // Preview: first 2 lines, truncated
+  const previewText = isLongOutput && !expanded
+    ? contentLines.slice(0, 2).join('\n').slice(0, 120) + (contentLines.length > 2 || content.length > 120 ? '…' : '')
+    : '';
 
   return (
     <div style={{
@@ -76,14 +118,40 @@ export function ToolCallBlock({ msg }: { msg: Message }) {
       }}>
         <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{expanded ? '▼' : '▶'}</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 500, color: 'var(--yellow)' }}>
-          {toolName}
+          🔧 {toolName}
         </span>
+        {/* Preview snippet when collapsed and output is long */}
+        {isLongOutput && !expanded && previewText && (
+          <span style={{
+            fontSize: 11, color: 'var(--text-muted)',
+            fontFamily: 'var(--font-mono)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            maxWidth: '40%', opacity: 0.7,
+          }}>
+            — {previewText}
+          </span>
+        )}
         <span style={{
-          marginLeft: 'auto', padding: '1px 8px', borderRadius: 4,
-          background: 'var(--green-subtle)', color: 'var(--green)',
-          fontSize: 11, fontWeight: 500
+          marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6,
         }}>
-          ✓ done
+          {isLongOutput && !expanded && (
+            <span style={{
+              padding: '1px 6px', borderRadius: 4,
+              background: 'rgba(210,153,34,0.1)',
+              color: 'var(--text-muted)',
+              fontSize: 10, fontWeight: 500,
+              fontFamily: 'var(--font-mono)',
+            }}>
+              {contentLines.length} lines
+            </span>
+          )}
+          <span style={{
+            padding: '1px 8px', borderRadius: 4,
+            background: 'var(--green-subtle)', color: 'var(--green)',
+            fontSize: 11, fontWeight: 500
+          }}>
+            ✓ done
+          </span>
         </span>
       </button>
       {expanded && (
@@ -94,8 +162,27 @@ export function ToolCallBlock({ msg }: { msg: Message }) {
           maxHeight: 300, overflowY: 'auto', lineHeight: 1.5,
           userSelect: 'text',
         }}>
-          {msg.content}
+          {content}
         </div>
+      )}
+      {/* Show more footer for collapsed long outputs */}
+      {isLongOutput && !expanded && (
+        <button
+          onClick={handleToggle}
+          style={{
+            width: '100%', padding: '5px 12px', border: 'none',
+            borderTop: '1px solid rgba(210,153,34,0.15)',
+            background: 'var(--code-bg)', color: 'var(--text-muted)',
+            fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-mono)',
+            transition: 'background 150ms, color 150ms',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--code-bg)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+        >
+          <span style={{ fontSize: 9 }}>▼</span>
+          Show full output ({contentLines.length} lines)
+        </button>
       )}
     </div>
   );
@@ -300,7 +387,7 @@ export function MessageBubble({ msg }: { msg: Message }) {
               <>
                 {quotedReply && <QuotedReply senderName={quotedReply.senderName} content={quotedReply.content} />}
                 {renderSpecialCard(msg)}
-                <MarkdownRenderer content={mainContent.replace(/:::(?:debate|workflow|sprint)\{[\s\S]*?\}:::/g, '').trim()} />
+                <AssistantContent content={mainContent.replace(/:::(?:debate|workflow|sprint)\{[\s\S]*?\}:::/g, '').trim()} />
               </>
             )}
           </div>
@@ -400,7 +487,7 @@ export function MessageBubble({ msg }: { msg: Message }) {
             <>
               {quotedReply && <QuotedReply senderName={quotedReply.senderName} content={quotedReply.content} />}
               {renderSpecialCard(msg)}
-              <MarkdownRenderer content={mainContent.replace(/:::(?:debate|workflow|sprint)\{[\s\S]*?\}:::/g, '').trim()} />
+              <AssistantContent content={mainContent.replace(/:::(?:debate|workflow|sprint)\{[\s\S]*?\}:::/g, '').trim()} />
             </>
           )}
         </div>
