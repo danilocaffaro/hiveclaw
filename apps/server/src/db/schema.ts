@@ -406,6 +406,25 @@ export function initDatabase(): Database.Database {
     );
 
     CREATE INDEX IF NOT EXISTS idx_invites_code ON invites(code);
+
+    -- B25: Credential Store — centralized API key management with health checks
+    CREATE TABLE IF NOT EXISTS credentials (
+      id TEXT PRIMARY KEY,
+      key TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      value TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'unknown',
+      last_checked TEXT,
+      last_success TEXT,
+      check_endpoint TEXT,
+      used_by TEXT DEFAULT '[]',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_credentials_key ON credentials(key);
+    CREATE INDEX IF NOT EXISTS idx_credentials_provider ON credentials(provider);
+    CREATE INDEX IF NOT EXISTS idx_credentials_status ON credentials(status);
   `);
 
   // ── Migrations (idempotent column additions) ──────────────────────────────
@@ -780,7 +799,7 @@ export function initDatabase(): Database.Database {
     )
   `);
   // Current schema version: bump when adding migrations
-  const CURRENT_SCHEMA = 7;
+  const CURRENT_SCHEMA = 8;
   const sv = db.prepare("SELECT version FROM schema_version WHERE id=1").get() as { version: number } | undefined;
   if (!sv) {
     db.prepare("INSERT INTO schema_version (id, version, applied_at) VALUES (1, ?, datetime('now'))").run(CURRENT_SCHEMA);

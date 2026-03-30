@@ -56,8 +56,10 @@ import { registerInviteRoutes } from './api/invites.js';
 import { registerAutomationRoutes, startCronScheduler } from './api/automations.js';
 import { registerFinetuneRoutes } from './api/finetune.js';
 import { registerCredentialRoutes } from './api/credentials.js';
+import { registerCredentialStoreRoutes } from './api/credential-store.js';
 import { registerTokenVaultRoutes } from './api/token-vault.js';
 import { CredentialRepository } from './db/credentials.js';
+import { CredentialStoreRepository } from './db/credential-store.js';
 import { registerPreviewRoutes } from './api/preview.js';
 import { registerConsoleRoutes } from './api/console.js';
 import { registerWorkflowRoutes } from './api/workflows.js';
@@ -122,6 +124,7 @@ async function main() {
   const finetuneDatasets = new DatasetRepository(db);
   const finetuneJobs = new FinetuneJobRepository(db);
   const credentialRepo = new CredentialRepository(db);
+  const credentialStoreRepo = new CredentialStoreRepository(db);
   const agentMemoryRepo = new AgentMemoryRepository(db);
 
   // Workflow subsystem
@@ -426,7 +429,7 @@ async function main() {
 
       const apiPrefixes = ['/healthz', '/agents', '/sessions', '/squads', '/tasks',
         '/providers', '/config', '/sse', '/memory', '/plans', '/skills', '/heartbeat',
-        '/questions', '/credentials', '/token-vault', '/files', '/artifacts', '/browser', '/mcp',
+        '/questions', '/credentials', '/credential-store', '/token-vault', '/files', '/artifacts', '/browser', '/mcp',
         '/datasets', '/presentation', '/marketplace', '/auth', '/finetune',
         '/workflows', '/workflow-runs', '/setup', '/debug', '/console',
         '/n8n', '/preview', '/audit', '/integrations', '/webhooks',
@@ -504,6 +507,7 @@ async function main() {
   registerFinetuneRoutes(app, finetuneDatasets, finetuneJobs);
   registerConsoleRoutes(app);
   registerCredentialRoutes(app, credentialRepo)
+  registerCredentialStoreRoutes(app, credentialStoreRepo);
   registerTokenVaultRoutes(app, db);
   registerPreviewRoutes(app);
   registerWorkflowRoutes(app, workflowRepo);

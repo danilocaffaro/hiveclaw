@@ -29,3 +29,5 @@ export { FederationRepository } from './federation.js';
 export type { FederationLink, FederationPairing, LinkDirection, LinkStatus, CreatePairingResult } from './federation.js';
 export { ProdutoRepository } from './produtos.js';
 export type { Produto, ProdutoCreateInput, ProdutoFilters } from './produtos.js';
+export { CredentialStoreRepository } from './credential-store.js';
+export type { Credential, CredentialCreateInput, CredentialUpdateInput, CredentialStatus } from './credential-store.js';
