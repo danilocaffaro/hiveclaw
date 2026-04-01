@@ -7,6 +7,7 @@ const execFileAsync = promisify(execFile);
 
 const MAX_OUTPUT = 50_000; // chars
 const DEFAULT_TIMEOUT = 30_000; // ms
+const BLOCKING_BUDGET_MS = 15_000; // S1.5: auto-background after this
 const IS_WINDOWS = process.platform === 'win32';
 
 /**
@@ -68,12 +69,37 @@ export class BashTool implements Tool {
 
     try {
       const [shell, shellArgs] = getShellArgs(command);
-      const { stdout, stderr } = await execFileAsync(shell, shellArgs, {
+
+      // S1.5: Blocking Budget — race execution against 15s budget.
+      // If command finishes within budget, return normally.
+      // If it exceeds budget, return early with "backgrounded" status
+      // and let the process continue (agent can check later).
+      const execPromise = execFileAsync(shell, shellArgs, {
         timeout,
         cwd: cwdCheck.resolved,
         env: { ...process.env },
         maxBuffer: MAX_OUTPUT * 4,
       });
+
+      const budgetTimer = new Promise<'backgrounded'>((resolve) => {
+        const timer = setTimeout(() => resolve('backgrounded'), BLOCKING_BUDGET_MS);
+        timer.unref(); // Don't keep Node alive just for this timer
+      });
+
+      const raceResult = await Promise.race([
+        execPromise.then(r => ({ type: 'done' as const, ...r })),
+        budgetTimer.then(type => ({ type })),
+      ]);
+
+      if (raceResult.type === 'backgrounded') {
+        // Command still running — let it continue in background, notify agent
+        return {
+          success: true,
+          result: `[Command still running after ${BLOCKING_BUDGET_MS / 1000}s — backgrounded. It will continue to completion. You can proceed with other work and check back later with: bash({ command: "ps aux | grep '${command.slice(0, 30).replace(/'/g, '')}'" })]`,
+        };
+      }
+
+      const { stdout, stderr } = raceResult as { stdout: string; stderr: string };
 
       let output = '';
       if (stdout) output += stdout;

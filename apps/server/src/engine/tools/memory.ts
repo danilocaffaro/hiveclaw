@@ -82,6 +82,23 @@ Only after both return empty may you say you lack the information.`,
           const value = input['value'] as string;
           if (!key || !value) return { success: false, error: 'key and value are required for create' };
 
+          // S1.4: Anti-injection scan on memory entries
+          const suspiciousPatterns = [
+            /ignore\s+(all\s+)?previous\s+instructions/i,
+            /you\s+are\s+now\s+a/i,
+            /disregard\s+(all\s+)?(prior|previous|above)/i,
+            /forget\s+(everything|all|your)\s+(instructions|rules|guidelines)/i,
+            /new\s+system\s+prompt/i,
+            /\bsystem\s*:\s*/i,
+            /\[INST\]|\[\/INST\]|<\|im_start\|>|<\|system\|>/i,
+            /override\s+(safety|security|rules)/i,
+          ];
+          const combinedText = `${key} ${value}`;
+          const injectionMatch = suspiciousPatterns.find(p => p.test(combinedText));
+          if (injectionMatch) {
+            return { success: false, error: 'Memory entry rejected: contains suspicious pattern that may be a prompt injection attempt. If this is legitimate content, rephrase without instruction-like language.' };
+          }
+
           const type = (input['type'] as MemoryType | undefined) ?? 'fact';
           const tags = Array.isArray(input['tags']) ? input['tags'] as string[] : undefined;
 
