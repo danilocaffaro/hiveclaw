@@ -381,6 +381,36 @@ export function registerAgentRoutes(app: FastifyInstance, injectedAgents?: Agent
       return { data: results };
     });
 
+  // ── S1.2: autoDream Memory Consolidation ────────────────────────────────
+
+  /**
+   * POST /agents/:id/consolidate-memory
+   *
+   * Triggers a full autoDream memory consolidation run for the agent.
+   * Safe to call at any time (idempotent). Intended for nightly cron use
+   * but can also be called manually from the UI or admin scripts.
+   *
+   * Returns a ConsolidationReport with details of what was pruned, promoted,
+   * and flagged as stale or contradictory.
+   */
+  app.post<{ Params: { id: string } }>('/agents/:id/consolidate-memory', async (req, reply) => {
+    const agent = agents().getById(req.params.id);
+    if (!agent) {
+      return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
+    }
+
+    try {
+      const { consolidateMemory } = await import('../engine/memory-consolidator.js');
+      const report = await consolidateMemory(req.params.id);
+      return reply.status(200).send({ data: report });
+    } catch (err) {
+      app.log.error(err, '[consolidate-memory] Failed for agent %s', req.params.id);
+      return reply.status(500).send({
+        error: { code: 'INTERNAL', message: (err as Error).message },
+      });
+    }
+  });
+
   // ── R15: Agent Bearer Token Management ──────────────────────────────────
 
   // POST /agents/:id/token — Generate a new bearer token

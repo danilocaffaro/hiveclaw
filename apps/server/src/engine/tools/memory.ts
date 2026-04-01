@@ -4,12 +4,27 @@
 // Replaces the legacy MemoryTool that used a separate `memories` table.
 // Now delegates to AgentMemoryRepository (agent_memory table) +
 // FTS5 archival search (messages_fts) for Total Recall.
+//
+// S1.3 — Bounded Memory:
+//   Each core memory block is capped at CORE_MEMORY_MAX_CHARS characters.
+//   core_append returns an error when the cap would be exceeded.
+//   core_replace enforces the cap on the new value.
+//   memory_usage reports current size vs. limits for every core block.
 // ============================================================
 
 import { AgentMemoryRepository } from '../../db/agent-memory.js';
 import type { MemoryType } from '../../db/agent-memory.js';
 import type { Tool, ToolInput, ToolOutput, ToolDefinition, ToolContext } from './types.js';
 import { getDb } from '../../db/schema.js';
+
+// ─── S1.3: Bounded Memory constant ───────────────────────────────────────────
+
+/**
+ * Maximum number of characters allowed in a single core memory block.
+ * Approximately 600 tokens — enough for rich identity/project context while
+ * preventing unbounded prompt bloat.
+ */
+export const CORE_MEMORY_MAX_CHARS = 2500;
 
 export class MemoryTool implements Tool {
   readonly definition: ToolDefinition = {
@@ -22,8 +37,9 @@ Actions:
 - list: List memories, optionally filtered by type
 - delete: Delete a memory by ID
 - core_read: Read a core memory block (always in prompt)
-- core_replace: Surgical edit of a core memory block
-- core_append: Append text to a core memory block
+- core_replace: Surgical edit of a core memory block (enforces ${CORE_MEMORY_MAX_CHARS}-char limit)
+- core_append: Append text to a core memory block (enforces ${CORE_MEMORY_MAX_CHARS}-char limit)
+- memory_usage: Show current size vs. limit for each core memory block
 
 MANDATORY: Before saying "I don't know" or "I don't remember", you MUST:
 1. search(query) — check agent memories
@@ -34,7 +50,7 @@ Only after both return empty may you say you lack the information.`,
       properties: {
         action: {
           type: 'string',
-          enum: ['create', 'search', 'archival_search', 'list', 'delete', 'core_read', 'core_replace', 'core_append'],
+          enum: ['create', 'search', 'archival_search', 'list', 'delete', 'core_read', 'core_replace', 'core_append', 'memory_usage'],
           description: 'Action to perform',
         },
         // create
@@ -189,6 +205,17 @@ Only after both return empty may you say you lack the information.`,
           if (!block || !oldText || newText === undefined) {
             return { success: false, error: 'block, old_text, and new_text are required' };
           }
+
+          // S1.3: Enforce character limit on the resulting block content
+          const currentForReplace = repo.getCoreBlock(agentId, block);
+          const projectedContent = currentForReplace.replace(oldText, newText);
+          if (projectedContent.length > CORE_MEMORY_MAX_CHARS) {
+            return {
+              success: false,
+              error: `core_replace would produce ${projectedContent.length} chars, exceeding the ${CORE_MEMORY_MAX_CHARS}-char limit for block "${block}". Shorten your replacement text or use core_replace to remove older content first.`,
+            };
+          }
+
           const replaced = repo.coreBlockReplace(agentId, block, oldText, newText);
           if (!replaced) return { success: false, error: `Text "${oldText}" not found in block "${block}"` };
           return { success: true, result: `Core memory block "${block}" updated.` };
@@ -198,12 +225,61 @@ Only after both return empty may you say you lack the information.`,
           const block = input['block'] as string;
           const text = input['text'] as string;
           if (!block || !text) return { success: false, error: 'block and text are required' };
+
+          // S1.3: Check if appending would exceed the character limit
+          const currentForAppend = repo.getCoreBlock(agentId, block);
+          const separator = currentForAppend ? '\n' : '';
+          const projectedLength = currentForAppend.length + separator.length + text.length;
+          if (projectedLength > CORE_MEMORY_MAX_CHARS) {
+            const available = CORE_MEMORY_MAX_CHARS - currentForAppend.length - (currentForAppend ? 1 : 0);
+            return {
+              success: false,
+              error: `core_append would exceed the ${CORE_MEMORY_MAX_CHARS}-char limit for block "${block}" (current: ${currentForAppend.length} chars, adding: ${text.length} chars, available: ${available} chars). Use core_replace to consolidate or remove older content first.`,
+            };
+          }
+
           repo.coreBlockAppend(agentId, block, text);
           return { success: true, result: `Appended to core memory block "${block}".` };
         }
 
+        case 'memory_usage': {
+          // S1.3: Report current size vs. limit for each core memory block
+          const blocks = repo.getCoreBlocks(agentId);
+          if (blocks.length === 0) {
+            return {
+              success: true,
+              result: {
+                limit: CORE_MEMORY_MAX_CHARS,
+                blocks: [],
+                message: 'No core memory blocks found for this agent.',
+              },
+            };
+          }
+
+          const usage = blocks.map(b => ({
+            block: b.block_name,
+            chars: b.content.length,
+            limit: CORE_MEMORY_MAX_CHARS,
+            usedPercent: Math.round((b.content.length / CORE_MEMORY_MAX_CHARS) * 100),
+            available: Math.max(0, CORE_MEMORY_MAX_CHARS - b.content.length),
+            status: b.content.length >= CORE_MEMORY_MAX_CHARS
+              ? 'FULL'
+              : b.content.length >= CORE_MEMORY_MAX_CHARS * 0.8
+              ? 'NEAR_FULL'
+              : 'OK',
+          }));
+
+          return {
+            success: true,
+            result: {
+              limit: CORE_MEMORY_MAX_CHARS,
+              blocks: usage,
+            },
+          };
+        }
+
         default:
-          return { success: false, error: `Unknown action: ${action}. Use create, search, archival_search, list, delete, core_read, core_replace, core_append.` };
+          return { success: false, error: `Unknown action: ${action}. Use create, search, archival_search, list, delete, core_read, core_replace, core_append, memory_usage.` };
       }
     } catch (err: unknown) {
       return { success: false, error: (err as Error).message };
