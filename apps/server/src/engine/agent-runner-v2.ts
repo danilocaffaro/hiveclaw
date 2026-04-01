@@ -346,7 +346,14 @@ Save it as a SKILL.md file in ~/.hiveclaw/workspace/skills/<skill-name>/SKILL.md
 - Description of what the skill does
 - Step-by-step procedure
 - Common pitfalls
-- Verification steps`;
+- Verification steps
+
+## Skill Reference Files (Level 2)
+Each skill directory may contain additional reference files beyond SKILL.md.
+To access them, use the bash tool directly:
+  ls ~/.hiveclaw/workspace/skills/<skill-name>/         — list all files
+  cat ~/.hiveclaw/workspace/skills/<skill-name>/<file>  — read a specific reference file
+Or via API: GET /api/skills/<skill-name>/references (list) and GET /api/skills/<skill-name>/references/<filename> (content).`;
 
   return systemPrompt;
 }

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, statSync } from 'fs';
+import { join, basename } from 'path';
 import { homedir } from 'os';
 import { logger } from '../lib/logger.js';
 
@@ -176,6 +176,78 @@ export async function skillRoutes(app: FastifyInstance) {
       invalidateCache();
 
       return { data: { success: true, slug } };
+    } catch (err) {
+      app.log.error(err);
+      return reply.status(500).send({ error: { code: 'INTERNAL', message: String(err) } });
+    }
+  });
+
+  // ── S3.2: Progressive Skill Disclosure — Level 2 (Reference Files) ──────
+
+  /**
+   * GET /skills/:slug/references
+   * Lists all non-SKILL.md files in the skill directory.
+   * Agents can use this to discover available reference files before fetching them.
+   */
+  app.get<{ Params: { slug: string } }>('/skills/:slug/references', async (req, reply) => {
+    try {
+      const { slug } = req.params;
+      const skillDir = join(SKILLS_DIR, slug);
+      if (!existsSync(skillDir)) {
+        return reply.status(404).send({ error: { code: 'NOT_FOUND', message: `Skill '${slug}' not found` } });
+      }
+
+      const entries = readdirSync(skillDir, { withFileTypes: true });
+      const files = entries
+        .filter(e => e.isFile() && e.name !== 'SKILL.md')
+        .map(e => {
+          const filePath = join(skillDir, e.name);
+          let size = 0;
+          try { size = statSync(filePath).size; } catch { /* ignore */ }
+          return { filename: e.name, size };
+        })
+        .sort((a, b) => a.filename.localeCompare(b.filename));
+
+      return { data: { slug, files, hint: `Fetch any file with GET /api/skills/${slug}/references/:filename` } };
+    } catch (err) {
+      app.log.error(err);
+      return reply.status(500).send({ error: { code: 'INTERNAL', message: String(err) } });
+    }
+  });
+
+  /**
+   * GET /skills/:slug/references/:filename
+   * Returns the content of a specific reference file within a skill directory.
+   * Enforces path traversal safety — only files directly inside the skill dir.
+   */
+  app.get<{ Params: { slug: string; filename: string } }>('/skills/:slug/references/:filename', async (req, reply) => {
+    try {
+      const { slug, filename } = req.params;
+
+      // Path traversal guard — filename must be a plain filename (no slashes, no ..)
+      const safeFilename = basename(filename);
+      if (!safeFilename || safeFilename !== filename || safeFilename === 'SKILL.md') {
+        return reply.status(400).send({ error: { code: 'VALIDATION', message: 'Invalid filename' } });
+      }
+
+      const skillDir = join(SKILLS_DIR, slug);
+      if (!existsSync(skillDir)) {
+        return reply.status(404).send({ error: { code: 'NOT_FOUND', message: `Skill '${slug}' not found` } });
+      }
+
+      const filePath = join(skillDir, safeFilename);
+      if (!existsSync(filePath)) {
+        return reply.status(404).send({ error: { code: 'NOT_FOUND', message: `Reference file '${safeFilename}' not found in skill '${slug}'` } });
+      }
+
+      // Only serve regular files
+      const st = statSync(filePath);
+      if (!st.isFile()) {
+        return reply.status(400).send({ error: { code: 'VALIDATION', message: 'Not a file' } });
+      }
+
+      const content = readFileSync(filePath, 'utf-8');
+      return { data: { slug, filename: safeFilename, content, size: st.size } };
     } catch (err) {
       app.log.error(err);
       return reply.status(500).send({ error: { code: 'INTERNAL', message: String(err) } });

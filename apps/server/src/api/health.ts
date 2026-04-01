@@ -3,6 +3,7 @@ import { getWatchdog } from '../engine/self-watchdog.js';
 import { getVersionInfo } from '../lib/version.js';
 import { getDb } from '../db/schema.js';
 import { checkForUpdate, getCachedUpdate } from '../lib/update-checker.js';
+import { getToolRegistry } from '../engine/tools/index.js';
 
 export function registerHealthRoutes(app: FastifyInstance) {
   app.get('/healthz', async () => {
@@ -69,7 +70,7 @@ export function registerHealthRoutes(app: FastifyInstance) {
       },
       db: dbStats,
       providers,
-      tools: 19, // screenshot, web_search, mac_control added in R14.5
+      tools: getToolRegistry().size, // dynamic — reflects actual registered tools
       ...(update?.available ? { update: { latest: update.latest, url: update.url } } : {}),
     };
   });

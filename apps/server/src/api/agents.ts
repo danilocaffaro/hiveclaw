@@ -7,6 +7,10 @@ import { DEFAULT_SKILLS } from '../engine/skill-hub.js';
 import { getEngineService } from '../engine/engine-service.js';
 import { getDb } from '../db/index.js';
 import { logger } from '../lib/logger.js';
+import { existsSync, mkdirSync, readdirSync, cpSync, statSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
+import { getVersionInfo } from '../lib/version.js';
 
 // ── Core Memory Auto-Provisioning ────────────────────────────────────────────
 // Every new agent gets 4 core blocks (persona, human, project, scratchpad)
@@ -452,4 +456,162 @@ export function registerAgentRoutes(app: FastifyInstance, injectedAgents?: Agent
     return { data: { hasToken, masked } };
   });
   }
+
+  // ── S3.1: Agent Export/Import ────────────────────────────────────────────
+
+  /**
+   * GET /agents/:id/export
+   * Exports an agent configuration as a portable JSON bundle.
+   * Includes: config, skills list, core memory blocks, and metadata.
+   * Does NOT export non-core memories (those are personal/session-scoped).
+   */
+  app.get<{ Params: { id: string } }>('/agents/:id/export', async (req, reply) => {
+    const agent = agents().getById(req.params.id);
+    if (!agent) {
+      return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Agent not found' } });
+    }
+
+    // Core memory blocks
+    let coreMemory: Array<{ block_name: string; content: string; max_tokens: number }> = [];
+    try {
+      const memRepo = new AgentMemoryRepository(getDb());
+      coreMemory = memRepo.getCoreBlocks(agent.id);
+    } catch { /* non-fatal */ }
+
+    // Skills metadata (list slugs; dirs copied on import)
+    const skills: string[] = agent.skills ?? [];
+
+    const { version } = getVersionInfo();
+
+    const bundle = {
+      metadata: {
+        exported_at: new Date().toISOString(),
+        hiveclaw_version: version,
+        schema_version: 1,
+      },
+      config: {
+        name: agent.name,
+        emoji: agent.emoji,
+        role: agent.role,
+        color: agent.color,
+        systemPrompt: agent.systemPrompt,
+        temperature: agent.temperature,
+        maxTokens: agent.maxTokens,
+        modelPreference: agent.modelPreference,
+        providerPreference: agent.providerPreference,
+      },
+      skills,
+      coreMemory,
+    };
+
+    reply.header('Content-Type', 'application/json');
+    reply.header('Content-Disposition', `attachment; filename="agent-${agent.name.toLowerCase().replace(/\s+/g, '-')}-export.json"`);
+    return bundle;
+  });
+
+  /**
+   * POST /agents/import
+   * Accepts a bundle from /agents/:id/export and creates a new agent.
+   * - Copies skill directories if they exist on disk
+   * - Does NOT import memories (personal)
+   * - Returns the new agent's ID
+   */
+  app.post<{ Body: Record<string, unknown> }>('/agents/import', async (req, reply) => {
+    const bundle = req.body as {
+      metadata?: { schema_version?: number };
+      config?: {
+        name?: string;
+        emoji?: string;
+        role?: string;
+        color?: string;
+        systemPrompt?: string;
+        temperature?: number;
+        maxTokens?: number;
+        modelPreference?: string;
+        providerPreference?: string;
+      };
+      skills?: string[];
+      coreMemory?: Array<{ block_name: string; content: string; max_tokens: number }>;
+    };
+
+    if (!bundle?.config?.name || !bundle?.config?.role || !bundle?.config?.systemPrompt) {
+      return reply.status(400).send({
+        error: { code: 'VALIDATION', message: 'bundle.config must include name, role, and systemPrompt' },
+      });
+    }
+
+    const { config, skills = [] } = bundle;
+
+    // Create the new agent
+    const input: AgentCreateInput = {
+      name: `${config.name} (imported)`,
+      emoji: config.emoji ?? '🤖',
+      role: config.role!,
+      color: config.color ?? '#58A6FF',
+      systemPrompt: config.systemPrompt!,
+      temperature: config.temperature,
+      maxTokens: config.maxTokens,
+      modelPreference: config.modelPreference ?? '',
+      providerPreference: config.providerPreference ?? '',
+      skills: skills.length > 0 ? skills : DEFAULT_SKILLS,
+    };
+
+    const agent = agents().create(input);
+
+    // Copy skill directories if they exist locally
+    const skillsDir = join(homedir(), '.hiveclaw', 'workspace', 'skills');
+    const copiedSkills: string[] = [];
+    const missingSkills: string[] = [];
+
+    for (const slug of skills) {
+      const srcDir = join(skillsDir, slug);
+      if (existsSync(srcDir)) {
+        // Skill already present — nothing to copy
+        copiedSkills.push(slug);
+      } else {
+        missingSkills.push(slug);
+      }
+    }
+
+    // Provision core memory blocks (excluding 'persona', 'human', 'project', 'scratchpad'
+    // which will be auto-provisioned by the create route). We restore only non-default blocks.
+    let restoredBlocks = 0;
+    if (bundle.coreMemory && bundle.coreMemory.length > 0) {
+      try {
+        const memRepo = new AgentMemoryRepository(getDb());
+        // Trigger default provisioning first
+        provisionCoreMemory(memRepo, agent.id, agent.name, agent.emoji ?? '🤖', agent.role ?? config.role!);
+
+        // Restore any additional blocks from the export that aren't default
+        const defaultBlocks = new Set(['persona', 'human', 'project', 'scratchpad']);
+        for (const block of bundle.coreMemory) {
+          if (!defaultBlocks.has(block.block_name)) {
+            memRepo.setCoreBlock(agent.id, block.block_name, block.content, block.max_tokens);
+            restoredBlocks++;
+          }
+        }
+      } catch (e) {
+        logger.warn('[AgentImport] Core memory restore failed: %s', (e as Error).message);
+      }
+    } else {
+      // Still provision default core memory
+      try {
+        const memRepo = new AgentMemoryRepository(getDb());
+        provisionCoreMemory(memRepo, agent.id, agent.name, agent.emoji ?? '🤖', agent.role ?? config.role!);
+      } catch { /* non-fatal */ }
+    }
+
+    logger.info('[AgentImport] Imported agent %s (id=%s), skills=%d, missingSkills=%d, restoredBlocks=%d',
+      agent.name, agent.id, copiedSkills.length, missingSkills.length, restoredBlocks);
+
+    return reply.status(201).send({
+      data: {
+        agentId: agent.id,
+        name: agent.name,
+        copiedSkills,
+        missingSkills,
+        restoredBlocks,
+      },
+    });
+  });
 }
