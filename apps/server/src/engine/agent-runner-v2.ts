@@ -34,7 +34,7 @@ import { checkTokenStatus } from './token-monitor.js';
 import { handleThreshold, ensureSessionChainSchema } from './session-rotator.js';
 import { getWorkspaceRoot } from '../config/security.js';
 import { estimateTokenCost } from '../config/pricing.js';
-import { TOOL_LIMITS, ENABLE_MESSAGE_BUS, DEFAULT_PORT } from '../config/defaults.js';
+import { TOOL_LIMITS, ENABLE_MESSAGE_BUS, DEFAULT_PORT, PROACTIVE_MODE } from '../config/defaults.js';
 import { messageBus } from './message-bus.js';
 import type { SSEEvent, AgentConfig } from './agent-runner.js';
 import { existsSync, readFileSync } from 'fs';
@@ -339,6 +339,15 @@ Use these when web_search alone is insufficient. Always verify and cite sources.
     }
   } catch { /* non-fatal */ }
 
+  // S2.3: Skill auto-creation hint
+  systemPrompt += `\n\n## Skill Creation
+After completing complex tasks (5+ tool calls), consider creating a reusable skill.
+Save it as a SKILL.md file in ~/.hiveclaw/workspace/skills/<skill-name>/SKILL.md with:
+- Description of what the skill does
+- Step-by-step procedure
+- Common pitfalls
+- Verification steps`;
+
   return systemPrompt;
 }
 
@@ -522,6 +531,10 @@ export async function* runAgentV2(
   let totalTokensOut = 0;
   let fullAssistantText = '';
   let consecutiveLoopBreaks = 0;
+
+  // S2.2+S2.3: counters for BriefTool and skill auto-creation
+  let successfulToolCallCount = 0;
+  let skillSuggestionMade = false;
 
   // ── Build provider fallback chain ──────────────────────────────────────────
   const fallbackChain = buildFallbackChain(agentConfig);
@@ -984,6 +997,27 @@ export async function* runAgentV2(
             logger.warn(`[AgentRunner-v2] Tool "${tc.name}" failed: ${resultContent.slice(0, 200)}`);
           }
           yield { event: 'tool.finish', data: { id: tc.id, name: tc.name, output: resultContent, success: toolOutput.success } };
+
+          // S2.2: BriefTool — emit a dedicated SSE event so the frontend can
+          // surface this message directly to the user without waiting for the
+          // full assistant text to finish streaming.
+          if (tc.name === 'send_user_message' && toolOutput.success) {
+            yield {
+              event: 'brief.message',
+              data: {
+                message: toolOutput.result as string,
+                status: (toolOutput.metadata?.briefStatus as string) || 'normal',
+                agentId: agentConfig.id,
+                agentName: agentConfig.name,
+                agentEmoji: agentConfig.emoji,
+              },
+            };
+          }
+
+          // S2.3: Track successful tool calls for skill auto-creation suggestion
+          if (toolOutput.success) {
+            successfulToolCallCount++;
+          }
         } catch (toolErr) {
           resultContent = `ERROR: Tool execution threw an exception: ${(toolErr as Error).message}`;
           yield { event: 'tool.finish', data: { id: tc.id, name: tc.name, output: resultContent, error: true } };
@@ -1093,6 +1127,18 @@ export async function* runAgentV2(
     }
   } // end native tool loop
 
+  // ── S2.3: Skill auto-creation suggestion ─────────────────────────────────
+  // After a complex task (5+ successful tool calls), log a skill creation
+  // opportunity. The suggestion is injected into the system prompt so the
+  // model can act on it in the NEXT interaction (avoids disturbing current
+  // response flow). We set a flag so we don't spam this repeatedly.
+  if (successfulToolCallCount >= 5 && !skillSuggestionMade) {
+    skillSuggestionMade = true;
+    logger.info(
+      `[AgentRunner-v2] Complex task completed (${successfulToolCallCount} tool calls) — skill creation opportunity`
+    );
+  }
+
   // ── 10. Persist final assistant message ──────────────────────────────────────
   const PERSIST_STRIP_PATTERN = /⚠️?\s*(Summarize progress|continue in a new iteration)[^]*/gi;
   fullAssistantText = fullAssistantText.replace(PERSIST_STRIP_PATTERN, '').trim();
@@ -1128,4 +1174,214 @@ export async function* runAgentV2(
 
   // ── 13. Session consolidation timer ─────────────────────────────────────────
   try { touchSession(agentConfig.id, sessionId); } catch { /* non-fatal */ }
+}
+
+// ─── Proactive Mode (KAIROS-inspired Tick Loop) ──────────────────────────────
+//
+// Wraps runAgentV2 with a proactive tick loop. After the model finishes (stop),
+// instead of ending, it waits and injects a <tick> message. The model can:
+// 1. Act (if there's pending work) — tool calls, text output, etc.
+// 2. Call SleepTool — pause for N seconds (model decides duration)
+// 3. Call task_complete — signal the task is done, stopping the loop
+//
+// The tick loop is interruptible: if a new user message arrives (via AbortSignal),
+// it preempts the tick wait and stops the proactive loop.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Options for the proactive runner */
+export interface ProactiveOptions {
+  /** Enable proactive tick loop (overrides PROACTIVE_MODE.ENABLED) */
+  enabled?: boolean;
+  /** Default tick interval in ms (override PROACTIVE_MODE.DEFAULT_TICK_INTERVAL_MS) */
+  tickIntervalMs?: number;
+  /** Max consecutive empty ticks before auto-stop */
+  maxEmptyTicks?: number;
+}
+
+/** The tick message injected when the model finishes in proactive mode */
+const TICK_MESSAGE = '<tick> Proactive check. Review pending work, running processes, and observations. If nothing needs attention, call the sleep tool.';
+
+/**
+ * Sleep that is interruptible by an AbortSignal.
+ * Resolves 'timeout' on normal completion, 'aborted' on signal abort.
+ */
+function interruptibleSleep(ms: number, signal?: AbortSignal): Promise<'timeout' | 'aborted'> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve('aborted');
+      return;
+    }
+    const timer = setTimeout(() => {
+      resolve('timeout');
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve('aborted');
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+/**
+ * Detect if the model called SleepTool in the last turn.
+ * We inspect the SSE events emitted during the turn.
+ */
+function extractSleepSeconds(turnEvents: SSEEvent[]): number | null {
+  for (const evt of turnEvents) {
+    if (evt.event === 'tool.finish') {
+      const data = evt.data as { name?: string; output?: string; success?: boolean };
+      if (data.name === 'sleep' && data.success !== false) {
+        try {
+          const parsed = JSON.parse(data.output ?? '{}');
+          if (parsed.action === 'sleep' && typeof parsed.seconds === 'number') {
+            return parsed.seconds;
+          }
+        } catch { /* not JSON, ignore */ }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Detect if the model called task_complete in the last turn.
+ */
+function extractTaskComplete(turnEvents: SSEEvent[]): string | null {
+  for (const evt of turnEvents) {
+    if (evt.event === 'tool.finish') {
+      const data = evt.data as { name?: string; output?: string; success?: boolean };
+      if (data.name === 'task_complete' && data.success !== false) {
+        return data.output ?? 'Task completed';
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Detect if the model performed any substantive action (tool calls or non-trivial text).
+ * Used to count "empty ticks" — ticks where the model did nothing meaningful.
+ */
+function hadSubstantiveAction(turnEvents: SSEEvent[]): boolean {
+  for (const evt of turnEvents) {
+    if (evt.event === 'tool.start') {
+      const data = evt.data as { name?: string };
+      // sleep and task_complete don't count as substantive action for tick purposes
+      if (data.name !== 'sleep' && data.name !== 'task_complete') {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * runAgentV2Proactive — Proactive agent runner with tick loop.
+ *
+ * Wraps the standard runAgentV2 loop. After each turn completes, if proactive
+ * mode is active, it checks for sleep/task_complete and either waits or injects
+ * a tick to keep the agent active.
+ *
+ * When proactive is disabled (default), behaves identically to runAgentV2.
+ */
+export async function* runAgentV2Proactive(
+  sessionId: string,
+  userMessage: string,
+  agentConfig: AgentConfig,
+  opts?: Parameters<typeof runAgentV2>[3],
+  proactiveOpts?: ProactiveOptions,
+): AsyncGenerator<SSEEvent> {
+  const isProactive = proactiveOpts?.enabled ?? PROACTIVE_MODE.ENABLED;
+
+  // If proactive mode is off, just delegate to the standard runner
+  if (!isProactive) {
+    yield* runAgentV2(sessionId, userMessage, agentConfig, opts);
+    return;
+  }
+
+  const tickIntervalMs = proactiveOpts?.tickIntervalMs ?? PROACTIVE_MODE.DEFAULT_TICK_INTERVAL_MS;
+  const maxEmptyTicks = proactiveOpts?.maxEmptyTicks ?? PROACTIVE_MODE.MAX_CONSECUTIVE_EMPTY_TICKS;
+
+  let consecutiveEmptyTicks = 0;
+  let currentMessage = userMessage;
+  let isFirstTurn = true;
+
+  while (true) {
+    // ── Run a turn ────────────────────────────────────────────────────────────
+    const turnEvents: SSEEvent[] = [];
+    const runOpts = isFirstTurn
+      ? opts
+      : { ...opts, skipPersistUserMessage: true };
+
+    for await (const evt of runAgentV2(sessionId, currentMessage, agentConfig, runOpts)) {
+      turnEvents.push(evt);
+      yield evt;
+    }
+    isFirstTurn = false;
+
+    // ── Check for abort ───────────────────────────────────────────────────────
+    if (opts?.signal?.aborted) {
+      logger.info('[Proactive] Aborted by signal after turn');
+      return;
+    }
+
+    // ── Check for errors — don't continue on error ────────────────────────────
+    const hasError = turnEvents.some(e => e.event === 'error');
+    if (hasError) {
+      return;
+    }
+
+    // ── Check for task_complete — stop the loop ───────────────────────────────
+    const taskSummary = extractTaskComplete(turnEvents);
+    if (taskSummary) {
+      logger.info('[Proactive] Task completed: %s', taskSummary);
+      return;
+    }
+
+    // ── Check for sleep — wait that duration ──────────────────────────────────
+    const sleepSeconds = extractSleepSeconds(turnEvents);
+    const waitMs = sleepSeconds
+      ? sleepSeconds * 1000
+      : tickIntervalMs;
+
+    if (sleepSeconds) {
+      logger.info('[Proactive] Model requested sleep for %ds', sleepSeconds);
+    }
+
+    // ── Track empty ticks ─────────────────────────────────────────────────────
+    if (!hadSubstantiveAction(turnEvents)) {
+      consecutiveEmptyTicks++;
+      if (consecutiveEmptyTicks >= maxEmptyTicks) {
+        logger.info('[Proactive] Max consecutive empty ticks (%d) reached — stopping', maxEmptyTicks);
+        return;
+      }
+    } else {
+      consecutiveEmptyTicks = 0;
+    }
+
+    // ── Wait (interruptible) ──────────────────────────────────────────────────
+    logger.info('[Proactive] Waiting %dms before next tick (empty ticks: %d/%d)',
+      waitMs, consecutiveEmptyTicks, maxEmptyTicks);
+
+    const waitResult = await interruptibleSleep(waitMs, opts?.signal);
+    if (waitResult === 'aborted') {
+      logger.info('[Proactive] Interrupted by new message during tick wait');
+      return;
+    }
+
+    // ── Inject tick message ───────────────────────────────────────────────────
+    currentMessage = TICK_MESSAGE;
+
+    // Persist the tick as a user message so it appears in history
+    try {
+      const sessionManager = getSessionManager();
+      sessionManager.addMessage(sessionId, {
+        role: 'user',
+        content: TICK_MESSAGE,
+        sender_type: 'system' as unknown as 'human',
+      });
+    } catch (err) {
+      logger.warn('[Proactive] Failed to persist tick message: %s', (err as Error).message);
+    }
+  }
 }

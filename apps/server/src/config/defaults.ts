@@ -100,6 +100,17 @@ export const TOOL_LIMITS = {
 
 // ─── Feature Flags ──────────────────────────────────────────────────────────────
 
+// ─── Proactive Mode (KAIROS-inspired Tick Loop) ─────────────────────────────────
+
+export const PROACTIVE_MODE = {
+  /** Off by default — enable per-agent or globally via env */
+  ENABLED: (process.env.HIVECLAW_PROACTIVE_MODE ?? 'false').toLowerCase() === 'true',
+  /** Default delay between ticks when the model doesn't call SleepTool (ms) */
+  DEFAULT_TICK_INTERVAL_MS: 60_000,
+  /** Stop proactive mode after N consecutive ticks where the model takes no action */
+  MAX_CONSECUTIVE_EMPTY_TICKS: 5,
+};
+
 /**
  * ENABLE_MESSAGE_BUS — Sprint A/B feature flag.
  * OFF: agent-runner/squad-runner use legacy inline SSE only.

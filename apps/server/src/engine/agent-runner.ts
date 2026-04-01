@@ -75,6 +75,7 @@ export interface SSEEvent {
     | 'agent.start'
     | 'tool.start'
     | 'tool.finish'
+    | 'brief.message'
     | 'squad.skip'
     | 'error';
   data: unknown;

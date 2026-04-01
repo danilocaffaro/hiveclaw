@@ -1,9 +1,10 @@
 // ============================================================
-// Tool Registry — all 21 tools
+// Tool Registry — all 25 tools
 // ============================================================
 import type { Tool } from './types.js';
 
 import { BashTool } from './bash.js';
+import { BriefTool } from './brief.js';
 import { EditTool } from './edit.js';
 import { GlobTool } from './glob.js';
 import { GrepTool } from './grep.js';
@@ -25,8 +26,11 @@ import { MacControlTool } from './mac-control.js';
 import { CanvasTool } from './canvas.js';
 import { MessageTool } from './message.js';
 import { NodeControlTool } from '../nodes/node-tool.js';
+import { SleepTool } from './sleep.js';
+import { TaskCompleteTool } from './task-complete.js';
 
 export { BashTool } from './bash.js';
+export { BriefTool } from './brief.js';
 export { EditTool } from './edit.js';
 export { GlobTool } from './glob.js';
 export { GrepTool } from './grep.js';
@@ -48,6 +52,8 @@ export { MacControlTool } from './mac-control.js';
 export { CanvasTool } from './canvas.js';
 export { MessageTool } from './message.js';
 export { NodeControlTool } from '../nodes/node-tool.js';
+export { SleepTool } from './sleep.js';
+export { TaskCompleteTool } from './task-complete.js';
 
 export type { Tool, ToolInput, ToolOutput, ToolDefinition, ToolContext } from './types.js';
 export { formatToolResult } from './types.js';
@@ -58,6 +64,7 @@ export { formatToolResult } from './types.js';
 export function getToolRegistry(): Map<string, Tool> {
   const tools: Tool[] = [
     new BashTool(),
+    new BriefTool(),
     new EditTool(),
     new GlobTool(),
     new GrepTool(),
@@ -79,6 +86,8 @@ export function getToolRegistry(): Map<string, Tool> {
     new CanvasTool(),
     new MessageTool(),
     new NodeControlTool(),
+    new SleepTool(),
+    new TaskCompleteTool(),
   ];
 
   const registry = new Map<string, Tool>();

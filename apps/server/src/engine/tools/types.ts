@@ -10,6 +10,7 @@ export interface ToolOutput {
   success: boolean;
   result?: unknown;
   error?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ToolDefinition {
