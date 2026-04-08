@@ -426,6 +426,18 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     set({ squadWorkflow: [], activeTools: [] }); // Reset workflow/tools for new message
     startStreaming();
 
+    // Squad streaming timeout safety: if no SSE event for 60s, force stop
+    let lastEventTime = Date.now();
+    const squadTimeoutMs = 60_000;
+    const timeoutCheck = setInterval(() => {
+      if (Date.now() - lastEventTime > squadTimeoutMs && get().isStreaming) {
+        console.warn('[squad-timeout] No SSE event for 60s — forcing stop');
+        appendToLastMessage('\n\n⚠️ Squad response timed out. Refresh to check results.');
+        stopStreaming();
+        set({ squadWorkflow: [], activeTools: [] });
+      }
+    }, 10_000);
+
     try {
       // POST /sessions/:id/message returns SSE directly
       const token = getAuthToken();
@@ -462,6 +474,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
 
         for (const part of parts) {
           if (!part.trim()) continue;
+          lastEventTime = Date.now(); // Reset timeout on any SSE event
 
           let eventType = 'message';
           let eventData = '';
@@ -711,6 +724,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     } catch (err) {
       appendToLastMessage(`\n\n⚠️ Connection error: ${(err as Error).message}`);
     } finally {
+      clearInterval(timeoutCheck);
       stopStreaming();
       // Drain message queue — if messages were queued during streaming, send next one
       const queue = new Map(get().messageQueue);

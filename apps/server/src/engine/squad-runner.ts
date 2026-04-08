@@ -36,6 +36,7 @@ import {
   type SquadAgent,
   type MentionParseResult,
 } from './archer-router.js';
+import { buildNexusProtocolContext, type SquadMember, type NexusRole } from './nexus-protocol.js';
 import { ExternalAgentRepository } from '../db/external-agents.js';
 import { FederationRepository } from '../db/federation.js';
 import { getFederationManager } from './federation/federation-manager.js';
@@ -912,7 +913,7 @@ async function* runSequential(
   // Rules:
   //   @all / @todos / @team → every agent
   //   @specific             → those agents only (PO is always index 0, keeps first-turn semantics)
-  //   no @                  → PO only (pull-through may add more after PO responds)
+  //   no @                  → PO only (PO orchestrates via NEXUS/AGECON, pulls others)
   let primaryAgents: AgentConfig[];
   if (mentionResult.isAllMention) {
     primaryAgents = [...config.agents];
@@ -923,7 +924,7 @@ async function* runSequential(
     const mentionedIds = new Set(mentionResult.targetAgents.map(a => a.id));
     primaryAgents = config.agents.filter((a, idx) => idx === 0 || mentionedIds.has(a.id));
   } else {
-    // No @mention → PO only
+    // No @mention → PO only (PO should use @mentions in response to pull others)
     primaryAgents = config.agents.length > 0 ? [config.agents[0]] : [];
   }
 
@@ -965,17 +966,24 @@ async function* runSequential(
       mentionResult,
     );
 
-    // NEXUS: Inject NEXUS role context
-    const nexusRole = nexusRoleMap.get(agent.id) ?? 'member';
-    const nexusRoleLabel = nexusRole === 'po' ? 'PO (Product Owner)' :
-                           nexusRole === 'tech-lead' ? 'Tech Lead' :
-                           nexusRole === 'qa-lead' ? 'QA Lead' :
-                           nexusRole === 'sre' ? 'SRE' : 'Member';
-    const nexusCtx = `\n[Your NEXUS role in this squad: ${nexusRoleLabel}. Follow NEXUS v3.1 protocol for your role.]\n`;
+    // NEXUS: Build full protocol context from nexus-protocol module
+    const nexusRole = (nexusRoleMap.get(agent.id) ?? 'member') as NexusRole;
+    const squadMembersForProtocol: SquadMember[] = config.agents.map(a => ({
+      agentId: a.id,
+      name: a.name,
+      emoji: a.emoji ?? '🤖',
+      nexusRole: (nexusRoleMap.get(a.id) ?? 'member') as NexusRole,
+    }));
+    const nexusCtx = buildNexusProtocolContext(
+      squadMembersForProtocol.find(m => m.agentId === agent.id)!,
+      squadMembersForProtocol,
+      config.name,
+      isFirst,
+    );
 
     const prompt = isFirst
-      ? `${nexusCtx}${prevContext}`
-      : `${nexusCtx}${archerCtx}\n\n` +
+      ? `${nexusCtx}\n\n${prevContext}`
+      : `${nexusCtx}\n\n${archerCtx}\n\n` +
         (prevContext !== message
           ? `Previous agent's analysis:\n${prevContext}\n\n`
           : '') +

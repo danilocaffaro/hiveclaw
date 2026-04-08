@@ -285,6 +285,20 @@ async function _handleChannelInboundInner(inbound: ChannelInbound): Promise<stri
           }
           stepBuffer = '';
         }
+      } else if (event.event === 'brief.message') {
+        // ── Route send_user_message to channel adapters (Telegram, WhatsApp, etc.) ──
+        // BUG FIX: brief.message was only emitted as SSE for web UI but never
+        // routed to channel adapters, so agent responses via send_user_message
+        // never reached Telegram/WhatsApp users.
+        const briefData = event.data as { message?: string };
+        if (inbound.onProgress && briefData?.message) {
+          try {
+            await inbound.onProgress(briefData.message);
+            progressSent += briefData.message;
+          } catch (progressErr) {
+            logger.warn('[channel-responder] brief.message delivery failed: %s', (progressErr as Error).message);
+          }
+        }
       } else if (event.event === 'message.finish') {
         ranToCompletion = true;
         // R22-P1 Bug 2: runner signals it already persisted the message

@@ -8,16 +8,27 @@ import type { Squad } from '@/stores/squad-store';
 interface SquadFormModalProps {
   onClose: () => void;
   onSaved?: (squad: Squad) => void;
+  editSquad?: Squad; // If provided, modal opens in edit mode
 }
 
-export function SquadFormModal({ onClose, onSaved }: SquadFormModalProps) {
+export function SquadFormModal({ onClose, onSaved, editSquad }: SquadFormModalProps) {
   const createSquad = useSquadStore((s) => s.createSquad);
+  const updateSquad = useSquadStore((s) => s.updateSquad);
   const agents = useAgentStore((s) => s.agents);
+  const isEdit = !!editSquad;
 
-  const [name, setName] = useState('');
-  const [emoji, setEmoji] = useState('👥');
-  const [description, setDescription] = useState('');
-  const [selectedAgents, setSelectedAgents] = useState<Array<{ agentId: string; nexusRole: 'po' | 'tech-lead' | 'qa-lead' | 'sre' | 'member' }>>([]);
+  const [name, setName] = useState(editSquad?.name ?? '');
+  const [emoji, setEmoji] = useState(editSquad?.emoji ?? '👥');
+  const [description, setDescription] = useState(editSquad?.description ?? '');
+  const [selectedAgents, setSelectedAgents] = useState<Array<{ agentId: string; nexusRole: 'po' | 'tech-lead' | 'qa-lead' | 'sre' | 'member' }>>(
+    editSquad
+      ? (editSquad.agentIds ?? []).map((id, idx) => ({
+          agentId: id,
+          nexusRole: (editSquad.agents?.find(a => a.id === id) as any)?.nexusRole ??
+            (idx === 0 ? 'po' : idx === 1 ? 'tech-lead' : idx === 2 ? 'qa-lead' : idx === 3 ? 'sre' : 'member'),
+        }))
+      : []
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   // Prevent the opening click from immediately closing the modal via overlay
@@ -53,14 +64,25 @@ export function SquadFormModal({ onClose, onSaved }: SquadFormModalProps) {
     setSaving(true);
     setError('');
     try {
-      const saved = await createSquad({
-        name: name.trim(),
-        emoji,
-        description,
-        agentIds: selectedAgents.map((a) => a.agentId),
-        routingStrategy: 'sequential', // Always sequential — NEXUS pipeline
-        members: selectedAgents,
-      } as any);
+      let saved: Squad;
+      if (isEdit) {
+        saved = await updateSquad(editSquad!.id, {
+          name: name.trim(),
+          emoji,
+          description,
+          agentIds: selectedAgents.map((a) => a.agentId),
+          members: selectedAgents,
+        } as any);
+      } else {
+        saved = await createSquad({
+          name: name.trim(),
+          emoji,
+          description,
+          agentIds: selectedAgents.map((a) => a.agentId),
+          routingStrategy: 'sequential', // Always sequential — NEXUS pipeline
+          members: selectedAgents,
+        } as any);
+      }
       onSaved?.(saved);
       onClose();
     } catch (e) {
@@ -125,7 +147,7 @@ export function SquadFormModal({ onClose, onSaved }: SquadFormModalProps) {
         onClick={(e) => e.stopPropagation()}
       >
         <h2 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
-          👥 Create Squad
+          👥 {isEdit ? 'Edit Squad' : 'Create Squad'}
         </h2>
 
         <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
@@ -272,7 +294,7 @@ export function SquadFormModal({ onClose, onSaved }: SquadFormModalProps) {
               transition: 'background 150ms',
             }}
           >
-            {saving ? 'Saving…' : 'Create Squad'}
+            {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Squad'}
           </button>
         </div>
       </div>
