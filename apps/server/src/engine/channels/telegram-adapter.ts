@@ -268,12 +268,15 @@ export class TelegramAdapter implements ChannelAdapter {
       const isLast = i === chunks.length - 1;
       const params: Record<string, unknown> = {};
 
-      // Parse mode
+      // Parse mode — default to plain text (no parse_mode) when not specified.
+      // Previously defaulted to Markdown which caused parse errors on agent text
+      // containing special chars (_, *, `, etc.) and silently dropped messages.
       if (message.parseMode === 'html') {
         params.parse_mode = 'HTML';
-      } else if (message.parseMode !== 'plain') {
+      } else if (message.parseMode === 'markdown') {
         params.parse_mode = 'Markdown';
       }
+      // When parseMode is undefined or 'plain', no parse_mode is set (plain text)
 
       // Reply
       if (i === 0 && message.replyToMessageId) {
@@ -317,9 +320,10 @@ export class TelegramAdapter implements ChannelAdapter {
 
     if (parseMode === 'html') {
       params.parse_mode = 'HTML';
-    } else if (parseMode !== 'plain') {
+    } else if (parseMode === 'markdown') {
       params.parse_mode = 'Markdown';
     }
+    // When parseMode is undefined or 'plain', no parse_mode is set (plain text)
 
     try {
       await this.bot!.api.editMessageText(chatId, parseInt(messageId, 10), truncated, params);
@@ -577,18 +581,28 @@ export class TelegramAdapter implements ChannelAdapter {
     params: Record<string, unknown>,
   ): Promise<{ message_id: number; chat: { id: number }; date: number }> {
     try {
-      return await this.bot!.api.sendMessage(chatId, text, params) as unknown as {
+      const result = await this.bot!.api.sendMessage(chatId, text, params) as unknown as {
         message_id: number; chat: { id: number }; date: number;
       };
+      logger.info('[Telegram] Message sent to chat %s (msg_id=%d, len=%d)', chatId, result.message_id, text.length);
+      return result;
     } catch (err) {
       if (err instanceof GrammyError && params.parse_mode) {
         logger.warn('[Telegram] Markdown send failed (%s), retrying as plain', err.description.slice(0, 80));
         const plainParams = { ...params };
         delete plainParams.parse_mode;
-        return await this.bot!.api.sendMessage(chatId, text, plainParams) as unknown as {
-          message_id: number; chat: { id: number }; date: number;
-        };
+        try {
+          const result = await this.bot!.api.sendMessage(chatId, text, plainParams) as unknown as {
+            message_id: number; chat: { id: number }; date: number;
+          };
+          logger.info('[Telegram] Plain-text retry succeeded to chat %s (msg_id=%d)', chatId, result.message_id);
+          return result;
+        } catch (retryErr) {
+          logger.error('[Telegram] Plain-text retry also failed for chat %s: %s', chatId, (retryErr as Error).message);
+          throw retryErr;
+        }
       }
+      logger.error('[Telegram] sendMessage failed for chat %s: %s', chatId, (err as Error).message);
       throw err;
     }
   }
