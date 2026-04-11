@@ -117,11 +117,17 @@ No artificial blocklists. Agents have **Operational Awareness** — they underst
 ### Install & Run
 
 ```bash
-git clone https://github.com/danilocaffaro/hiveclaw.git
+git clone https://github.com/danilocaffaro/superclaw-pure.git hiveclaw
 cd hiveclaw
+
+# Option A: Guided setup (recommended for new users)
+./scripts/setup.sh
+
+# Option B: Manual setup
+cp .env.example .env   # Edit .env with your API keys
 pnpm install
 pnpm build
-NODE_ENV=production PORT=4070 node apps/server/dist/index.js
+pnpm start
 ```
 
 Open `http://localhost:4070` and follow the Setup Wizard.
@@ -208,7 +214,7 @@ pnpm dev          # Hot reload for web + server
 
 ## 📡 API
 
-Full API documentation: [`docs/API.md`](docs/API.md)
+Full API documentation: [`docs/API.md`](docs/API.md) | [Getting Started](docs/GETTING-STARTED.md) | [User Guide](docs/USER-GUIDE.md) | [Architecture](docs/ARCHITECTURE.md) | [Troubleshooting](docs/TROUBLESHOOTING.md)
 
 Key endpoints:
 - `POST /sessions/:id/message` — Send message, get SSE stream
