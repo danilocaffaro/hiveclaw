@@ -8,6 +8,7 @@
 
 import type { Tool, ToolInput, ToolOutput, ToolDefinition, ToolContext } from './types.js';
 import { logger } from '../../lib/logger.js';
+import { resolveApiKey } from '../../config/resolve-api-key.js';
 
 interface SearchResult {
   title: string;
@@ -49,10 +50,11 @@ export class WebSearchTool implements Tool {
       let result: ToolOutput | null = null;
 
       // Priority cascade: Gemini Grounding > Brave > Serper > Tavily > Google HTML > DuckDuckGo
-      const geminiKey = process.env['GEMINI_API_KEY'] ?? process.env['GOOGLE_API_KEY'] ?? process.env['GOOGLE_GENERATIVE_AI_API_KEY'];
-      const braveKey = process.env['BRAVE_API_KEY'] ?? process.env['BRAVE_SEARCH_API_KEY'];
-      const serperKey = process.env['SERPER_API_KEY'];
-      const tavilyKey = process.env['TAVILY_API_KEY'];
+      // Uses resolveApiKey() which checks credential store first, then process.env
+      const geminiKey = resolveApiKey('GEMINI_API_KEY') ?? resolveApiKey('GOOGLE_API_KEY') ?? resolveApiKey('GOOGLE_GENERATIVE_AI_API_KEY');
+      const braveKey = resolveApiKey('BRAVE_API_KEY') ?? resolveApiKey('BRAVE_SEARCH_API_KEY');
+      const serperKey = resolveApiKey('SERPER_API_KEY');
+      const tavilyKey = resolveApiKey('TAVILY_API_KEY');
 
       // Priority cascade with fallback: if a provider fails, try the next one
       const providers: Array<[string, () => Promise<ToolOutput>]> = [];
